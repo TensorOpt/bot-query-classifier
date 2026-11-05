@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.5, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.6, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -537,8 +537,10 @@ code we must test and maintain for no gain. scikit-learn is required for the
 vectoriser, folds and metrics anyway, and `MLPClassifier` adds nothing to the
 dependency set. PyTorch is a ~2 GB dependency for a 2-layer network on 10,000
 samples (960 in the comparison arm).
-Dependencies: `numpy`, `scikit-learn>=1.3` (HDBSCAN is in sklearn from 1.3), and
-`imbalanced-learn` for the SMOTE experiment only. `scipy` is transitive.
+Dependencies: `numpy` and `scikit-learn>=1.3` (HDBSCAN is in sklearn from 1.3).
+`scipy` is transitive. `imbalanced-learn` was listed for the SMOTE experiment
+until the user dropped SMOTE (section 7, 12.1 item 17); it leaves
+`pyproject.toml` and the report's library list.
 
 ### 6.1 Neural net (the user's model)
 
@@ -566,75 +568,31 @@ and the generators need rework. It is reported, never selected.
 ### 6.4 Model port
 
 Stages depend on a `Scorer` protocol (`fit(texts, y)`, `score(texts) -> ndarray of
-P(illegitimate)`) that wraps `vectoriser -> [SMOTE] -> estimator`. The three models
+P(illegitimate)`) that wraps `vectoriser -> estimator`. The three models
 above are three adapters; the evaluation code never imports sklearn estimators
 directly.
 
-## 7. SMOTE
+## 7. SMOTE (dropped by the user, 2026-11-05)
 
-**Decision:** SMOTE is an *experiment flag*, default **off**, run only inside
-training folds, compared against the no-SMOTE run on identical folds and seeds
-(confirmed by the user, Q3).
+**Decision:** SMOTE is **not part of the design** in either arm. The user dropped it
+on 2026-11-05 (12.1 item 17): the training data now comes from product spans
+(3.2), so there is enough of it, and SMOTE is not needed. This supersedes Q3 (SMOTE
+as a measured experiment, default off) and the plan-review rulings OQ-6 (sizing)
+and OQ-7 (`--smote`, `smote_comparison`, `smote_justified`). There is no `--smote`
+flag, no SMOTE arm, no comparison section, no `imbalanced-learn` dependency, and
+the `Scorer` adapters are `vectoriser -> estimator` (6.4).
 
-**Rationale and evidence:**
-
-- SMOTE balances classes by oversampling the minority. On an exactly balanced
-  480/480 set, `SMOTE()` with defaults **generates nothing** (probe 13.4: 960 -> 960
-  rows). To "upsample" both classes you must pass
-  `sampling_strategy={0: n, 1: n}` with `n > 480`; this works on sparse input (13.4).
-- What it then produces is a convex combination of two TF-IDF vectors of the same
-  class. Such rows have **L2 norm 0.72-1.0 instead of exactly 1.0 and ~1.7x the
-  non-zeros of any real query** (13.4): they lie off the unit sphere that every real
-  query lies on, and correspond to no string. For a small MLP this acts as a within-
-  class mixup regulariser, which might help a little or not at all. It is not more
-  data.
-- Therefore the design does not promise an improvement; it measures one (7.1).
-- Leakage rule: SMOTE must be fitted and applied to the training portion only.
-  `imblearn.pipeline.Pipeline` does this: the sampler's `fit_resample` is called
-  once during `fit` and zero times during `predict_proba`, for both `LogisticRegression`
-  and `MLPClassifier` on sparse input (probe 13.12); the pipeline test asserts that
-  the test fold row count is unchanged.
-
-### 7.1 Sizing, flag semantics and verdict (resolved 2026-11-05, OQ-6, OQ-7)
-
-**Sizing.** `sampling_strategy` is a **callable** that doubles each class present in
-the `y` passed to `fit`: `{c: 2 * count_c}`. This is a factor, not an absolute
-count, so the same adapter works for outer training folds (~384 per class), inner
-training folds (~307), the primary arm at 5,000 per class and the final fits (8.7).
-An absolute `n` would
-have to exceed the largest class count it is ever used with, and `imblearn` raises
-`ValueError` when a requested count is below the existing one (13.12). The factor 2
-is the only knob and is not tuned; the experiment asks whether SMOTE helps at all.
-`k_neighbors` stays at the default 5, which every fold's class counts satisfy.
-
-**Flag semantics.** `python -m bqc evaluate --smote` runs **both arms in the same
-run**: the three models without SMOTE, plus the MLP and the LR with SMOTE (the
-trivial baseline has no SMOTE arm; its three hand features are not what SMOTE is
-being tested on). Both arms use identical folds, seeds and generated positives
-because they come from one fold construction. The run JSON holds every arm's
-metrics under its own configuration key, plus a `smote_comparison` section with,
-for the MLP and the LR separately: the per-fold paired differences in headline
-recall (SMOTE minus no-SMOTE, 15 values), their mean and standard deviation, the
-number of folds where SMOTE wins, and the paired difference in achieved FPR.
-Without `--smote` there is no SMOTE arm and no comparison section.
-
-**Verdict rule.** The report computes a boolean `smote_justified` per model: true
-only if the mean paired difference in headline recall is positive **and** exceeds
-twice its standard error (`sd / sqrt(15)`, where `sd` is the **sample standard
-deviation of the 15 paired differences, `ddof=1`**, i.e. `statistics.stdev`),
-**and** the mean paired difference in achieved FPR is not positive. The callable
-`sampling_strategy` is a **module-level function** (not a lambda or closure) so a
-fitted SMOTE scorer pickles for 8.7. Otherwise the difference is "within fold-to-fold
-noise", SMOTE is not justified, and the default stays off. The rule is a crude
-paired t at about 2 sigma; it is stated so the conclusion is reproducible, not
-because 15 correlated folds support a formal test. The numbers behind it are all
-in the JSON for a reader who wants to judge differently.
-
-**Under Q13 (5,000 / 5,000 by default):** the scarcity argument for SMOTE is gone;
-the experiment stays because the user confirmed it (Q3) and because it is cheap for
-logistic regression. It runs, paired, on the primary arm at the chosen size and on
-the comparison arm (384 / 384). For the MLP it doubles the fit (7.1 sizing), which
-the runtime budget in 10 allows at 5,000. Expected finding: not justified.
+What the earlier analysis established, kept for the record: on a balanced set
+`SMOTE()` with defaults generates nothing (13.4); forced upsampling produces rows
+off the unit sphere that correspond to no string, a within-class mixup rather
+than data; and `imblearn.pipeline.Pipeline` skips the sampler at predict time
+(13.12). None of that is needed now. The section number is kept so that
+references to 7 and 7.1 elsewhere resolve to this note; the paired-comparison
+shape once defined in 7.1 is now stated in 8.2 (`arm_comparison`) and 12.1 item
+13 (`model_comparison`), with the same verdict rule: a difference counts only if
+its mean exceeds twice its standard error (`sd / sqrt(15)`, `sd` the sample
+standard deviation of the 15 paired per-fold differences, `ddof=1`) and the
+paired FPR difference is not positive.
 
 A more meaningful augmentation for text (string-level perturbation of real negatives)
 is in section 14.
@@ -674,8 +632,7 @@ spans from one product never straddle a fold in any sense that matters.
    split and the template split.
 2. **Training positives:** rendered for the training-side templates from the
    training negatives' token occurrences (8.3), `n / n_training_templates` each.
-3. **Fit** vectoriser, optional SMOTE, estimator on 1 + 2. No real query is in the
-   fit, ever.
+3. **Fit** vectoriser and estimator on 1 + 2. No real query is in the fit, ever.
 4. **Threshold:** score the **384 training-side real queries** with the fitted
    model; `t` is the 8.4 rule applied to those scores (smallest score with FPR <=
    target over the 384; resolution 1/384 ~ 0.26%). This is cross-fitting: the
@@ -703,9 +660,12 @@ every family present and the class share within 0.44-0.51.
 folds, the same test-side strings and the same seeds, and writes **one JSON** with
 each arm under its own key plus an `arm_comparison` section: per-fold paired
 differences (primary minus comparison) in headline recall, achieved FPR and
-ROC-AUC, with mean, sample sd and the count of folds where the primary arm wins,
-exactly as `smote_comparison` does within an arm (7.1). The LR-vs-MLP difference
-lives inside a run under `model_comparison` with the same shape. There is no
+ROC-AUC, each as the list of 15 per-fold values, their mean, their sample standard
+deviation (`ddof=1`), the standard error (`sd / sqrt(15)`) and the count of folds
+where the primary arm wins; a boolean `justified` per metric applies the verdict
+rule of section 7 (mean beyond twice its standard error, paired FPR difference not
+positive). The LR-vs-MLP difference lives inside a run under `model_comparison`
+with the same shape. There is no
 command that compares two run files; the full run (M6) is one invocation with both
 arms, and reports the primary arm as the headline with the paired differences.
 
@@ -767,7 +727,7 @@ to the target can be reported; 1% is the number that decisions are made on.
 
 ### 8.5 Metrics reported
 
-For each model x SMOTE setting, per repeat and pooled:
+For each model and arm, per repeat and pooled:
 
 - Headline: recall at FPR <= 1% (8.4), achieved FPR with Wilson 95% CI.
   **Pooling and `n` (resolved 2026-11-05, OQ-5):** each repeat scores every
@@ -1024,8 +984,7 @@ over **all 480 real queries** scored by that model (none were trained on; no
 out-of-fold pass needed). **Comparison arm:** as in v1, all 960 nominal samples, the
 threshold from a 5-fold out-of-fold pass (`StratifiedGroupKFold(n_splits=5,
 shuffle=True, random_state=SEED)`, 8.1 groups). Family E is excluded from both. Not
-a deployment artefact. The pickle holds the scorer and its threshold; the SMOTE
-callable of 7.1 is a module-level function so that SMOTE configurations pickle too.
+a deployment artefact. The pickle holds the scorer and its threshold.
 
 ## 9. Label discovery with HDBSCAN (separate experiment)
 
@@ -1154,7 +1113,7 @@ must not import the command layer.
 - **Commands** (for CLAUDE.md "Commands" once the user fills it):
   `python -m bqc fetch`, `python -m bqc generate [--negatives-size N]`,
   `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
-  [--models lr,mlp,trivial] [--smote] [--target-fpr 0.01] [--lofo]
+  [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo]
   [--catalogue-gap]`, `python -m bqc cluster`,
   `python -m unittest discover -s tests`.
 - **Runtime budget (estimate, to be measured and recorded in 13 by the first full
@@ -1162,14 +1121,14 @@ must not import the command layer.
   size. The MLP took 987 s per fit at 20,000 / 20,000 with 67k features (13.19);
   **measured at 5,000 / 5,000 by the SVD probe: 9-29 s per fit, median 17 s**
   (13.22; early stopping ends most fits in 19-43 epochs). The full primary run is
-  15 outer fits per model (no inner loop, 8.2), plus 15 for SMOTE, 60 for LOFO and
-  15 for the catalogue gap: about 105 MLP fits, **roughly half an hour** on the
-  probe's machine, plus the comparison arm's small nested fits. The comparison arm's nested loop is 90 fits at
-  384 / 384, seconds each. `--models lr` gives a complete run in minutes for
-  iteration; the MLP is run last. **"On request" (PQ-5):** `--lofo` and
-  `--catalogue-gap` take an optional comma list of models, default all of
-  `--models`; naming or omitting `mlp` there is the request. The main fits, SMOTE
-  and the final model always cover every model in `--models`. M4.T4 records the
+  15 outer fits per model (no inner loop, 8.2), plus 60 for LOFO, 15 for the
+  catalogue gap and 1 final fit: **91 MLP fits, roughly 25 minutes** on the
+  probe's machine, plus the comparison arm's small nested fits (90 at 384 / 384,
+  seconds each, plus its LOFO and gap variants). `--models lr` gives a complete run
+  in minutes for iteration; the MLP is run last. **"On request" (PQ-5):** `--lofo`
+  and `--catalogue-gap` take an optional comma list of models, default all of
+  `--models`; naming or omitting `mlp` there is the request. The main fits and
+  the final model always cover every model in `--models`. M4.T4 records the
   measured MLP fit time in the run JSON and in 13.9; if it exceeds 5 minutes per
   fit, the M6 invocation is `--lofo lr,trivial --catalogue-gap lr,trivial` and the
   MLP's LOFO and gap rows are reported as not run, with the reason. The rule
@@ -1220,10 +1179,10 @@ Each item names the component and the designed behaviour.
    (Jaccard above 0.6), never a failure.
 8. **Synthetic near-duplicates straddling folds.** Prevented by grouping on
    `(family, template_id)` (8.1); the fold test asserts no group appears in both sides.
-9. **Leakage of vectoriser / SMOTE / threshold.** All fitted inside the training
-   fold (8.2). Test: fit on a training fold, assert vocabulary contains no n-gram
-   that exists only in the test fold; assert test-fold row count is unchanged after
-   the pipeline.
+9. **Leakage of vectoriser / threshold.** The vectoriser is fitted on the training
+   side only and the threshold on the threshold queries only (8.2). Test: fit on a
+   training fold, assert vocabulary contains no n-gram that exists only in the
+   test fold; assert the test-side row count is unchanged by scoring.
 10. **Threshold not achievable.** If no threshold reaches the target FPR on the
     threshold queries of 8.2 (the top-scoring negatives tie above every
     candidate), choose the threshold with the smallest FPR and flag
@@ -1310,7 +1269,8 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
    "illegitimate"; E (off-topic natural language) is generated but
    evaluation-only. Accepted as proposed.
 2. **LLM-generated positives (section 4).** No. Template generators only.
-3. **SMOTE (section 7).** A measured experiment, default off. Yes.
+3. **SMOTE (section 7).** A measured experiment, default off. Yes. **Superseded
+   by item 17 (dropped).**
 4. **Target FPR (8.4).** 1%. Yes.
 5. **Sanity set (8.6.1).** The user's words: "I don't write, you write 50 queries
    in a CSV, and I'll label". The agents write 50 queries in one CSV with an empty
@@ -1383,6 +1343,13 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     features is closed for this project unless the user reopens it. Section 5 is
     unchanged. The M6 recommendation between logistic regression and the MLP is
     unaffected (12.1 item 13).
+17. **SMOTE dropped (2026-11-05).** The user's decision: with training data from
+    product spans there is enough of it, and SMOTE is not needed. Applies to both
+    arms, the comparison arm included. Supersedes Q3 and the plan-review rulings
+    OQ-6 and OQ-7; removes `--smote`, the SMOTE arm, `smote_comparison`,
+    `smote_justified` and the `imbalanced-learn` dependency (sections 6, 7, 8.2,
+    8.5, 8.7, 10, 11.9). Probes 13.4 and 13.12 stay as history. The MLP fit count
+    of the full primary run falls from about 105 to 91.
 
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
@@ -1420,8 +1387,8 @@ recorded in the body:
 | 3 | 4 rule 6, 8.1, 11.16 | 6 templates per family, 20 samples each, at least 2 hard-positive; runner asserts family presence. Probed (13.10), so no plan probe task is needed. |
 | 4 | 8.2 | Inner folds: same splitter and groups, seeded `SEED + repeat_index`; positives not regenerated per inner fold. |
 | 5 | 8.5 | Pooled interval at `n = 480`, `k = total / 3`; never `n = 1440`. |
-| 6 | 7.1 | SMOTE `sampling_strategy` is a callable doubling each class in the fitted `y`. Probed (13.12). |
-| 7 | 7.1 | `--smote` runs both arms in one run and one JSON; `smote_comparison` section; `smote_justified` boolean with a stated rule. |
+| 6 | 7.1 | (Superseded: SMOTE dropped, 12.1 item 17.) Was: `sampling_strategy` as a callable doubling each class; probed (13.12). |
+| 7 | 7.1 | (Superseded: SMOTE dropped, 12.1 item 17.) Was: `--smote`, `smote_comparison`, `smote_justified`; the verdict rule survives in section 7 and 8.2. |
 | 8 | 9, 9.2 | `bqc/cluster.py`; ties resolve to legitimate; ARI/AMI/homogeneity/completeness on non-noise points, seed-rule metrics over all rows. |
 
 Readings `opus` took (same commit, "Readings taken"): all six accepted and written
@@ -1490,7 +1457,7 @@ queries contain no bot traffic. Mitigation: the FP list (8.5) is reviewed by eye
   `(1,3)` 12,872 features (3,749 with `min_df=2`); `(1,4)` 25,711 (5,234);
   `(2,5)` 39,065 (6,402); `(3,5)` 37,046 (4,454). Word analyser on WANDS alone: 814.
 
-### 13.4 SMOTE on balanced sparse TF-IDF (2026-11-05, imbalanced-learn 0.14.2)
+### 13.4 SMOTE on balanced sparse TF-IDF (2026-11-05, imbalanced-learn 0.14.2; history, SMOTE dropped per 12.1 item 17)
 
 - `SMOTE(random_state=0).fit_resample(X, y)` with 480/480: output 960 rows, i.e.
   **no samples generated**.
@@ -1574,7 +1541,7 @@ step. **This probe tested single code points only; it did not establish
 idempotence on multi-character input, and the five-step order is not idempotent
 there (13.16).** The order in section 5 was revised as a result.
 
-### 13.12 imblearn `Pipeline` with SMOTE at predict time (2026-11-05, imbalanced-learn 0.14.2, scikit-learn 1.9.1)
+### 13.12 imblearn `Pipeline` with SMOTE at predict time (2026-11-05, imbalanced-learn 0.14.2, scikit-learn 1.9.1; history, SMOTE dropped per 12.1 item 17)
 
 `Pipeline([TfidfVectorizer(char), SMOTE(sampling_strategy=<callable doubling each
 class>), estimator])` on 300/200 sparse rows:
@@ -1844,8 +1811,10 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Catalogue-anchored cluster labelling**: label a cluster legitimate if its members
   are close to product names from WANDS `product.csv` (90 MB, in-domain). Removes
   the need for seed labels in section 9.2.
-- **String-level augmentation of negatives** (typo injection, word dropout) as a more
-  meaningful alternative to SMOTE for text.
+- **String-level augmentation of negatives** (typo injection, word dropout), the
+  text-native form of augmentation; P3 in 13.19 showed no clear gain over plain
+  spans, so only if the FP list points at typo-bearing queries. (SMOTE itself is
+  dropped, 12.1 item 17, and not to be re-proposed.)
 - **Word + char feature union**, and a `char_wb` comparison, if the FP list suggests
   word-level cues are being missed.
 - **Partial AUC** (FPR in [0, 0.05]) as a threshold-free number closer to the

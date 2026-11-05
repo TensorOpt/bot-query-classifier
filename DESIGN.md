@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.3, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.4, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -650,8 +650,9 @@ query is its own group (all unique, 13.1); each synthetic sample's group is
 fold. With groups of 20 (section 4, rule 6) stratification keeps the test-fold
 positive share within about 0.45-0.51 rather than exactly 0.50 (probe 13.10). The
 splitter stratifies on class only, so a family's six groups spread unevenly over the
-five test folds: with the real seeds a training family has **zero test samples in 8
-of the 15 outer folds**, while no training fold ever lacks a family (13.14). That is
+five test folds: with the real seeds a training family has **zero test samples in
+12 of the 15 outer folds** as implemented (8 of 15 in the probe's own group
+encoding, 13.14), while no training fold ever lacks a family. That is
 expected and harmless: every group is in exactly one test fold per repeat, so each
 family is fully scored once per repeat (8.5). The runner therefore records each
 fold's class and per-family counts in the run JSON and asserts, **on the training
@@ -1243,8 +1244,9 @@ Each item names the component and the designed behaviour.
     more). Section 4 rule 6 fixes 6 templates per family, and the runner **asserts**
     that both classes and every training family (A-D) are present in every outer
     and inner training fold and raises otherwise. The **test side is not asserted
-    for families**: a family missing from a test fold is normal (8 of 15 outer folds
-    with the real seeds, 13.14) and is handled by pooling per-family recall (8.5).
+    for families**: a family missing from a test fold is normal (12 of 15 outer
+    folds with the real seeds as implemented, 13.14) and is handled by pooling
+    per-family recall (8.5).
     LOFO removes one family on purpose and asserts the other three.
 17. **All-noise HDBSCAN result.** Reported as 0 clusters, 100% noise; the seed rule
     then labels everything legitimate (FPR 0, recall 0). Not an error.
@@ -1285,8 +1287,17 @@ Each item names the component and the designed behaviour.
     part-number diagnostic (8.6 item 4). Generators must not emit such a shape as a
     whole query (2.2), and the registry test asserts it. (Numbered 23 before v2.0;
     references to 11.23 mean this item.)
-
-## 12. Decisions taken by the user, and open questions
+30. **Non-finite score** (`NaN`, `+inf`, `-inf`) from a `Scorer` (ruled 2026-11-05).
+    **Every score array stops the run**: threshold queries, test queries, test
+    positives, family E, part-number strings, sanity queries, LOFO and
+    catalogue-gap scores, and the final-model scores alike. One function in
+    `bqc/evaluate.py` checks each array as it is produced and raises an error
+    naming the repeat, fold, arm, model and which score set held the value;
+    `select_threshold`'s own check (M3.T4) stays as a second line. Rationale: a
+    `NaN` compared with the threshold is never `>= t`, so an unchecked array would
+    read as "not flagged" and flatter the FPR silently; there is no legitimate
+    source of a non-finite probability from the adapters of section 6, so it is
+    always a defect, and a defect must not become a number in the report.
 
 ### 12.1 Resolved on 2026-11-05
 
@@ -1612,8 +1623,12 @@ family's groups first.
 Test-side positives per family with the real seeds take values in {0, 20, 40, 60};
 e.g. seed `SEED` fold 4 has [0, 0, 60, 20]. `opus`'s own counts (369, 3 and 7 for
 the "other seeds" cells) differ slightly, as expected when groups are encoded
-differently; the real-seed row matches exactly. Basis for 8.1 (assert families on
-the training side only), 8.5 (pooled per-family recall) and 11.16.
+differently; the real-seed row matched `opus`'s scratch count exactly. **The
+implemented fold builder (M3.T3) gives 12 of 15** with the real seeds, because its
+group labels are encoded differently from this probe's; the training-side counts
+(0 absent) are unchanged, which is the property that matters. Basis for 8.1
+(assert families on the training side only), 8.5 (pooled per-family recall) and
+11.16.
 
 ### 13.15 Part-number-shaped queries in WANDS (2026-11-05, Python 3.12.16, stdlib `csv`/`re`)
 

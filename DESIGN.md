@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.1, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.2, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -286,10 +286,13 @@ from one product name**. Construction, one home in `bqc/negatives.py`, seeded by
    from the fold's queries.
 3. Drop the span if, after `normalise()`, it is empty, already drawn (exact
    duplicate), **equal to any of the 480 real queries**, equal to a part-number
-   diagnostic string (8.6 item 4), or **equal to a sanity query**. The last check is
-   the exact-match audit of section 4 rule 4 (`check_exact`), which is the only
-   code that touches the sanity file; the span builder never reads it (rule 8). The
-   counts of each kind of removal go in the run JSON; the removed text does not.
+   diagnostic string (8.6 item 4), or **equal to a sanity query**. All four
+   removals go through the audit's dropping entry point (`drop_exact` in
+   `bqc/synth/audit.py`, additive next to the raising `check_exact` used for
+   positives, rule 4): it takes the candidate strings and the lists, returns the
+   survivors and per-list counts, and never returns or logs the removed text. It is
+   the only code that touches the sanity queries; the span builder never reads the
+   file (rule 8). The counts go in the run JSON; the removed text does not.
 4. Stop at `n` spans (default **5,000**, CLI `--negatives-size`).
 
 Every span carries metadata: `product_id`, `k`, `seed`. Spans from the same product
@@ -851,7 +854,13 @@ WANDS from *these generators*". Five additional checks make that limitation visi
    the test-side real queries (their `query_class`; the 6 empty-class queries
    contribute none), **remove every product carrying any of those classes** from
    the span pool before building the training negatives, and **remove the
-   training-side real queries of those classes** from the threshold set; fit and
+   training-side real queries of those classes** from the threshold set. The
+   **2,852 products with an empty `product_class`** (6.6%, 13.18) can never be
+   removed; if some of them describe a test fold's category, the simulated gap is
+   smaller than intended, so the check errs on the lenient side. Accepted: it is a
+   simulation of coverage loss, not a measurement of it; the run JSON records the
+   number of products removed per fold and the unclassified count, and the
+   unclassified share is small; fit and
    threshold as in 8.2; test on the test-side queries. Report pooled FPR with
    Wilson CI, recall, and the flagged queries. **Failure rule (confirmed by the
    user 2026-11-05, 12.1 item 14, knowing it is lenient):** the check fails only
@@ -1131,8 +1140,13 @@ must not import the command layer.
   plus 15 for SMOTE, 60 for LOFO and 15 for the catalogue gap: about 105 MLP fits,
   roughly 2-4 hours, acceptable. The comparison arm's nested loop is 90 fits at
   384 / 384, seconds each. `--models lr` gives a complete run in minutes for
-  iteration; the MLP is run last. If the measured MLP time exceeds 5 minutes per
-  fit, LOFO and the catalogue gap run for the MLP only on request.
+  iteration; the MLP is run last. **"On request" (PQ-5):** `--lofo` and
+  `--catalogue-gap` take an optional comma list of models, default all of
+  `--models`; naming or omitting `mlp` there is the request. The main fits, SMOTE
+  and the final model always cover every model in `--models`. M4.T4 records the
+  measured MLP fit time in the run JSON and in 13.9; if it exceeds 5 minutes per
+  fit, the M6 invocation is `--lofo lr,trivial --catalogue-gap lr,trivial` and the
+  MLP's LOFO and gap rows are reported as not run, with the reason.
 - **Environment:** Python 3.12, `python3 -m venv .venv`, `pyproject.toml` with the
   dependencies from section 6. The user's pyenv 3.12.16 has no `pip` on the shim
   path but `python3 -m venv` works and gives a venv with pip (verified 2026-11-05).
@@ -1230,8 +1244,9 @@ Each item names the component and the designed behaviour.
     number (the real file has none, 13.18); the header's fourth column is
     `category hierarchy` with a space and is matched by name, not position.
 25. **Span equals a real query, a sanity query or a P string** after
-    `normalise()`: dropped and counted (3.2); the span builder never sees sanity
-    text, only the audit's verdict. **Span pool exhausted** (`n` larger than the
+    `normalise()`: dropped and counted by the audit's `drop_exact` (3.2), which
+    returns survivors and counts only; the span builder never sees sanity text,
+    and no report carries it. **Span pool exhausted** (`n` larger than the
     distinct spans available after removals, or the catalogue-gap removal leaving
     too few products): the builder raises with the count reached; it never pads.
 26. **Non-ASCII product names** (918): ASCII-folded in 3.2 step 1; a name that is
@@ -1619,7 +1634,9 @@ bytes. Tab-separated; header `product_id, product_name, product_class, category
 hierarchy, product_description, product_features, rating_count, average_rating,
 review_count`. 42,994 rows, 0 with a wrong column count (`csv.field_size_limit`
 raised), 0 empty names, 42,577 distinct names, 1-49 words, median 6.0, mean 6.75;
-0 names with upper case; 918 with non-ASCII characters. First rows: `solid wood
+0 names with upper case; 918 with non-ASCII characters; **2,852 rows (6.6%) have
+an empty `product_class`** (found by `opus` at M1.T8 validation, re-counted by
+`fable`), which bears on the catalogue-gap check (8.6 item 5). First rows: `solid wood
 platform bed`, `all-clad 7 qt . slow cooker`. Token coverage of the 480 real
 queries by product names: 94.8% of occurrences, 90.9% of types; by the other real
 queries (leave-one-out): 63.3% / 28.7% (probe agent's `facts.py`, read, not re-run).

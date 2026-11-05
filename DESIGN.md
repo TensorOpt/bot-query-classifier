@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.9, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.10, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -269,14 +269,34 @@ anti-inflation measures in section 8 possible.
    generation fails if any positive is identical, after `normalise()` (section 5),
    to a negative **or to a sanity-set query** (8.6.1). The exact-match check runs
    on every generation without exception: `generate`, the per-fold ones (8.3), the
-   final-model fit (8.7) and the clustering experiment (9), against both lists; the
-   Jaccard report runs only in `bqc generate` (section 10) and covers negatives
-   only. The sanity half of the check is what keeps the sanity set outside the
-   generators by construction (added 2026-11-05, see 8.6.1): if a template can emit
-   a sanity query, the template changes, never the sanity file. The example strings
-   in section 2 are illustrations, not a list templates may copy; a template whose
-   output included one of them would be caught by this check only if that string
-   is in the sanity set, which is the only case that matters.
+   final-model fit (8.7) and the clustering experiment (9), against both lists. The
+   Jaccard report runs only in `bqc generate` (section 10): pairs above 0.6 against
+   negatives, and, **report-only, pairs above 0.5 against sanity queries** (added
+   2026-11-05, 8.6.1); neither threshold fails a run. The sanity half of the
+   exact-match check is what keeps the sanity set outside the generators by
+   construction: if a template can emit a sanity query, the template changes,
+   never the sanity file. The example strings in section 2 are illustrations, not
+   a list templates may copy.
+8. **Template authors do not open `data/sanity.csv`** (ruled 2026-11-05). The
+   delegation that writes or corrects a generator may contain the family's row in
+   section 2, sections 2.2 and 4, and the task entry, and nothing from the sanity
+   file; the author does not read the file, and no generator source, docstring,
+   comment or test quotes a sanity query or reads the real file. Collisions are the
+   audit's job (rule 4), not the author's. Rationale in 8.6.1: the earlier practice
+   of asking authors to steer around sanity queries made them read the file, and
+   phrases traceable only to it ended up in templates.
+9. **Spam contact details are invented, not reserved** (ruled 2026-11-05,
+   overruling an earlier brief). Family D builds domains from its own label parts
+   plus a list of common spam TLDs (`.biz`, `.info`, `.xyz`, `.top`, `.club`,
+   `.online`, `.shop`, `.site`, `.com`, `.net`), and phone numbers from random area
+   codes and random 7-digit shapes, never a bare digit run (2.2). **Banned:** real
+   brand names, real people, real company or product names, and the reserved
+   `.example`/`.test`/`.invalid` and `555-01xx` forms as the *only* shapes (a scratch
+   model learned `exam`, `xamp`, `.exa` and `555-` as the spam signal, stronger than
+   `http`). An invented domain or number may coincide with a real one; that is
+   accepted because the strings are generated at run time, never fetched or
+   dialled, `results/` is gitignored, and the source holds only TLDs and label
+   parts.
 5. Template-level diversity: each template must be able to produce at least 50
    distinct strings; the generator test asserts this.
 6. **Templates per family (decided 2026-11-05, OQ-3).** Each family has **exactly 6
@@ -586,6 +606,11 @@ For each model x SMOTE setting, per repeat and pooled:
   as stored in `query.csv`: the loader does not normalise, section 5, so the three
   double-space queries appear with their double space). With ~5 FPs at 1% this
   list *is* the most useful output of the whole project.
+- One-word false positives, reported against the 23 one-word WANDS negatives
+  (13.1): the count flagged out of 23 and the words themselves, per model. Short
+  real queries (`zen`, `owl`, brand names) are the legitimate inputs closest to
+  gibberish, so this subset is where an artefact would show first (added
+  2026-11-05).
 
 Macro F1 and ROC-AUC are reported because the user asked for them; they are not used
 for any selection. Selection (threshold) uses only FPR on inner validation data.
@@ -675,6 +700,25 @@ on every generation including the per-fold ones. So whatever the author read, no
 string in the sanity set can be produced by the generators that are actually used.
 The loader therefore exposes the queries regardless of label state, and the
 generator audit depends on it.
+
+*What independence means after M2 (ruled 2026-11-05).* While families A-D were
+written, the briefs asked authors to make sanity queries unreachable, which led
+them to read the file, and `opus` found phrases in families B and D that trace
+only to four sanity rows (character-3-gram Jaccard 0.55-0.81 against them), plus
+docstrings and tests quoting rows or reading the real file. Decisions:
+
+- Those phrases are replaced by a delegate that has not read the file (section 4
+  rule 8); the quoting tests and comments are removed; from now on no author opens
+  the file. The exact-match audit (rule 4) remains the only mechanism, and it
+  guarantees exactly one thing: no generator emits a sanity query verbatim.
+- The honest claim is therefore: the sanity set is **human-labelled and outside
+  the training data**, and **no sanity query is a generator output**; it is *not*
+  guaranteed to be outside the generators' *style*, and four rows are known to be
+  close to it. The `generate` report lists every sanity row with Jaccard above 0.5
+  to any generated positive (rule 4), and M6 reports the sanity results twice:
+  over all 50 rows, and over the rows below that threshold, with the excluded
+  rows named by id. A row the generators are close to tells us about the
+  generators, not about the model.
 
 *Content guideline for the author (not recorded in the file).* All queries stay in
 the furniture and home-goods domain, with no off-domain shopping queries (2.1).
@@ -1033,6 +1077,13 @@ generator registry depending on `normalise()` (rule 4 and rule 7 need it);
 accepted the fold builder running the per-fold exact-match check and returning
 class and per-family counts (8.1). The 8.1/11.16 contradiction it found is fixed:
 only the training side asserts family presence (13.14).
+
+Rulings from M2.T5 validation, 2026-11-05 (opus notes in `PLAN.md` at `428b969`):
+sanity-only phrases in families B and D are replaced by a delegate that has not
+read the file, authors no longer open the file, quoting tests and comments go,
+and a report-only Jaccard against sanity queries is added (section 4 rules 4 and
+8, 8.6.1); spam contact details become invented rather than reserved (rule 9);
+one-word false positives are reported (8.5). None alters a user decision.
 
 ## 13. Probe findings and unverified assumptions
 

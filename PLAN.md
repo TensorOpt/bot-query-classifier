@@ -965,6 +965,25 @@ Sign-off: pending.
 - **Depends on:** M2.T1, M2.T7, M2.T10, M2.T11, M2.T12. Real families aren't required by the tests,
   which use stub templates.
 - **Status:** done
+- **Status note:** implemented in `9c7eb85`, with F6. Real run by `opus`, all 15 folds of both arms: no
+  `FoldError`, so the sanity gate doesn't stop the run at the real seeds; every query and template is on
+  the test side once per repeat; training 4,996-5,000 positives to 5,000 spans in the primary arm and
+  380-400 to 384 in the comparison arm; no shortfall; about 10 s per primary fold to build. A training
+  family is never absent; one is absent from the test side in 12 of 15 folds.
+- **Changes requested (`opus`, 2026-11-05, on `9c7eb85`; scope `fix(M3.T3)`):**
+  1. `bqc/evaluate.py:124`: `_render_screened` repeats rule 4 from `bqc/cli.py:106` `_screen`: the sanity
+     check, the drop and the subsequence walk. Give it one home in `bqc/synth/audit.py`, used by both;
+     each caller keeps its own error message, with no query text.
+  2. `bqc/evaluate.py:50`: `FoldData` has families but no template ids. M3.T7's per-template recall and
+     M3.T13's inner groups need them. Add the `(family, template_id)` of each row on both sides, `None`
+     for a negative, and test them.
+  3. `bqc/evaluate.py:218`: passing `[]` for the real queries, the P strings or the sanity queries to
+     `build_spans` fails no test. Assert that it receives all three, with seed `seed + repeat`.
+  4. `bqc/evaluate.py:234`: removing the vocabulary cap fails no test. Test with a small `vocabulary_cap`
+     that training positives draw only on the first tokens.
+  5. `tests/test_folds.py:225`: the task's test "absent from a test fold doesn't raise, and its test count
+     is returned as 0" is only implicit. Assert that a fixture fold has a training family with a test
+     count of 0.
 
 ### M3.T4: Threshold selection
 

@@ -160,7 +160,7 @@ Sign-off: pending.
      1.9.1, numpy 2.5.4, imbalanced-learn 0.14.2).
 - **Tests:** `SEED == 20261105`; an unknown command exits non-zero.
 - **Depends on:** M1.T1 (schedule order only).
-- **Status:** done
+- **Status:** validated
 
 ### M1.T3: `normalise()`
 
@@ -224,7 +224,9 @@ Sign-off: pending.
   4. The real file loads as 480 rows with `query_id` `0..479`.
 - **Tests:** with the URL opener replaced by a local stub, so nothing downloads:
   success; network error; wrong bytes; an existing good file isn't destroyed by a failed
-  fetch (11.13).
+  fetch (11.13); a non-zero return from `main` becomes the exit status of `python -m bqc`
+  (run `bqc.__main__` with `runpy` and `main` patched, because in-process tests of `main`
+  can't see `__main__` dropping it).
 - **Depends on:** M1.T4.
 - **Status:** todo
 

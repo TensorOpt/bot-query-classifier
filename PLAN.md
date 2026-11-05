@@ -427,13 +427,10 @@ Sign-off: pending.
   Also remove `test_is_part_number_query_is_gone` from `tests/test_synth_registry.py`: asserting
   that a function is absent has no future value.
 - **Depends on:** M2.T1.
-- **Status:** done
-- **Changes requested (`opus`, 2026-11-05; rule 8; scope `fix(M2.T2)`):** nothing about the templates'
-  shapes or ranges changes.
-  1. `tests/test_synth_gibberish.py`: remove `IsolationTest.test_no_template_emits_a_sanity_query`,
-     and the imports only it uses. Keep `test_no_output_is_a_part_number_shape`.
-  2. `bqc/synth/gibberish.py`: in the docstrings of `_mash_token`, `_repeat_token` and `_alnum_token`,
-     remove every mention of the sanity set and its strings.
+- **Status:** validated
+- **Status note:** implemented in `4265190`, corrected in `0e61958`. The correction also replaced example
+  strings in `bqc/synth/registry.py`'s docstring and `tests/test_synth_registry.py`, as listed in
+  `d7f95e3`. `opus`'s correction list is in `839923b`.
 
 ### M2.T3: Family B, injection and probing payloads
 

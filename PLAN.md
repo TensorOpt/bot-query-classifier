@@ -86,7 +86,7 @@ for them. SKUs and part numbers are legitimate (Q11, 2.2).
 
 ### Fact checked while planning
 
-All 480 WANDS queries remain distinct after the five `normalise()` steps of section 5
+All 480 WANDS queries remain distinct after the six `normalise()` steps of section 5
 (2026-11-05, Python 3.12, `query.csv` SHA-256 `63b61660...68e95`), so 8.1's singleton
 groups hold.
 
@@ -165,39 +165,54 @@ Sign-off: pending.
 ### M1.T3: `normalise()`
 
 - **Goal:** one function holds all query preprocessing.
-- **Design refs:** 5, 11.1, 11.2, 11.4, 11.5, 13.11.
+- **Design refs:** `DESIGN.md` `c773215`: 5, 11.1, 11.2, 11.4, 11.5, 13.11, 13.16.
 - **Files:** `bqc/preprocess.py`, `tests/test_preprocess.py`.
 - **Acceptance criteria:**
-  1. `normalise(str) -> str` is pure and applies the five steps of section 5, in order:
-     NFKC; remove `Cc` and `Cf` characters unless `str.isspace()` is true for them;
-     `" ".join(s.split())`; `str.lower()`; truncate to 512 code points, then `rstrip()`.
+  1. `normalise(str) -> str` is pure and applies the six steps of section 5, in this order:
+     remove `Cc` and `Cf` characters unless `str.isspace()` is true for them; NFKC;
+     `str.lower()`; NFKC again; `" ".join(s.split())`; truncate to 512 code points, then
+     `rstrip()`.
   2. Truncation is silent: nothing logs or reports it (section 5, 11.2).
-  3. It is idempotent, and it is the only preprocessing implementation in the package.
-- **Tests:**
+  3. `normalise(normalise(s)) == normalise(s)` for every case in the test list; the design
+     states idempotence as a tested property (section 5, 13.16), not as a guarantee over all
+     strings. It is the only preprocessing implementation in the package.
+- **Tests:** every case also asserts that a second call leaves the result unchanged.
   - Empty and whitespace-only input return `""` without raising (11.1).
   - `\t` and `\n` become a space: `a\tb` gives `a b`.
   - U+200B, U+FEFF and a non-whitespace control character such as `\x00` are removed,
-    joining their neighbours: `so\u200bfa` gives `sofa`.
-  - Full-width ASCII maps to ASCII; combining marks, emoji and non-ASCII letters are kept
-    (11.4).
+    joining their neighbours: `so​fa` gives `sofa`.
+  - Removal runs before collapsing: `a ​ b` gives `a b`.
+  - Removal runs before NFKC: `e​́` gives U+00E9 on the first call.
+  - Hangul jamo split by a format character: `ᄀ​ᅡ` gives U+AC00.
+  - The second NFKC: `Α͂` gives U+1FB6.
+  - Lowercasing runs after the first NFKC: `℃` gives `°c`.
+  - Full-width ASCII maps to ASCII; `x́`, emoji and non-ASCII letters are kept (11.4).
   - Results of 511, 512 and 513 code points, and a 1 MB input, give at most 512 code points
     with no trailing space, including a cut that lands inside a space (11.2).
-  - An input that NFKC lengthens past 512 (`\ufb01` x 300) is truncated to 512.
+  - An input that NFKC lengthens past 512 (`ﬁ` x 300) is truncated to 512.
+  - Truncation runs last: `" " * 1000 + "sofa"` and `"​" * 1000 + "sofa"` give `sofa`.
   - Mixed case (11.5).
-  - Idempotence over all the above.
 - **Depends on:** M1.T2.
 - **Status:** done
-- **Changes requested (`opus`, 2026-11-05, on `1bcb0e3`):** `bqc/preprocess.py` matches section
-  5. The tests don't pin everything criterion 1 and the test list require:
-  1. `tests/test_preprocess.py:24`: no combining mark is tested. The file contains no U+0301,
-     and its `é` characters are precomposed. Assert that `x́` is kept unchanged.
-  2. `tests/test_preprocess.py:16`: moving the collapse before the removal survives the suite.
-     Assert that `a ​ b` gives `a b`.
-  3. `tests/test_preprocess.py:28`: lowercasing before NFKC survives the suite. Assert that
-     `℃` gives `°c`.
-  4. `tests/test_preprocess.py:46`: an extra truncation before NFKC survives the suite. Assert
-     that `" " * 1000 + "sofa"` and `"​" * 1000 + "sofa"` give `sofa`.
-  5. `tests/test_preprocess.py:52`: add the inputs of items 1 to 4 to the idempotence samples.
+- **Status note:** `done` refers to `1bcb0e3`, which implements the superseded five-step order.
+  That code no longer meets criterion 1. The task needs the changes below before it can be
+  validated.
+- **Changes requested (`opus`, 2026-11-05, on `1bcb0e3`; replaces the earlier list):** both code
+  and tests must change. Every expected value below was checked against the six steps.
+  1. `bqc/preprocess.py:14-21`: implement the six steps in the order of criterion 1. Update the
+     docstring at `bqc/preprocess.py:10-12`, which states the old order and an unqualified
+     "idempotent".
+  2. `tests/test_preprocess.py:16`: add `a ​ b` -> `a b`, `e​́` -> U+00E9 and
+     `ᄀ​ᅡ` -> U+AC00. Keep `so​fa` -> `sofa`.
+  3. `tests/test_preprocess.py:24`: add `x́` -> unchanged. The file has no combining mark
+     today, and its `é` characters are precomposed.
+  4. `tests/test_preprocess.py:28`: add `℃` -> `°c` and `Α͂` -> U+1FB6.
+  5. `tests/test_preprocess.py:46`: add `" " * 1000 + "sofa"` -> `sofa` and
+     `"​" * 1000 + "sofa"` -> `sofa`.
+  6. `tests/test_preprocess.py:51`: assert idempotence for every case in the test list, including
+     items 2 to 5 and the existing single-code-point, full-width, tab/newline, 511/512/513 and
+     1 MB cases. Sharing one case table is fine.
+  Write the characters in tests as `\u` escapes, because they are invisible in a diff.
 
 ### M1.T4: WANDS loader with hash check
 

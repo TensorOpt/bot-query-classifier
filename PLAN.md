@@ -803,7 +803,13 @@ Sign-off: pending.
     isn't, and the run still exits zero.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M1.T8, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9, M2.T10, M2.T11, M2.T12.
-- **Status:** todo
+- **Status:** done
+- **Status note:** real run (5,000 spans, 35 s): 4,804 positives of A-D plus 120 of E; shortfalls only
+  `B.script` (148) and `B.traversal` (40), both flagged under 50% distinct for `B.script`; 0 outputs
+  without a non-benign token; span removals drawn 689, real queries 17, P strings 0, sanity 0; 0
+  positives dropped; 2 near-duplicate pairs above 0.6; 57 of 480 real queries (11.9%) have a span
+  above 0.6; 3 sanity queries above 0.5; one-off share 18.3% of hard-positive word slots against
+  16.8% of span occurrences. `--negatives-size` below 24 is a usage error (no render per template).
 
 ---
 

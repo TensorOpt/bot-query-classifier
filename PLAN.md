@@ -687,7 +687,7 @@ Sign-off: pending.
   kept; per-list counts, including a candidate in two lists and a list with no hits; empty inputs;
   input not mutated; removed text absent from the return value and from captured logs.
 - **Depends on:** M2.T7.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T12: Product-name spans
 

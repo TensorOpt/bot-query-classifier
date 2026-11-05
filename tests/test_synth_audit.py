@@ -1,3 +1,4 @@
+import logging
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from bqc.synth.audit import (
     LengthStats,
     NearDuplicate,
     check_exact,
+    drop_exact,
     length_stats,
     near_duplicates,
 )
@@ -80,6 +82,63 @@ class CheckExactTest(unittest.TestCase):
 
 
 # Sets of 3-grams: "abcd" has 2, "abcde" 3, "abcdef" 4, "abcdefg" 5, "abcdefgh" 6.
+class DropExactTest(unittest.TestCase):
+    def test_identical_dropped(self):
+        kept, counts = drop_exact(["alpha one", "beta two"], {"a": ["alpha one"]})
+        self.assertEqual(kept, ["beta two"])
+        self.assertEqual(counts, {"a": 1})
+
+    def test_case_and_whitespace(self):
+        kept, counts = drop_exact(["  Alpha   ONE "], {"a": ["alpha one"]})
+        self.assertEqual((kept, counts), ([], {"a": 1}))
+
+    def test_listed_strings_normalised_too(self):
+        kept, counts = drop_exact(["alpha one"], {"a": ["  ALPHA \t One"]})
+        self.assertEqual((kept, counts), ([], {"a": 1}))
+
+    def test_survivors_are_the_original_strings_in_order(self):
+        kept, _ = drop_exact(["Zed  Q", "drop me", "Alpha  B", "mid"], {"a": ["DROP ME"]})
+        self.assertEqual(kept, ["Zed  Q", "Alpha  B", "mid"])
+
+    def test_counts_per_list_with_overlap_and_no_hits(self):
+        lists = {"first": ["one", "two"], "second": ["two", "three"], "none": ["zzz"]}
+        kept, counts = drop_exact(["one", "two", "three", "four"], lists)
+        self.assertEqual(kept, ["four"])
+        self.assertEqual(counts, {"first": 2, "second": 1, "none": 0})
+
+    def test_duplicate_candidates_each_counted(self):
+        kept, counts = drop_exact(["one", "ONE", "keep"], {"a": ["one"]})
+        self.assertEqual((kept, counts), (["keep"], {"a": 2}))
+
+    def test_empty_inputs(self):
+        self.assertEqual(drop_exact([], {"a": ["x"]}), ([], {"a": 0}))
+        self.assertEqual(drop_exact(["x"], {}), (["x"], {}))
+        self.assertEqual(drop_exact(["x"], {"a": []}), (["x"], {"a": 0}))
+        self.assertEqual(drop_exact([], {}), ([], {}))
+
+    def test_iterators_accepted(self):
+        kept, counts = drop_exact(iter(["x", "y"]), {"a": iter(["y"])})
+        self.assertEqual((kept, counts), (["x"], {"a": 1}))
+
+    def test_inputs_not_mutated(self):
+        strings = ["Alpha", "beta"]
+        lists = {"a": ["alpha"]}
+        drop_exact(strings, lists)
+        self.assertEqual(strings, ["Alpha", "beta"])
+        self.assertEqual(lists, {"a": ["alpha"]})
+
+    def test_removed_text_not_in_return_or_logs(self):
+        secret = "Quixotic Marmalade"
+        with self.assertLogs(level="DEBUG") as logs:
+            logging.getLogger("probe").debug("start")
+            kept, counts = drop_exact([secret, "other"], {"a": [secret.lower()]})
+        self.assertNotIn("quixotic", repr((kept, counts)).lower())
+        self.assertNotIn("quixotic", "\n".join(logs.output).lower())
+
+    def test_never_raises_on_match(self):
+        self.assertEqual(drop_exact(["x"], {"a": ["x"]}), ([], {"a": 1}))
+
+
 class NearDuplicatesTest(unittest.TestCase):
     def test_constants(self):
         self.assertEqual(NEGATIVES_THRESHOLD, 0.6)

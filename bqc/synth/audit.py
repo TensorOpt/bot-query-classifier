@@ -4,7 +4,7 @@ Three independent pieces: an exact-match check that runs on every generation, a
 character-3-gram Jaccard report, and per-family length statistics.
 """
 import statistics
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import NamedTuple
 
 from bqc.preprocess import normalise
@@ -54,6 +54,31 @@ def check_exact(
             if hit is not None:
                 raise AuditError(
                     f"positive {positive!r} equals {hit!r} in {name} after normalise()")
+
+
+def drop_exact(
+    strings: Iterable[str], lists: Mapping[str, Iterable[str]]
+) -> tuple[list[str], dict[str, int]]:
+    """Remove the strings equal, after normalise(), to any string in any of `lists`.
+
+    Returns the surviving strings in their original order and a count of removals per
+    list name (every name is present, 0 when it had no hits). A string found in several
+    lists is counted once, under the first list in mapping order. Unlike `check_exact`
+    this never raises on a match, and it never returns, logs or raises removed text.
+    """
+    owner: dict[str, str] = {}
+    counts = {name: 0 for name in lists}
+    for name, stored in lists.items():
+        for s in stored:
+            owner.setdefault(normalise(s), name)
+    kept = []
+    for string in strings:
+        name = owner.get(normalise(string))
+        if name is None:
+            kept.append(string)
+        else:
+            counts[name] += 1
+    return kept, counts
 
 
 def near_duplicates(

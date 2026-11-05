@@ -55,6 +55,7 @@ class SelectThresholdTest(unittest.TestCase):
         self.assertEqual(result.threshold, 0.9)
         self.assertEqual(result.fpr, 0.3)
         self.assertTrue(result.target_unmet)
+        self.assertIsNone(result.warning)
 
     def test_target_below_resolution_warns_without_rounding(self):
         scores = [i / 100 for i in range(1, 101)]
@@ -72,6 +73,17 @@ class SelectThresholdTest(unittest.TestCase):
         self.assertEqual(result.threshold, 1.0)
         self.assertFalse(result.target_unmet)
 
+    def test_warning_only_below_resolution_for_other_sizes(self):
+        for n, target, warns in (
+            (384, 0.005, False),  # 0.005 >= 1/384
+            (233, 0.01, False),  # 0.01 >= 1/233
+            (190, 0.01, False),  # 0.01 >= 1/190
+            (50, 0.01, True),  # 0.01 < 1/50
+        ):
+            with self.subTest(n=n, target=target):
+                result = select_threshold([i / n for i in range(1, n + 1)], target)
+                self.assertEqual(result.warning is not None, warns)
+
     def test_zero_target_warns_and_is_unmet(self):
         result = select_threshold([0.1, 0.2], 0.0)
         self.assertIsNotNone(result.warning)
@@ -80,6 +92,12 @@ class SelectThresholdTest(unittest.TestCase):
     def test_all_scores_equal(self):
         result = select_threshold([0.5] * 10, 0.01)
         self.assertEqual(result.threshold, 0.5)
+        self.assertEqual(result.fpr, 1.0)
+        self.assertTrue(result.target_unmet)
+
+    def test_two_tied_scores_are_one_block(self):
+        result = select_threshold([0.1, 0.1], 0.5)
+        self.assertEqual(result.threshold, 0.1)
         self.assertEqual(result.fpr, 1.0)
         self.assertTrue(result.target_unmet)
 

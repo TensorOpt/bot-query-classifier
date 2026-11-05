@@ -804,12 +804,25 @@ Sign-off: pending.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M1.T8, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9, M2.T10, M2.T11, M2.T12.
 - **Status:** done
-- **Status note:** real run (5,000 spans, 35 s): 4,804 positives of A-D plus 120 of E; shortfalls only
-  `B.script` (148) and `B.traversal` (40), both flagged under 50% distinct for `B.script`; 0 outputs
-  without a non-benign token; span removals drawn 689, real queries 17, P strings 0, sanity 0; 0
-  positives dropped; 2 near-duplicate pairs above 0.6; 57 of 480 real queries (11.9%) have a span
-  above 0.6; 3 sanity queries above 0.5; one-off share 18.3% of hard-positive word slots against
-  16.8% of span occurrences. `--negatives-size` below 24 is a usage error (no render per template).
+- **Status note:** real run (5,000 spans, 35 s; `opus` re-ran it twice, identical JSON): 4,804 positives
+  of A-D plus 120 of E; shortfalls only `B.script` (148, flagged as a finding, 60 of 208 distinct) and
+  `B.traversal` (40, not flagged, 168 of 208); 0 outputs without a non-benign token; span removals drawn
+  689, real queries 17, P strings 0, sanity 0; 0 positives dropped; 2 near-duplicate pairs above 0.6; 57
+  of 480 real queries (11.9%) have a span above 0.6; 3 sanity queries above 0.5; one-off share 18.3% of
+  hard-positive word slots against 16.8% of span occurrences. `--negatives-size` below 24 is a usage
+  error (no render per template). Real-data proof of the span filter: all 50 sanity queries and 100 P
+  strings reached `build_spans`, and at 20,000 and 40,000 spans it removed 2 and 4 spans for sanity.
+- **Changes requested (`opus`, 2026-11-05, on `aeb7f41`; scope `fix(M2.T8)`):** the code is correct. These
+  behaviours have no test: each mutation below passes `tests/test_cli_generate.py`.
+  1. `bqc/cli.py:180`: passing `[]` instead of the sanity queries, or instead of the P strings, to
+     `build_spans`. Test through `build_generate_report` with fixture products that make a span equal to
+     a sanity fixture query and to a P string: both are dropped and counted under their kinds.
+  2. `bqc/cli.py:278`: printing the `SanityError` message instead of withholding it. Test with a fixture
+     whose query equals a WANDS fixture query: exit 1, and the query text is absent from stderr.
+  3. `bqc/cli.py:217`: adding the P strings to the near-duplicate pairs (criterion 3). Test that
+     `near_duplicates` receives no P text, or a fixture where a P string is near a span.
+  4. `bqc/cli.py:182`: removing the vocabulary cap. Test with a small patched `VOCABULARY_CAP` that
+     `span_occurrences` equals it.
 
 ---
 
@@ -1155,7 +1168,8 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
      disagreements (id, query, user's label, model's score), per configuration, using the
      threshold of M3.T10. There is no macro F1, ROC-AUC, confidence interval or decimal
      rate.
-  3. A duplicate of a WANDS query fails the run with the offending `id` (11.21). The loader is
+  3. A duplicate of a WANDS query fails the run with the offending `id` (11.21) and without the query
+     text: `SanityError`'s message quotes the query, so the id needs its own attribute. The loader is
      given all the WANDS queries of the run, never an empty list: the real-file test in M1.T6
      can't make this check, because tests don't read `data/raw/`.
   4. Sanity data is never passed to any `fit` or threshold selection.

@@ -219,3 +219,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .idea
+
+# Throwaway probe scripts (see CLAUDE.md)
+scratch/

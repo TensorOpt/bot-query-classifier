@@ -1,6 +1,8 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.11, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v2.0, 2026-11-05 (Q13: product-name spans are the training
+negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
+Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -19,8 +21,14 @@ sanity set, stays in that domain; queries for products such a shop does not sell
 (`iphone 11 case`) are not mixed in as legitimate (and are not labelled illegitimate
 either; see 2.1 and Q10).
 
-- Negative class (label `0`) = legitimate = the 480 real customer queries in WANDS.
-- Positive class (label `1`) = illegitimate = synthetically generated queries.
+- Negative class (label `0`) = legitimate. **Training negatives are word spans cut
+  from WANDS product names** (3.2; user decision 2026-11-05, Q13). The **480 real
+  customer queries** in WANDS are the legitimate class as it is *measured*: they
+  never enter a model fit; they set the threshold and are the test set, through
+  cross-fitting (8.2). The v1 setup (real queries as training negatives) is kept as
+  a comparison arm.
+- Positive class (label `1`) = illegitimate = synthetically generated queries, as
+  many as there are training negatives (section 4).
 - A **false positive** (legitimate query discarded) is the costly error: a lost sale.
   The whole evaluation is organised around bounding the false-positive rate (FPR)
   first and maximising recall of illegitimate queries second.
@@ -222,18 +230,89 @@ repository `LICENSE`, the repository README, and Wayfair's release blog post:
 - Content: furniture/home shopping, including brand/collection names (`kisner`,
   `argenteuil`, `minnestrista`), typos, and at least one off-topic query
   (`drudge report`). No query looks machine-generated.
-- Other files (`product.csv` 90 MB, `label.csv` 5.7 MB) are **not downloaded**; only
-  `query.csv` (~10 KB) is needed. See 14 for the catalogue-anchor idea that would need
-  `product.csv`.
+- Other files: `product.csv` (90 MB) **is downloaded since v2.0** (3.1, Q13);
+  `label.csv` (5.7 MB) is not needed and not downloaded. The catalogue-anchor idea
+  for clustering (14) could now reuse the product file.
 
 **Decision:** `query.csv` is fetched by a script into `data/raw/` (gitignored) and its
 SHA-256 recorded in `data/CHECKSUMS` (committed). The loader refuses a file whose hash
 does not match. **Rationale:** the download is untrusted data and the dataset is small;
 pinning the hash makes every run reproducible.
 
-**Decision:** WANDS is used as negatives only. The 6 empty-class rows and the
-off-topic `drudge report` stay in. **Rationale:** they are real customer queries that
-were served; removing them would be label leakage by hand-curation.
+**Decision (v1, superseded 2026-11-05 by Q13, see 3.2):** ~~WANDS queries are the
+training negatives.~~ The real queries are now the **threshold and test set only**.
+What stays: WANDS queries are the only real legitimate data; the 6 empty-class rows
+and the off-topic `drudge report` stay in; nothing is hand-curated out.
+
+### 3.1 WANDS `product.csv` (verified 2026-11-05, 13.18)
+
+- `dataset/product.csv`, **90.6 MB**, tab-separated, UTF-8, header `product_id,
+  product_name, product_class, category hierarchy, product_description,
+  product_features, rating_count, average_rating, review_count` (the fourth name has
+  a space). **42,994 rows, 0 malformed**, 0 empty names, **42,577 distinct names**.
+- Names are lowercase (0 with upper case), **918 contain non-ASCII**, 1-49 words,
+  **median 6 words** (queries: median 3). `product_class` is a `|`-separated list in
+  the same vocabulary as the queries' `query_class`.
+- Coverage: product names contain **94.8% of real-query token occurrences (90.9% of
+  types)**; other real queries cover only 63.3% / 28.7% of a held-out query's tokens.
+  That is the whole reason for 3.2: the catalogue phrases what shoppers type.
+- Fields other than `product_id`, `product_name`, `product_class` are not read. The
+  description column is long: the loader raises `csv.field_size_limit`.
+
+**Decision:** `bqc fetch` downloads `product.csv` next to `query.csv`, hash-pinned in
+`data/CHECKSUMS` (SHA-256
+`d993926254572e6eba96c8fd87cc549a17fb91ad3748308036eee4cf92b10ac6`), same atomic
+write; `bqc/wands.py` gains `load_products()` returning `(product_id, name,
+classes)` with the three columns only, raw, in file order. The 90 MB download is
+accepted because it is the only real legitimate text we have at scale (13.19).
+
+### 3.2 Training negatives are product-name spans (user decision 2026-11-05, Q13)
+
+**Decision:** a training negative is a **contiguous span of consecutive words cut
+from one product name**. Construction, one home in `bqc/negatives.py`, seeded by
+`random.Random(SEED + repeat_index)`:
+
+1. Preprocess every product name with `normalise()` (section 5), then fold to
+   ASCII (NFKD, drop non-ASCII, re-collapse whitespace). WANDS queries are ASCII
+   (section 3), so negatives must be too, or non-ASCII would become a class signal
+   (rule 1 of section 4 applies to negatives for the same reason).
+2. Draw a span length `k` from the real queries' word-count distribution recorded in
+   13.1 (1 word: 23, 2: 109, 3: 169, 4: 99, 5: 41, 6: 16, 7: 11, 8: 8, 9: 3, 10: 1,
+   out of 480), a product uniformly among those with at least `k` words, and a
+   start position uniformly; take the `k` consecutive words. The distribution is a
+   published statistic of the dataset, written as a constant; it is not recomputed
+   from the fold's queries.
+3. Drop the span if, after `normalise()`, it is empty, already drawn (exact
+   duplicate), **equal to any of the 480 real queries**, equal to a part-number
+   diagnostic string (8.6 item 4), or **equal to a sanity query**. The last check is
+   the exact-match audit of section 4 rule 4 (`check_exact`), which is the only
+   code that touches the sanity file; the span builder never reads it (rule 8). The
+   counts of each kind of removal go in the run JSON; the removed text does not.
+4. Stop at `n` spans (default **5,000**, CLI `--negatives-size`).
+
+Every span carries metadata: `product_id`, `k`, `seed`. Spans from the same product
+are near-duplicates of each other; they do not need group-aware folds because
+**spans are never on the test side** (8.1): the test side is real queries.
+
+**Why spans and not whole names (13.19):** full names (median 6 words, P1) train a
+model whose score distribution does not transfer to 3-word queries (threshold from
+held-out names gives 18% FPR on real queries); spans with the queries' length
+distribution (P2) transfer (0.2%).
+
+**Why 5,000 (13.19):** the learning curve at 500 / 2,000 / 5,000 / 20,000 / 40,000
+spans gives recall 73.6 / 79.2 / 81.2 / 83.4 / 84.9% at FPR <= 1% and AUC .958 /
+.967 / .973 / .980 / .983; FPR stays within noise (0.4-1.1%). Five thousand
+captures three quarters of the gain of 40,000 at an eighth of the data, keeps the
+MLP at about 1-2 minutes per fit instead of 16, and keeps the Jaccard audit (5,000 x
+5,000 pairs) in seconds. The size is a parameter so the 20,000 point can be re-run
+for logistic regression as a reported sensitivity.
+
+**What the real queries are for now:** per outer fold, the 384 training-side real
+queries set the threshold (scored by a model that never saw any real query) and
+the 96 test-side ones are the FPR test set; every query is a test item exactly once
+per repeat, so the 480-query Wilson arithmetic of 8.4 is unchanged. Adding real
+queries to the training spans was tested (BP arm) and rejected: no gain, more false
+positives (13.19).
 
 ## 4. Synthetic positives
 
@@ -242,11 +321,28 @@ were served; removing them would be label leakage by hand-curation.
 (user decision, Q2): paid API, non-reproducible, and templates are sufficient for
 families A-E.
 
-**Decision:** generate 480 training positives to match the negatives, with equal
-quotas per family (120 each for A-D). Family E is generated separately (120
-samples, same machinery, `family="E"`) and is **never part of the 480**: it is
-scored, not trained on (section 2, 8.5). **Rationale:** balanced classes keep every
-metric interpretable and avoid any need for re-balancing.
+**Decision (revised 2026-11-05 with Q13):** generate **as many training positives
+as training negatives** (5,000 by default, 3.2), split equally over the training
+templates of A-D: `n_neg / n_training_templates` renders per template (5,000 / 24
+~ 209 in a full fit, 5,000 / ~19 in a fold where some templates are on the test
+side). The 20-per-template figure of rule 6 remains the **nominal group size used
+for fold assignment** (8.1), which is what probes 13.10 and 13.14 validated; the
+renders are then made per fold for the templates on each side. Family E stays
+evaluation-only, 120 per fold, `family="E"`. **Rationale:** balanced classes keep
+every metric interpretable; the probe shows the gain comes from the quantity of
+negatives, and 384 positives against 20,000 negatives already reach most of it
+(P2LP arm, 13.19), so matching counts costs nothing and avoids re-weighting.
+
+Rendering more than 20 per template uses the registry's existing seeded
+`generate()` repeatedly with `seed + i` and keeps the first `per_template` outputs
+of each wanted template (a `render(vocabulary, seed, templates, per_template)`
+helper in `bqc/synth/registry.py`; the templates themselves do not change). Exact
+duplicates within a template are dropped and the shortfall reported per template;
+rule 5's floor of 50 distinct strings is far below 209, so the report also lists
+each template's distinct count at the required size (a template under 50% distinct
+is a finding, not a failure). Training positives equal, after `normalise()`, to a
+training negative, a real query, a P string or a sanity query are dropped by the
+audit (rule 4), counted, never shown. Test-side templates render 100 each (8.3).
 
 **Every synthetic sample carries metadata:** `family`, `template_id` (the
 sub-generator or template that produced it), `seed`. This is what makes the
@@ -399,7 +495,8 @@ No PyTorch/TensorFlow.
 TF-IDF, stratified grouped CV, ROC-AUC and an MLP; a hand-rolled numpy MLP would be
 code we must test and maintain for no gain. scikit-learn is required for the
 vectoriser, folds and metrics anyway, and `MLPClassifier` adds nothing to the
-dependency set. PyTorch is a ~2 GB dependency for a 2-layer network on 960 samples.
+dependency set. PyTorch is a ~2 GB dependency for a 2-layer network on 10,000
+samples (960 in the comparison arm).
 Dependencies: `numpy`, `scikit-learn>=1.3` (HDBSCAN is in sklearn from 1.3), and
 `imbalanced-learn` for the SMOTE experiment only. `scipy` is transitive.
 
@@ -414,7 +511,9 @@ from the *training* data it is given, so it never sees the test fold (13.6).
 ### 6.2 Baseline (must be reported next to the MLP)
 
 `LogisticRegression(C=1.0, max_iter=1000)` on identical features. Hypothesis: at
-960 samples it will match the MLP; if it does, the recommendation is to ship the
+10,000 samples it will match the MLP (the probe saw 83.4% vs 84.1% recall at
+20,000, within noise, and the MLP *worse* at 960, 13.19); if it does, the
+recommendation is to ship the
 simpler model. The MLP is kept because the user asked for it and the comparison is
 the point.
 
@@ -461,7 +560,8 @@ training folds, compared against the no-SMOTE run on identical folds and seeds
 **Sizing.** `sampling_strategy` is a **callable** that doubles each class present in
 the `y` passed to `fit`: `{c: 2 * count_c}`. This is a factor, not an absolute
 count, so the same adapter works for outer training folds (~384 per class), inner
-training folds (~307) and the final fit on all 960 (8.7). An absolute `n` would
+training folds (~307), the primary arm at 5,000 per class and the final fits (8.7).
+An absolute `n` would
 have to exceed the largest class count it is ever used with, and `imblearn` raises
 `ValueError` when a requested count is below the existing one (13.12). The factor 2
 is the only knob and is not tuned; the experiment asks whether SMOTE helps at all.
@@ -490,6 +590,12 @@ paired t at about 2 sigma; it is stated so the conclusion is reproducible, not
 because 15 correlated folds support a formal test. The numbers behind it are all
 in the JSON for a reader who wants to judge differently.
 
+**Under Q13 (5,000 / 5,000 by default):** the scarcity argument for SMOTE is gone;
+the experiment stays because the user confirmed it (Q3) and because it is cheap for
+logistic regression. It runs, paired, on the primary arm at the chosen size and on
+the comparison arm (384 / 384). For the MLP it doubles the fit (7.1 sizing), which
+the runtime budget in 10 allows at 5,000. Expected finding: not justified.
+
 A more meaningful augmentation for text (string-level perturbation of real negatives)
 is in section 14.
 
@@ -512,39 +618,72 @@ fold's class and per-family counts in the run JSON and asserts, **on the trainin
 side only**, that both classes and all four training families are present (outer
 and inner, 11.16). On the test side it asserts both classes only.
 
-### 8.2 Nested fitting: everything inside the training fold
+**Under Q13 the fold assignment is unchanged:** the units are still the 480 real
+queries (singleton groups) and the 24 template groups at their nominal size of 20,
+so 13.10 and 13.14 still describe the folds. Product spans are not fold units: they
+are training-only material, rebuilt per repeat (3.2), never on the test side, so
+spans from one product never straddle a fold in any sense that matters.
 
-Within each outer training fold, in order: fit preprocessing/vectoriser, (optionally)
-SMOTE, estimator. Nothing is fitted on data outside the training fold, including
-threshold selection:
+### 8.2 Fitting and threshold selection: cross-fitting the real queries
 
-- Inner 5-fold CV on the training fold produces out-of-fold scores for every training
-  sample. The threshold `t` is the smallest score such that inner FPR <= target FPR
-  (8.4). With ~384 training negatives the inner FPR resolution is 1/384 ~ 0.26%.
-- The model is then refitted on the whole training fold and `t` is applied to the
-  outer test fold.
+**Primary arm (`--negatives product`, default; Q13).** Per outer fold `(r, k)`:
 
-**Inner splitter (resolved 2026-11-05, OQ-4):** the inner folds are
+1. **Training negatives:** `n` product spans built with seed `SEED + r` (3.2). They
+   are the same for every fold of a repeat; what changes per fold is the real-query
+   split and the template split.
+2. **Training positives:** rendered for the training-side templates from the
+   training negatives' token occurrences (8.3), `n / n_training_templates` each.
+3. **Fit** vectoriser, optional SMOTE, estimator on 1 + 2. No real query is in the
+   fit, ever.
+4. **Threshold:** score the **384 training-side real queries** with the fitted
+   model; `t` is the 8.4 rule applied to those scores (smallest score with FPR <=
+   target over the 384; resolution 1/384 ~ 0.26%). This is cross-fitting: the
+   queries that set `t` were not trained on, so no inner loop is needed.
+5. **Test:** apply `t` to the 96 test-side real queries, the test-side templates'
+   positives (100 renders each, from the test-side queries' vocabulary, 8.3) and
+   family E.
+
+Across a repeat every real query is a threshold-setter four times and a test item
+once, so the 480-query Wilson arithmetic (8.4, 8.5) is unchanged. The probe did
+exactly this (13.19).
+
+**Comparison arm (`--negatives real`, the v1 protocol).** Training negatives are
+the 384 training-side real queries, positives 20 per training-side template from
+their vocabulary, and the threshold comes from an **inner** 5-fold
 `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`
-over the outer training rows, with the **same groups** as 8.1. Positives are **not
-regenerated per inner fold**: the outer training fold's positives (generated from the
-outer training vocabulary, 8.3) are split as they are. So an inner-training hard
-positive may contain a product word that also occurs in an inner-validation
-negative. This is accepted because the inner loop only chooses a threshold, and
-any bias it introduces shows up in the *achieved* outer FPR, which is what 8.5
-reports; regenerating per inner fold would add a second generation layer for a
-threshold whose quality is measured anyway. Probe 13.10 shows the inner split with
-groups of 20 keeps every family present and the class share within 0.44-0.51.
+over the outer training rows with the 8.1 groups, producing out-of-fold scores for
+the training queries; the model is then refitted on the whole training fold. Positives
+are not regenerated per inner fold (accepted: the inner loop only chooses `t`, and
+any bias shows in the achieved outer FPR). Probe 13.10 shows this inner split keeps
+every family present and the class share within 0.44-0.51. Both arms use the same
+outer folds, the same test-side strings and the same seeds, so their results are
+paired fold by fold; the full run (M6) reports both, with the primary arm as the
+headline and the paired differences.
+
+Nothing is fitted on data outside the training side in either arm.
 
 ### 8.3 Positives are regenerated per fold
 
-Hard-positive sub-generators sample product vocabulary from WANDS queries. To avoid
-leaking test-fold vocabulary into training positives, the folds are defined on
-negatives and on the *(family, template_id)* groups first; the hard-positive
-templates then draw vocabulary only from training-fold negatives when producing
-training positives, and from test-fold negatives when producing test positives.
-Implementation detail for the plan: generation takes a vocabulary argument; the
-runner passes the right one.
+Hard-positive sub-generators borrow product words from the negatives. To avoid
+leaking test-fold vocabulary into training positives, the folds are defined on the
+480 real queries and on the *(family, template_id)* groups first; then:
+
+- **Training positives** draw vocabulary from the **training negatives** of the arm:
+  the product spans' token occurrences in the primary arm (so a hard positive like
+  `tufted club chair' union select` borrows catalogue words, never a real query's
+  words), or the training-side real queries' tokens in the comparison arm.
+- **Test positives** (100 per test-side template) and **family E** draw vocabulary
+  from the **test-side real queries' token occurrences**, as before: the test asks
+  whether the illegitimate pattern is still caught around words the model saw only
+  in the form a shopper uses them. The threshold-setting queries are not used for
+  any vocabulary.
+
+Leakage check: no real query token reaches a training positive in the primary arm;
+in the comparison arm only training-side query tokens do, as in v1. Implementation
+detail for the plan: generation takes a vocabulary argument; the runner passes the
+right one. The probe capped the vocabulary list at 10,000 occurrences for speed
+(generators rebuild `set(vocabulary)` per render); the plan may keep that cap and
+must record it in the run config.
 
 **The vocabulary is the list of token occurrences, not the set of distinct words
 (ruled 2026-11-05 after M2.T2 validation, 13.17).** Callers (`bqc generate`, the
@@ -601,10 +740,15 @@ For each model x SMOTE setting, per repeat and pooled:
   is a pooled quantity**: caught / total over all test folds of a repeat and over
   the three repeats, never a mean of per-fold values, because a training family is
   absent from the test side of about half the outer folds (8.1, 13.14). For A-D
-  the totals are 120 per family per repeat and 360 overall (each group is in
-  exactly one test fold per repeat); for E, which is scored in every outer fold,
-  they are 120 per fold, 600 per repeat and 1800 overall. The per-fold breakdown in the JSON records each family's test
-  count and caught count, with recall `null` where the count is 0.
+  the totals are 6 templates x 100 test renders = 600 per family per repeat and
+  1,800 overall (each template is on the test side exactly once per repeat; a
+  template whose 100 renders contain duplicates or audited-out strings counts what
+  survives); for E, which is scored in every outer fold, they are 120 per fold, 600
+  per repeat and 1,800 overall. The per-fold breakdown in the JSON records each
+  family's test count and caught count, with recall `null` where the count is 0.
+  Per-template recall is reported too (24 rows), because the probe showed the
+  spread (`A.hard_mash` 59% vs `A.alnum` 100% at 20,000, 13.19) is where the
+  information is.
 - The list of all false positives (the actual WANDS queries that would be discarded,
   as stored in `query.csv`: the loader does not normalise, section 5, so the three
   double-space queries appear with their double space). With ~5 FPs at 1% this
@@ -659,7 +803,25 @@ WANDS from *these generators*". Four additional checks make that limitation visi
    expected FPR on such queries), with min/median/max score. The sanity set
    (8.6.1) gives a second, human-labelled look at legitimate shapes.
 
-All four are reported, not optimised. A run that looks great on 8.5 and poor on
+5. **Catalogue-gap check** (required, user decision Q13). The primary arm learns
+   "legitimate" from the catalogue, so a shopper searching for something the
+   catalogue does not describe is the new failure mode (brands such as `kisner`
+   were flagged in the probe). Per outer fold: take the `product_class` values of
+   the test-side real queries (their `query_class`; the 6 empty-class queries
+   contribute none), **remove every product carrying any of those classes** from
+   the span pool before building the training negatives, and **remove the
+   training-side real queries of those classes** from the threshold set; fit and
+   threshold as in 8.2; test on the test-side queries. Report pooled FPR with
+   Wilson CI, recall, and the flagged queries. **Failure rule:** the check fails
+   when the Wilson **lower** bound of the pooled FPR exceeds the 1% target, i.e.
+   when we are confident the gap pushes FPR past target. The probe's result (FPR
+   1.67% [0.85, 3.25], recall 86.3%; comparison arm under the same removal 0.90%
+   [0.36, 2.22], recall 66.2%) passes the rule and is reported as "point estimate
+   above target". What to do on failure (category-aware thresholds, real-query
+   negatives for uncovered categories) is a user decision, not a design default.
+   Runs for logistic regression always; for the MLP under the runtime budget (10).
+
+All five are reported, not optimised. A run that looks great on 8.5 and poor on
 8.6 is reported as exactly that. If the diagnostic shows part numbers flagged at a
 high rate, the remedy (synthetic part-number negatives) changes the decision that
 negatives are real WANDS queries, so it is a question for the user (12.2, Q12),
@@ -772,20 +934,25 @@ confidence intervals on this set.
 
 ### 8.7 Final model for inspection
 
-After evaluation, one model per configuration is fitted on all 960 samples and saved
-with `pickle` to `results/` for the sanity-set scoring and manual probing. Its
-threshold comes from the inner procedure of 8.2 applied to all 960 rows:
-`StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups
-of 8.1, out-of-fold scores, then the threshold rule of 8.4. Positives are generated
-once from the vocabulary of all 480 negatives; family E is excluded. Not a
-deployment artefact. The pickle holds the scorer and its threshold; the SMOTE
+After evaluation, one model per configuration is fitted and saved with `pickle` to
+`results/` for the sanity-set scoring, the part-number diagnostic and manual probing.
+**Primary arm:** `n` spans with seed `SEED` (3.2), positives from all 24 templates
+rendered from the spans' vocabulary, `n / 24` each; the threshold is the 8.4 rule
+over **all 480 real queries** scored by that model (none were trained on; no
+out-of-fold pass needed). **Comparison arm:** as in v1, all 960 nominal samples, the
+threshold from a 5-fold out-of-fold pass (`StratifiedGroupKFold(n_splits=5,
+shuffle=True, random_state=SEED)`, 8.1 groups). Family E is excluded from both. Not
+a deployment artefact. The pickle holds the scorer and its threshold; the SMOTE
 callable of 7.1 is a module-level function so that SMOTE configurations pickle too.
 
 ## 9. Label discovery with HDBSCAN (separate experiment)
 
 **Decision:** clustering is a **separate experiment**, implemented in
 `bqc/cluster.py` and run with `python -m bqc cluster` (section 10; resolved
-2026-11-05, OQ-8a), not a stage of the training pipeline. It shares the
+2026-11-05, OQ-8a), not a stage of the training pipeline. Its data is unchanged by
+Q13: the 480 real queries plus the 480 nominal positives (20 per template, real-query
+vocabulary), because the scenario is an unlabelled *query log*, and product spans
+are not queries. It shares the
 preprocessing and vectoriser factory with the pipeline and nothing else; the
 training pipeline always uses known labels.
 
@@ -861,7 +1028,8 @@ bqc/                      package
   synth/                  one module per family + registry + audit; sample metadata
   features.py             vectoriser factory (section 5)
   models.py               Scorer protocol + three adapters (section 6)
-  evaluate.py             folds, nested threshold selection, metrics (section 8)
+  negatives.py            product-name spans: ASCII fold, length draw, audit (3.2)
+  evaluate.py             folds, cross-fit / nested threshold selection, metrics (section 8)
   cluster.py              HDBSCAN experiment (section 9)
   report.py               write_report(): config fields, naming, no overwrite
   cli.py                  command implementations
@@ -871,18 +1039,21 @@ results/                  gitignored JSON reports and pickles, one file per run
 scratch/                  gitignored probes
 ```
 
-`python -m bqc generate` generates the positives with vocabulary from all 480
-negatives (the 480 training positives of A-D **and** the 120 of family E, each
-sample tagged with its family so E is never confused with the training set), runs
-the audit (section 4, rules 2 and 4) over all 600, and writes one JSON report to
-`results/` holding the generated samples with their metadata, the per-family length
-statistics next to WANDS', the near-duplicate pairs, the 100 part-number
-diagnostic strings (8.6 item 4) under their own key, never mixed with the
-positives, and two numbers that keep 8.3's occurrence rule visible: the share of
-hard-positive word slots filled by WANDS one-off words, next to the one-off share
-of WANDS token occurrences (expected to be close; 13.17). It exists so the positives
-can be inspected by eye; fold runs regenerate their own positives (8.3) and never
-read its output.
+`python -m bqc generate [--negatives-size 5000]` builds the default training set
+for inspection: the product spans with seed `SEED` (3.2), the matching positives of
+A-D rendered from the spans' vocabulary (section 4) **and** the 120 of family E
+(from the real queries' vocabulary), each sample tagged with its family so E is
+never confused with the training set; runs the audit (section 4, rules 2 and 4)
+over all of them; and writes one JSON report to `results/` holding the samples
+with their metadata, the per-family and per-template length statistics and
+distinct counts next to WANDS', the near-duplicate pairs (positives vs negatives
+above 0.6; positives vs sanity above 0.5, report-only), the **span audit counts**
+(removed as equal to a real query, a sanity query, a P string; expected share of
+real queries with a span above Jaccard 0.6, about 27%, which is desired, 13.19),
+the 100 part-number diagnostic strings (8.6 item 4) under their own key, and the
+two occurrence-rule numbers of 13.17 computed against the spans' tokens. It exists
+so the data can be inspected by eye; fold runs rebuild their own negatives and
+positives (8.2, 8.3) and never read its output.
 
 Every JSON file under `results/` (from `generate`, `evaluate` and `cluster`) is
 written by one `write_report()` function in `bqc/report.py`: it adds the config
@@ -898,9 +1069,21 @@ must not import the command layer.
   versions), per-fold and pooled metrics, FP list, per-family recall. One file per
   run; never overwritten (file name includes config hash and timestamp).
 - **Commands** (for CLAUDE.md "Commands" once the user fills it):
-  `python -m bqc fetch`, `python -m bqc generate`, `python -m bqc evaluate
-  [--smote] [--target-fpr 0.01] [--lofo]`, `python -m bqc cluster`,
+  `python -m bqc fetch`, `python -m bqc generate [--negatives-size N]`,
+  `python -m bqc evaluate [--negatives product|real] [--negatives-size 5000]
+  [--models lr,mlp,trivial] [--smote] [--target-fpr 0.01] [--lofo]
+  [--catalogue-gap]`, `python -m bqc cluster`,
   `python -m unittest discover -s tests`.
+- **Runtime budget (estimate, to be measured and recorded in 13 by the first full
+  run):** logistic regression and the trivial baseline are seconds per fit at any
+  size. The MLP took 987 s per fit at 20,000 / 20,000 with 67k features (13.19);
+  at 5,000 / 5,000 with ~28k features the cost should be about a tenth, call it 1-2
+  minutes. The full primary run is 15 outer fits per model (no inner loop, 8.2),
+  plus 15 for SMOTE, 60 for LOFO and 15 for the catalogue gap: about 105 MLP fits,
+  roughly 2-4 hours, acceptable. The comparison arm's nested loop is 90 fits at
+  384 / 384, seconds each. `--models lr` gives a complete run in minutes for
+  iteration; the MLP is run last. If the measured MLP time exceeds 5 minutes per
+  fit, LOFO and the catalogue gap run for the MLP only on request.
 - **Environment:** Python 3.12, `python3 -m venv .venv`, `pyproject.toml` with the
   dependencies from section 6. The user's pyenv 3.12.16 has no `pip` on the shim
   path but `python3 -m venv` works and gives a venv with pip (verified 2026-11-05).
@@ -989,11 +1172,28 @@ Each item names the component and the designed behaviour.
 22. **Off-domain shopping query** (`iphone 11 case`) at scoring time. No defined
     behaviour in v1 (2.1); the score is whatever the model gives. Must not appear in
     the sanity set.
-23. **Part-number or SKU query** (`sku000123`, `w003096809`, `wf-2049x desk`).
+24. **`product.csv` quirks.** 90 MB; a description field can exceed the `csv`
+    module's default field limit, so the loader raises `csv.field_size_limit`
+    before parsing; a row with the wrong column count is an error naming the row
+    number (the real file has none, 13.18); the header's fourth column is
+    `category hierarchy` with a space and is matched by name, not position.
+25. **Span equals a real query, a sanity query or a P string** after
+    `normalise()`: dropped and counted (3.2); the span builder never sees sanity
+    text, only the audit's verdict. **Span pool exhausted** (`n` larger than the
+    distinct spans available after removals, or the catalogue-gap removal leaving
+    too few products): the builder raises with the count reached; it never pads.
+26. **Non-ASCII product names** (918): ASCII-folded in 3.2 step 1; a name that is
+    empty after folding is skipped.
+27. **Product with fewer words than the drawn `k`:** redraw the product, not the
+    length, so the length distribution is preserved.
+28. **Real query with empty `query_class`** (6 rows): takes part in folds and
+    thresholds as usual; defines no class for the catalogue-gap removal.
+29. **Part-number or SKU query** (`sku000123`, `w003096809`, `wf-2049x desk`).
     Legitimate by decision (section 2, Q11) but nearly absent from the negatives
     (13.15), so the model may flag it. Not an error at scoring time; measured by the
     part-number diagnostic (8.6 item 4). Generators must not emit such a shape as a
-    whole query (2.2), and the registry test asserts it.
+    whole query (2.2), and the registry test asserts it. (Numbered 23 before v2.0;
+    references to 11.23 mean this item.)
 
 ## 12. Decisions taken by the user, and open questions
 
@@ -1040,6 +1240,25 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     test (2.2); part-number diagnostic added (8.6 item 4); edge case 11.23; WANDS
     measured (13.15).
 
+13. **Product-name spans as training negatives (2026-11-05).** The coordinator
+    recommended, on the probe evidence in 13.19, and the user approved ("Dew it"):
+    (1) word spans from product names become the training negatives (3.2); (2) the
+    v1 setup, real queries as training negatives, stays as a comparison arm (8.2);
+    (3) all 480 real queries stay out of every model fit and are used only through
+    cross-fitting, to set thresholds and to test (8.2); (4) the catalogue-gap check
+    is required (8.6 item 5); (5) product-derived negatives must never exactly
+    match a sanity query, enforced by the audit without anyone opening the file
+    (3.2 step 3); (6) the user was told 5,000 spans is a possible starting size and
+    left the size to `fable`: 5,000, justified in 3.2. This supersedes the v1
+    decisions that negatives are real WANDS queries (section 3), that there are
+    480 positives (section 4) and the nested inner loop for the primary arm (8.2).
+    Not decided by the user and not decided here: whether logistic regression
+    replaces the MLP as the recommended model. The MLP stays in; 6.2's hypothesis
+    (LR matches it) is tested by the paired difference in headline recall with the
+    7.1 rule, and the M6 report carries a recommendation for the user to decide
+    on. Q12 (part numbers) remains open: the product data does not fix the bare
+    part-number shapes (13.19).
+
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
 
@@ -1048,9 +1267,11 @@ project's references in commit `e2e4421`; nothing in this design depends on them
 12. **Synthetic part-number negatives?** WANDS has no bare part-number query
     (13.15), so the model cannot learn from the negatives that part numbers are
     legitimate, and the 1% FPR target does not cover them. The design measures the
-    problem (8.6 item 4) but does not fix it, because adding generated negatives
-    would change the recorded decision that negatives are real WANDS queries
-    (section 1, section 3). *Recommend: wait for the diagnostic.* If the final
+    problem (8.6 item 4) but does not fix it: product spans (Q13) do not help
+    either, since the three bare part-number shapes were flagged 100% in every
+    probe arm (13.19), and generated part-number negatives would be a third
+    negative source with no real counterpart. *Recommend: wait for the full
+    run's diagnostic.* If the final
     models flag a large share of the 100 part-number strings, the proportionate fix
     is a small set of generated hard negatives (real product words plus a part
     number, ~50-100 rows) added to the negatives with their own group tag so folds
@@ -1172,8 +1393,12 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 
 - The 480 WANDS queries contain no bot traffic (13.2); not provable, mitigated by
   reviewing the FP list by eye.
+- The MLP fit at 5,000 / 5,000 takes 1-2 minutes (section 10 budget), extrapolated
+  from 987 s at 20,000 / 20,000 (13.19); to be measured by the first full run and
+  recorded here.
+- The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
 
-This is the only unverified assumption left. Of the three items this section held
+These are the unverified assumptions left. Of the three items this section held
 in v1.1, the imblearn `Pipeline` behaviour and the Wilson reference values were
 probed on 2026-11-05 (13.12, 13.13); the in-house Wilson function is a decision
 (standard library `math`, tested against 13.13), not an assumption.
@@ -1305,6 +1530,79 @@ positives at M2.T2 validation: 70.7% of hard-positive word slots were one-off
 WANDS words and `chair` filled 0.15% of them, i.e. sampling was uniform over
 types. Basis for the occurrence rule in 8.3 and the two report numbers in 10.
 
+### 13.18 WANDS `product.csv` (2026-11-05, Python 3.12.16, stdlib `csv`, checked by `fable`)
+
+Downloaded by the probe agent to an isolated directory; re-inspected by `fable`
+with `python -I`. SHA-256
+`d993926254572e6eba96c8fd87cc549a17fb91ad3748308036eee4cf92b10ac6`, 90,621,131
+bytes. Tab-separated; header `product_id, product_name, product_class, category
+hierarchy, product_description, product_features, rating_count, average_rating,
+review_count`. 42,994 rows, 0 with a wrong column count (`csv.field_size_limit`
+raised), 0 empty names, 42,577 distinct names, 1-49 words, median 6.0, mean 6.75;
+0 names with upper case; 918 with non-ASCII characters. First rows: `solid wood
+platform bed`, `all-clad 7 qt . slow cooker`. Token coverage of the 480 real
+queries by product names: 94.8% of occurrences, 90.9% of types; by the other real
+queries (leave-one-out): 63.3% / 28.7% (probe agent's `facts.py`, read, not re-run).
+
+### 13.19 Product-name spans as training negatives (2026-11-05, probe agent; key numbers verified by `fable` against its outputs)
+
+Stand-in pipeline: char TF-IDF (1,4), `min_df=2`; logistic regression C=1 unless
+noted; 5 x 3 folds as 8.1; threshold = 8.4 rule on negatives only; test strings
+identical across arms per fold (100 renders per test template, E, 100 P strings);
+positives rendered from the arm's training-negative vocabulary (capped at 10,000
+occurrences); spans equal to a real query, a sanity query (via `check_exact`) or
+a P string removed and counted. Scripts and outputs in the session scratch
+directory (`product_probe/`), not in the repository.
+
+Arms at 20,000 negatives unless noted (BASE = v1 protocol, 384 / 384):
+
+| arm | FPR % [Wilson] | recall % at FPR <= 1% | E % | AUC | FPR at 90% recall | one-word FP / 23 | words+part-number flagged % |
+|---|---|---|---|---|---|---|---|
+| BASE | 0.62 [0.21, 1.82] | 71.0 | 16.3 | .9603 | 10.8 | 1.67 | 31 |
+| P1 whole names | 0.56 [0.18, 1.72] | 74.7 | 14.1 | .9686 | 9.4 | 2.33 | 22 |
+| **P2 spans** | 0.83 [0.32, 2.12] | **83.4** | 20.6 | **.9801** | **3.9** | 2.33 | 30 |
+| P3 spans + typos | 0.56 [0.18, 1.72] | 83.5 | 20.2 | .9808 | 3.8 | 2.00 | 31 |
+| P4 spans + taxonomy terms | 0.83 | 84.0 | 20.8 | .9806 | 4.7 | 2.33 | 34 |
+| BP real + P2 spans | 1.32 [0.62, 2.79] | 85.6 | 21.8 | .9798 | 3.8 | 4.33 | 37 |
+
+The three bare part-number shapes were flagged 100% in every arm. Paired P2 vs
+BASE over 15 folds: FPR +0.21 pp [-0.49, +0.90], recall +12.4 pp [+6.2, +18.9],
+AUC +.0198 [+.0043, +.0399], FPR at 90% recall -6.9 pp [-15.3, -0.8]. No arm has
+lower FPR than BASE at the 1% target; P3 and P4 add nothing clear over P2; BP
+shows no gain and more false positives (rejected); P1's score distribution does not
+transfer (threshold from held-out names gives 18% FPR on real queries; P2: 0.2%;
+rejected).
+
+Learning curve, P2, negatives = positives: 500 / 2,000 / 5,000 / 20,000 / 40,000:
+FPR 1.11 / 0.76 / 0.42 / 0.83 / 0.90 %; recall 73.6 / 79.2 / 81.2 / 83.4 / 84.9 %;
+AUC .9578 / .9672 / .9732 / .9801 / .9827. BASE with 25 / 50 / 75 / 100 % of its
+real negatives: recall 59.3 / 62.7 / 68.1 / 71.0, AUC .9454 / .9528 / .9566 /
+.9603. The gain comes from the quantity of negatives, not their text: P2 at 500
+gives 73.6% and no AUC gain; real negatives with 20,000 positives (class-weighted)
+67.4%; P2 20,000 negatives with only 384 positives 84.3%.
+
+MLP vs LR: BASE MLP recall 63.3%, AUC .9231, FPR 0.35% vs LR 71.0 / .9603 / 0.62;
+P2 at 20,000 MLP 84.1 / .9819 / 0.90 vs LR 83.4 / .9801 / 0.83 (within noise).
+MLP fit time 987 s per fold at 20,000 / 20,000 (67k features); LR 2 s.
+
+Simulated catalogue gap (products of the test fold's classes removed from the
+span pool and the threshold set): P2 FPR 1.67% [0.85, 3.25], recall 86.3%; BASE
+under the same removal 0.90% [0.36, 2.22], recall 66.2%; brands such as `kisner`
+get flagged. Near-duplicates: 27.1% of real queries have a P2 span above Jaccard
+0.6 (BASE leave-one-out: 3.5%); those queries are flagged *less* often (FPR 0.51%
+vs 0.95%). Spans cannot reproduce 276 of the 457 multi-word real queries. Product
+names contain `null` and `order` 0 times, `union` 8, `select` 3, `drop` 40,
+`script` 5 (so the sanity-style false positives on those words are not explained
+by the catalogue). Sanity gate: P2 removed 1 span equal to a sanity query at
+20,000, P3 removed 2 (counts only; text never shown).
+
+Not covered by the probe: real bot traffic, legitimate queries outside the
+catalogue beyond the simulated gap, the sanity set (not scored), the trivial
+baseline, SMOTE, final-model fits. Deviations from the design: threshold on
+negative scores only; vocabulary capped at 10,000; P3's typo rate and P2's word
+counts taken from all 480 queries (a small leak, replaced in 3.2 by the published
+constant); 100 renders per test template.
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives
@@ -1329,5 +1627,12 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
   cannot see the pattern; it belongs to a rate or session check, with the
   behavioural features above.
 - **Synthetic part-number hard negatives**, only if the user decides Q12 that way.
+- **Rejected or unproven negative constructions (13.19):** whole product names
+  (P1, distribution shift), spans with injected typos (P3) and taxonomy terms
+  (P4), both without a clear gain over plain spans, and real queries mixed into
+  the training spans (BP, more false positives). Revisit P3 only if the FP list
+  shows typo-bearing queries being flagged.
+- **Category-aware thresholds or real-query negatives for uncovered categories**,
+  if the catalogue-gap check (8.6 item 5) fails in the full run; the user decides.
 - **Serving**: input contract (11.2) is the only serving decision taken; a model
   file format, latency budget and monitoring would come with a deployment decision.

@@ -803,7 +803,7 @@ Sign-off: pending.
     isn't, and the run still exits zero.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M1.T8, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9, M2.T10, M2.T11, M2.T12.
-- **Status:** done
+- **Status:** validated
 - **Status note:** real run (5,000 spans, 35 s; `opus` re-ran it twice, identical JSON): 4,804 positives
   of A-D plus 120 of E; shortfalls only `B.script` (148, flagged as a finding, 60 of 208 distinct) and
   `B.traversal` (40, not flagged, 168 of 208); 0 outputs without a non-benign token; span removals drawn
@@ -812,12 +812,8 @@ Sign-off: pending.
   hard-positive word slots against 16.8% of span occurrences. `--negatives-size` below 24 is a usage
   error (no render per template). Real-data proof of the span filter: all 50 sanity queries and 100 P
   strings reached `build_spans`, and at 20,000 and 40,000 spans it removed 2 and 4 spans for sanity.
-- **Changes requested (`opus`, 2026-11-05, on `ffc6694`; scope `fix(M2.T8)`; replaces the earlier list in
-  `a57249b`):** the rest of that list is done.
-  1. `tests/test_cli_generate.py:292`: `test_near_duplicates_against_spans_never_see_p_strings` checks only
-     the second argument. The mutation `near_duplicates(texts + p_texts, span_texts, ...)` at
-     `bqc/cli.py:217` still passes it. Assert that no P string is in either argument of any
-     `near_duplicates` call, including the sanity overlap at 0.5.
+  Implemented in `aeb7f41`, tests added in `ffc6694` and `0f635f0`. `opus`'s correction lists are in
+  `a57249b` and `f23b5ef`.
 
 ---
 

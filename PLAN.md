@@ -30,7 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T4.
+**Next task:** M3.T5.
 
 ### Order constraints
 
@@ -994,24 +994,16 @@ Sign-off: pending.
   - `target_unmet`;
   - no scores raises `ValueError`.
 - **Depends on:** M1.T2.
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `52f8df7`. The code is right: no mismatch with a brute-force oracle of
   8.4 on 20,000 random cases, ties as one block; at a 1% target, 384 scores flag 3, 233 flag 2 and 190
   flag 1, none with a warning. Additions beyond the criteria, accepted: `fpr` on `Threshold`, and
   `ValueError` on a non-finite score (without it `sorted` gives an undefined order; 11 has no path for
   this, reported to `fable`). Process shortfall, third task running: the implementation went in by an
   inline Python string replace and the skeleton and tests by Bash heredocs, not the Edit tool; disclosed.
-- **Changes requested** (tests only, in `tests/test_threshold.py`; `opus` confirmed in a scratch copy
-  that these close all three surviving mutants):
-  1. `tests/test_threshold.py:57`: a target-unmet run above resolution never checks `warning`, so
-     warning on `unmet` instead of `target_fpr < 1/n` passes, merging 11.10 and 11.11. Add
-     `assertIsNone(result.warning)`.
-  2. `tests/test_threshold.py:68`: the warning is only tested where a hard-coded `1/100` gives the same
-     answer. Add a case on the given size: no warning at (n, target) (384, 0.005), (233, 0.01) and
-     (190, 0.01), a warning at (50, 0.01).
-  3. `tests/test_threshold.py:80`: no tie reaches the lowest score at a target that the block before it
-     would meet, so `flagged < n - 1` in the tie check passes. Add `[0.1, 0.1]` at target 0.5: `fpr` 1.0
-     and `target_unmet`.
+  Three test gaps, listed in `959d090`, were closed in `e390bb8`, which changes only
+  `tests/test_threshold.py`; the file changes there used Edit, as `sonnet` reports. 19 of 20 mutations
+  are now caught; the survivor is equivalent, since FPR only rises down the sorted scores.
 
 ### M3.T5: Cross-fit outer-fold runner (primary arm)
 

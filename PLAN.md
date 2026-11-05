@@ -543,7 +543,7 @@ Sign-off: pending.
   - Jaccard exactly at the threshold (not reported) and just above it (reported), at 0.6 and at 0.5.
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
 - **Depends on:** M1.T3, M1.T6, M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T9: Part-number strings
 

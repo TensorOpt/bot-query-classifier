@@ -332,7 +332,10 @@ Follow-ups:
   - The opener receives `timeout=60`.
   The `finally` cleanup stays untested, as accepted at sign-off.
 - **Depends on:** M1.T5.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `2eeef65`. M1's sign-off audited `589c4b7`, so it doesn't cover
+  this commit. `fable` needs only to read that diff, run the suite, and set this task to
+  `signed off`; M1's verdict doesn't need redoing, and M2 doesn't wait for it.
 
 ---
 

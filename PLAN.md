@@ -575,6 +575,14 @@ Sign-off: pending.
   - Collision with a WANDS fixture query, and with a sanity fixture query, raises.
 - **Depends on:** M2.T1, M2.T7.
 - **Status:** done
+- **Changes requested (`opus`, 2026-11-05, on `7b0678a`; scope `fix(M2.T9)`):**
+  1. `bqc/synth/partnumbers.py:43`: a suffix of a letter then a digit makes a four-block token, which 2.2
+     says isn't a part-number shape and treats as non-benign; 4 of the 100 real outputs do this. Keep
+     every token at three blocks or fewer.
+  2. `tests/test_synth_partnumbers.py`: add a test that every output's tokens are benign against the given
+     vocabulary, using `has_non_benign_token`.
+  3. `bqc/synth/partnumbers.py:22`: the docstring says "often zero-padded", but the digits are uniform.
+     Correct the docstring.
 
 ### M2.T8: `bqc generate`
 

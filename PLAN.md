@@ -30,7 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T1, the first of M3.
+**Next task:** M3.T2.
 
 ### Order constraints
 
@@ -883,7 +883,7 @@ Sign-off: pending.
   - After fitting on a training split, no n-gram exclusive to the test split is in the
     vocabulary (11.9).
 - **Depends on:** M1.T3.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T2: `Scorer` port and fake
 

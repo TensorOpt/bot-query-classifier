@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import http.client
 import io
 import os
 import urllib.request
@@ -13,6 +14,7 @@ URL = "https://raw.githubusercontent.com/wayfair/WANDS/main/dataset/query.csv"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 RAW_PATH = DATA_DIR / "raw" / "query.csv"
 CHECKSUMS_PATH = DATA_DIR / "CHECKSUMS"
+TIMEOUT_SECONDS = 60
 HEADER = ["query_id", "query", "query_class"]
 
 
@@ -41,7 +43,7 @@ def fetch(
     tmp = target.with_name(target.name + ".tmp")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        with opener(url) as response:
+        with opener(url, timeout=TIMEOUT_SECONDS) as response:
             data = response.read()
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
@@ -50,7 +52,7 @@ def fetch(
             )
         tmp.write_bytes(data)
         os.replace(tmp, target)
-    except OSError as e:  # URLError is an OSError
+    except (OSError, http.client.HTTPException) as e:  # URLError is an OSError
         raise WandsError(f"cannot fetch {url} to {target}: {e}") from e
     finally:
         tmp.unlink(missing_ok=True)

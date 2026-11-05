@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import http.client
 import io
 import runpy
 import tempfile
@@ -40,6 +41,14 @@ def midstream_failure(url, *a, **k):
     return Broken(b"x")
 
 
+def truncated(url, *a, **k):
+    class Short(Response):
+        def read(self, *a):
+            raise http.client.IncompleteRead(b"partial", 100)
+
+    return Short(b"x")
+
+
 class FetchTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -69,6 +78,16 @@ class FetchTest(unittest.TestCase):
         with self.assertRaises(WandsError):
             fetch(self.target, self.checksums, opener=midstream_failure)
         self.assertEqual(self.leftovers(), [])
+
+    def test_truncated_download_leaves_nothing(self):
+        with self.assertRaises(WandsError):
+            fetch(self.target, self.checksums, opener=truncated)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_opener_receives_timeout_60(self):
+        opener = mock.Mock(side_effect=stub(GOOD))
+        fetch(self.target, self.checksums, opener=opener)
+        self.assertEqual(opener.call_args.kwargs.get("timeout"), 60)
 
     def test_wrong_bytes_leave_nothing(self):
         with self.assertRaisesRegex(WandsError, "hash mismatch"):

@@ -332,7 +332,7 @@ Follow-ups:
   - The opener receives `timeout=60`.
   The `finally` cleanup stays untested, as accepted at sign-off.
 - **Depends on:** M1.T5.
-- **Status:** todo
+- **Status:** done
 
 ---
 

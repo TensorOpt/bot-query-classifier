@@ -517,7 +517,7 @@ Sign-off: pending.
   test `test_module_level_generate_uses_default_registry`: module-level `generate` returns the 480 and
   `REGISTRY.validate(ALL_FAMILIES)` passes.
 - **Depends on:** M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T7: Generation audit
 

@@ -20,7 +20,7 @@ from synth_stubs import build_family, build_registry, gibberish, letters
 ROOT = Path(__file__).resolve().parent.parent
 # Families whose templates are registered; each of M2.T2-T6 adds its family here
 # and imports its module in bqc/synth/__init__.py (M2.T1 criterion 8).
-IMPLEMENTED_FAMILIES = ("A", "B", "C", "D")
+IMPLEMENTED_FAMILIES = ("A", "B", "C", "D", "E")
 # Fold-sized, with the short WANDS words and number tokens that are vocabulary words.
 FOLD_VOCAB = [
     "".join(chr(97 + (i // 26 ** p) % 26) for p in range(3)) for i in range(384)
@@ -420,10 +420,11 @@ class ValidationTest(unittest.TestCase):
             Registry().register(Template("Z", "z0", True, lambda rng, v: "x"))
 
     def test_module_level_generate_uses_default_registry(self):
-        # The default registry is empty until M2.T2-T6 register families.
-        if not any(REGISTRY.templates(f) for f in TRAINING_FAMILIES):
-            with self.assertRaises(ValueError):
-                reg.generate(FOLD_VOCAB, 1)
+        # All five families are registered, so the default is the 480 training positives.
+        REGISTRY.validate(ALL_FAMILIES)
+        samples = reg.generate(FOLD_VOCAB, 1)
+        self.assertEqual(len(samples), 480)
+        self.assertEqual({s.family for s in samples}, set(TRAINING_FAMILIES))
 
 
 if __name__ == "__main__":

@@ -186,7 +186,7 @@ Sign-off: pending.
   - Mixed case (11.5).
   - Idempotence over all the above.
 - **Depends on:** M1.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M1.T4: WANDS loader with hash check
 

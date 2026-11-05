@@ -1,6 +1,8 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: draft v1, 2026-11-05, awaiting user review of section 12.
+Owner: `fable`. Status: v1.1, 2026-11-05. The user answered the v1 open questions;
+the answers are recorded in section 12 and applied in the body. One question (12,
+Q10) is still open and does not block planning.
 
 Each decision is written as **Decision** / **Rationale**. Unverified assumptions and
 probe findings live in section 13. Deferred ideas live in section 14 ("Later").
@@ -10,6 +12,12 @@ probe findings live in section 13. Deferred ideas live in section 14 ("Later").
 Classify a search query string as **legitimate** (serve it) or **illegitimate**
 (discard it), using only the query text.
 
+**The use case is a furniture and home-goods shop**, i.e. WANDS's own domain (user
+decision 2026-11-05, section 12 Q7). Every data source, including the hand-written
+sanity set, stays in that domain; queries for products such a shop does not sell
+(`iphone 11 case`) are not mixed in as legitimate (and are not labelled illegitimate
+either; see 2.1 and Q10).
+
 - Negative class (label `0`) = legitimate = the 480 real customer queries in WANDS.
 - Positive class (label `1`) = illegitimate = synthetically generated queries.
 - A **false positive** (legitimate query discarded) is the costly error: a lost sale.
@@ -18,20 +26,23 @@ Classify a search query string as **legitimate** (serve it) or **illegitimate**
 
 This is an experiment-style project: a reproducible pipeline that trains, evaluates
 and reports, plus one separate clustering experiment. Deployment, serving, latency
-and online learning are out of scope (section 12, Q9 asks whether that stays true).
+and online learning are out of scope (decided, section 12 Q9). The only
+serving-related decision taken is the input truncation in 11.2, because it defines
+the model's input contract.
 
 **Honest limit of the approach.** A text-only classifier can only catch queries whose
 *text* is anomalous. A scraper that searches for "leather sofa" is indistinguishable
 from a shopper by this model. Behavioural signals (rate, session, IP, UA) are the
 usual way to catch those; they are out of scope here and listed in section 14.
 
-## 2. What "illegitimate" means: proposed taxonomy
+## 2. What "illegitimate" means: taxonomy
 
 The user's request does not define "illegitimate", and the definition drives the
-synthetic generator, so this is the first thing to agree (section 12, Q1).
+synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
+(section 12, Q1).
 
-**Decision (proposed):** v1 positive families, each a separate generator module and
-a separate `family` tag on every sample:
+**Decision:** v1 positive families, each a separate generator module and a separate
+`family` tag on every sample:
 
 | id | family | examples | why it is machine-origin |
 |----|--------|----------|--------------------------|
@@ -40,12 +51,13 @@ a separate `family` tag on every sample:
 | C | enumeration / scraping | bare SKU/ID sequences (`w003412987`), `a`, `aa`, `ab`, ... dictionary walks, URL paths, `page=2&sort=price` | catalogue scrapers |
 | D | spam / promotional | URLs, emails, phone numbers, `buy cheap ... click here`, crypto/SEO phrases | comment-spam bots hitting every text field |
 
-**Not in v1, raise with the user:**
+**Not trained on in v1:**
 
 | id | family | status |
 |----|--------|--------|
-| E | off-topic natural language (`what is the capital of france`, chat/LLM prompts, code snippets) | **Open** (Q1). A real customer typing `drudge report` (which is in WANDS, see 13.1) still gets served. Recommend: generate E but use it as an *evaluation-only* family in v1 so we learn what the model does with it before deciding to train on it. |
-| F | non-English shopping queries | **Legitimate**, not a positive family. WANDS has no non-ASCII query (13.1), so the model cannot learn this; see 11.6. |
+| E | off-topic natural language (`what is the capital of france`, chat/LLM prompts, code snippets) | **Evaluation-only** (decided, Q1). Generated like A-D (own module, own `family` tag) but excluded from every training fold; scored by the fold models and reported as a per-family recall number in 8.5. A real customer typing `drudge report` (which is in WANDS, see 13.1) still gets served, which is why E is not a training family until we have seen what the model does with it (14). |
+| F | non-English shopping queries | **Legitimate**, not a positive family. WANDS has no non-ASCII query (13.1), so the model cannot learn this; accepted as a known v1 limitation (Q6), see 11.6. |
+| - | off-domain shopping queries (`iphone 11 case`) | **No label in v1**; excluded from every data set. See 2.1 and Q10. |
 | - | typos and misspellings | **Legitimate**. WANDS contains `desk for kids tjat ate 10 year old`, `trinaic towel rod`, `cool desins`. Generators must not produce "typo" positives. |
 | - | single-word queries | **Legitimate**. WANDS has 23 one-word queries incl. `zen`, `owl`, `gold`, `canadian`. Family C "dictionary walk" positives are 1-2 character strings only, never real words. |
 
@@ -54,6 +66,26 @@ fingerprints (character classes, punctuation patterns, structure) that TF-IDF ov
 character n-grams can see. E is a judgement call about product policy, not about
 bots, and is the family most likely to produce false positives on unusual but real
 queries.
+
+### 2.1 Off-domain shopping queries
+
+A query such as `iphone 11 case` or `running shoes size 10` is a well-formed product
+search for something a furniture and home-goods shop does not sell. The user ruled
+(Q7) that such queries are **not** to be mixed in as legitimate; the user did not
+say they are illegitimate, and this design does not invent that label.
+
+**Decision:** off-domain shopping queries are **outside both classes in v1**. They
+are not generated as a positive family, they are not added as negatives, and the
+sanity set (8.6) must not contain any. They are distinct from family E: E is text
+that is *not a product search at all* (questions, chat, code), whereas an off-domain
+query is a product search for the wrong shop. Whether a shop should discard
+off-domain searches is a product-policy question, not a bot-detection one, and is
+raised as Q10 with a recommendation.
+
+**Consequence to record:** the model's behaviour on off-domain queries is undefined
+and unmeasured in v1. WANDS itself contains a few queries at the edge of the domain
+(`printers`, `dumbbells`, `drudge report`); they stay legitimate because Wayfair
+served them to real customers (section 3).
 
 **Hard positives (required in every family).** Each family must include a sub-generator
 that *wraps real product vocabulary* (sampled from the training-fold WANDS queries,
@@ -101,12 +133,15 @@ were served; removing them would be label leakage by hand-curation.
 ## 4. Synthetic positives
 
 **Decision:** rule/template-based generators in Python, one module per family
-(section 2), driven by a seeded `random.Random`. No LLM-generated positives in v1
-(paid API, non-reproducible, and the user must approve any paid call; Q2).
+(section 2), driven by a seeded `random.Random`. **No LLM-generated positives**
+(user decision, Q2): paid API, non-reproducible, and templates are sufficient for
+families A-E.
 
-**Decision:** generate 480 positives to match the negatives, with equal quotas per
-family (120 each for A-D; if E is added, quotas rebalance). **Rationale:** balanced
-classes keep every metric interpretable and avoid any need for re-balancing.
+**Decision:** generate 480 training positives to match the negatives, with equal
+quotas per family (120 each for A-D). Family E is generated separately (120
+samples, same machinery, `family="E"`) and is **never part of the 480**: it is
+scored, not trained on (section 2, 8.5). **Rationale:** balanced classes keep every
+metric interpretable and avoid any need for re-balancing.
 
 **Every synthetic sample carries metadata:** `family`, `template_id` (the
 sub-generator or template that produced it), `seed`. This is what makes the
@@ -159,7 +194,7 @@ empty string after preprocessing is a valid input (11.1).
 **Decision:** scikit-learn for everything (vectoriser, models, CV, metrics, HDBSCAN).
 No PyTorch/TensorFlow.
 
-**Rationale (standard-library-first, Q7):** the standard library cannot reasonably do
+**Rationale (standard-library-first):** the standard library cannot reasonably do
 TF-IDF, stratified grouped CV, ROC-AUC and an MLP; a hand-rolled numpy MLP would be
 code we must test and maintain for no gain. scikit-learn is required for the
 vectoriser, folds and metrics anyway, and `MLPClassifier` adds nothing to the
@@ -198,9 +233,10 @@ directly.
 ## 7. SMOTE
 
 **Decision:** SMOTE is an *experiment flag*, default **off**, run only inside
-training folds, compared against the no-SMOTE run on identical folds and seeds.
+training folds, compared against the no-SMOTE run on identical folds and seeds
+(confirmed by the user, Q3).
 
-**Rationale and evidence (Q3):**
+**Rationale and evidence:**
 
 - SMOTE balances classes by oversampling the minority. On an exactly balanced
   480/480 set, `SMOTE()` with defaults **generates nothing** (probe 13.4: 960 -> 960
@@ -258,17 +294,18 @@ runner passes the right one.
 
 ### 8.4 Operating point: "minimise false positives"
 
-**Decision:** the operating point is a **target FPR of 1%**, chosen on inner
-validation data (8.2). Headline number: **recall of illegitimate queries at
-FPR <= 1%**, pooled over outer test folds, with the **achieved pooled FPR and its 95%
-Wilson interval**.
+**Decision:** the operating point is a **target FPR of 1%** (confirmed by the user,
+Q4), chosen on inner validation data (8.2). Headline number: **recall of
+illegitimate queries at FPR <= 1%**, pooled over outer test folds, with the
+**achieved pooled FPR and its 95% Wilson interval**.
 
 **Rationale:** "minimise FPR" alone has the trivial solution of serving everything.
 A target makes it an operating point. Why 1%: with 480 negatives, one false positive
 per outer fold of 96 negatives is already 1.04%, and an observed 0/480 has a 95%
 upper bound of 0.77% (rule of three ~0.6%). Anything below 1% is not demonstrable
 with this data; the design says so rather than report a number it cannot support.
-The user may pick another target (Q4); the code takes it as a parameter.
+The target is a CLI parameter with default `0.01` so that the sensitivity of recall
+to the target can be reported; 1% is the number that decisions are made on.
 
 ### 8.5 Metrics reported
 
@@ -278,7 +315,10 @@ For each model x SMOTE setting, per repeat and pooled:
 - Confusion matrix at the chosen thresholds (pooled out-of-fold).
 - Macro F1, precision, recall (positive class) at the chosen thresholds.
 - ROC-AUC, mean +/- sd over folds and pooled (threshold-free sanity number).
-- Per-family recall (which kinds of illegitimate queries are missed).
+- Per-family recall (which kinds of illegitimate queries are missed), including
+  family E, which is scored by every outer-fold model at that fold's threshold but
+  never trained on (section 2). E's number is reported in its own row, marked
+  evaluation-only, and is never pooled into the headline recall.
 - The list of all false positives (the actual WANDS queries that would be discarded).
   With ~5 FPs at 1% this list *is* the most useful output of the whole project.
 
@@ -297,14 +337,64 @@ WANDS from *these generators*". Three additional checks make that limitation vis
    lower than in-distribution recall; that gap is the honest generalisation number.
 2. **Trivial baseline gap** (6.3). If length + punctuation ratio alone reaches the
    MLP's recall, the generators are too easy.
-3. **Hand-written sanity set** (`data/sanity.tsv`, committed, ~50 legitimate and
-   ~50 illegitimate queries written by a person without reading the generator code,
-   legitimate ones deliberately from *other* shop domains: electronics, groceries,
-   clothing). Scored by the final models, reported separately, never used for
-   fitting or selection. Who writes it is Q5.
+3. **Blind-labelled sanity set** (`data/sanity.csv`, committed). The agents write
+   **50 queries**; the **user supplies every label** without being told the
+   author's intent (user decision, Q5). Full mechanics in 8.6.1. Scored by the final
+   models (8.7), reported separately, never used for fitting or selection.
 
 All three are reported, not optimised. A run that looks great on 8.5 and poor on
 8.6 is reported as exactly that.
+
+#### 8.6.1 Sanity set mechanics
+
+*Purpose.* The set exists to test the model on queries written **outside the
+generators** and labelled by a person, not by the taxonomy. It measures agreement
+with the user's own notion of legitimate, which may differ from section 2; a
+disagreement between the user's label and the taxonomy is a finding, not an error.
+
+*File.* `data/sanity.csv`, comma-separated, UTF-8, header `id,query,label`.
+`id` is `1..50`. `label` is written **empty** by the author; the user fills in `0`
+(legitimate, serve) or `1` (illegitimate, discard). There is **no family, intended
+class, or comment column**, and the author's intent is not recorded anywhere, so
+the user labels blind. Rows are shuffled with `random.Random(SEED)` before writing
+so their order carries no information.
+
+*Authorship, kept independent of the generators.* The set is written in a plan task
+that is scheduled and committed **before any generator module exists** (`bqc/synth/`
+must be empty or absent at that commit; git history is the evidence), by a
+delegation whose brief contains only this section, not sections 2 or 4 in detail.
+After that commit the file is modified only by the user adding labels. The loader
+test asserts that no sanity query equals a WANDS query after `normalise()`.
+
+*Content guideline for the author (not recorded in the file).* All queries stay in
+the furniture and home-goods domain, with no off-domain shopping queries (2.1).
+Aim for roughly: 30 legitimate-looking queries that are not in WANDS, covering the
+patterns WANDS shows (brands and collection names, dimensions like `72 inch`, typos,
+one-word queries, `with`/`for` phrasing, punctuation such as `"` and `/`); about 15
+clearly illegitimate ones spanning gibberish, payloads, enumeration and spam
+patterns written from scratch without consulting the taxonomy tables' examples; and
+about 5 **deliberately ambiguous** ones where a legitimate furniture query contains
+tokens that look like a payload or bot pattern (`drop leaf table`, `select comfort
+mattress`, `union jack rug`, `null bed frame`, `script wall art`, a query with a
+model number like `wf-2049x`). The ambiguous ones are the point: they are the kind
+of false positive that costs a sale. The author does not know how the user will
+label them, and must not reveal the intended mix in the commit message.
+
+*Evaluation behaviour.* `bqc evaluate` reads the file. If **any** `label` is blank
+or not exactly `0` or `1`, the sanity section is **skipped** with a message naming
+the count of unlabelled rows (`sanity set: 50 of 50 rows unlabelled, skipping`),
+and the run JSON records `"sanity": {"status": "skipped", "unlabelled": n}`. Blank
+is never treated as a class and a partially labelled file is not scored (a subset
+chosen by the labeller could be biased). Everything else in the run proceeds.
+
+*What 50 examples can support, stated plainly.* With about 30 legitimate and 20
+illegitimate queries (the final split is whatever the user's labels say), one false
+positive is already ~3%, and an observed 0/30 has a 95% Wilson upper bound of about
+11%. The sanity set therefore **cannot confirm the 1% FPR target**; it is a
+qualitative check. Reported: the confusion matrix (raw counts, no rates with
+decimals), and the full list of disagreements between model and user, each with
+the query, the user's label, and the model's score. No macro F1, no ROC-AUC, no
+confidence intervals on this set.
 
 ### 8.7 Final model for inspection
 
@@ -375,7 +465,7 @@ bqc/                      package
   cluster.py              HDBSCAN experiment (section 9)
   cli.py                  python -m bqc <command>
 tests/                    unittest; python -m unittest discover -s tests
-data/raw/                 gitignored downloads; data/CHECKSUMS committed; data/sanity.tsv committed
+data/raw/                 gitignored downloads; data/CHECKSUMS committed; data/sanity.csv committed (8.6.1)
 results/                  gitignored JSON reports and pickles, one file per run
 scratch/                  gitignored probes
 ```
@@ -396,7 +486,9 @@ scratch/                  gitignored probes
 - **Tests do not download.** The WANDS loader is tested against a 10-row fixture
   with the same header and delimiter; the hash check is tested with a wrong hash.
   Model tests use tiny synthetic inputs and assert behaviour (no leakage, row counts,
-  determinism), not metric values.
+  determinism), not metric values. The sanity-set loader is tested with a fixture
+  containing blank and invalid labels (11.20) and with a row equal to a WANDS
+  fixture query (11.21).
 
 ## 11. Edge cases and failure modes (starting list)
 
@@ -418,12 +510,13 @@ Each item names the component and the designed behaviour.
    full-width ASCII.** NFKC normalisation maps full-width and compatibility forms;
    zero-width and control characters are stripped in `normalise()`; everything else
    is kept as-is. The model has never seen non-ASCII negatives (section 3), so
-   non-ASCII will likely score as illegitimate; this is recorded as a known
-   limitation (Q6), and the sanity set includes a few accented legitimate queries so
-   the effect is measured.
+   non-ASCII will likely score as illegitimate. **Accepted as a known v1
+   limitation** (user decision, Q6); it is recorded, not measured, in v1.
 5. **Case.** Lowercased in `normalise()`; the model cannot use case (section 4).
 6. **Non-English legitimate queries** (`sofá de cuero`). Same as 4: likely false
-   positives. Not solvable with WANDS as the only negative source; see 14.
+   positives. Not solvable with WANDS as the only negative source; accepted as a
+   known v1 limitation (Q6). No fix is planned: the user rejected mixing in another
+   query source (Q7).
 7. **Synthetic positive identical or near-identical to a WANDS query.** Generation
    fails on exact matches and reports near-duplicates (section 4, rule 4).
 8. **Synthetic near-duplicates straddling folds.** Prevented by grouping on
@@ -456,36 +549,66 @@ Each item names the component and the designed behaviour.
     identical JSON apart from the timestamp; this is a test on a tiny config.
 19. **Scores exactly at the threshold.** Decision is `score >= t` is illegitimate;
     stated once in `evaluate.py` and tested.
+20. **Sanity set unlabelled, partially labelled, or with a bad label** (`2`, `yes`,
+    ` 1`). The sanity section is skipped with a message giving the count of rows
+    that are not exactly `0` or `1`; blanks are never a class; nothing else in the
+    run is affected (8.6.1). The loader strips surrounding whitespace from the
+    label before checking, and nothing else.
+21. **Sanity query duplicates a WANDS query** after `normalise()`. The loader fails
+    with the offending `id`; the set must be outside the training data.
+22. **Off-domain shopping query** (`iphone 11 case`) at scoring time. No defined
+    behaviour in v1 (2.1); the score is whatever the model gives. Must not appear in
+    the sanity set.
 
-## 12. Open questions for the user
+## 12. Decisions taken by the user, and open questions
 
-Each with the recommended answer. The plan should not start until Q1-Q4 are settled.
+### 12.1 Resolved on 2026-11-05
 
-1. **Taxonomy (section 2).** Are families A-D the right definition of
-   "illegitimate", and is E (off-topic natural language) in, out, or
-   evaluation-only? *Recommend: A-D in; E evaluation-only in v1.*
-2. **LLM-generated positives.** Should an LLM be used (paid API) to add diversity to
-   the generators or to write family E? *Recommend: no in v1; templates are
-   reproducible and free. Revisit if LOFO recall is poor.*
-3. **SMOTE.** Keep it as a measured experiment with default off (section 7)?
-   *Recommend: yes.*
-4. **Target FPR.** 1% (section 8.4)? *Recommend: 1%; lower is not measurable with
-   480 negatives.*
-5. **Sanity set authorship (8.6).** Will the user write or review the ~100-query
-   hand-written set? *Recommend: the user writes the ~50 legitimate ones from memory
-   of real shop searches (highest value, 15 minutes); sonnet drafts the illegitimate
-   ones and the user reviews.*
-6. **Non-ASCII / non-English legitimate queries (11.4, 11.6).** Accept as a known
-   limitation of v1? *Recommend: yes, record it, and note the extra negative source
-   in section 14 as the fix.*
-7. **Second real negative source for evaluation only** (e.g. a 500-query sample from
-   Amazon ESCI, public shopping queries). Would show whether the FPR holds on a
-   different shop. *Recommend: defer to section 14; decide after v1 numbers.*
-8. **Branch name.** CLAUDE.md says commit on `master`; the repo's branch is `main`.
-   *Recommend: change CLAUDE.md to `main`.*
-9. **Deployment.** Stays out of scope? *Recommend: yes. The only serving-related
-   decision taken is input truncation (11.2), because it affects the model's input
-   contract.*
+The v1 draft asked nine questions. The user's answers, now applied in the body:
+
+1. **Taxonomy (section 2).** Families A-D are the training definition of
+   "illegitimate"; E (off-topic natural language) is generated but
+   evaluation-only. Accepted as proposed.
+2. **LLM-generated positives (section 4).** No. Template generators only.
+3. **SMOTE (section 7).** A measured experiment, default off. Yes.
+4. **Target FPR (8.4).** 1%. Yes.
+5. **Sanity set (8.6.1).** The user's words: "I don't write, you write 50 queries
+   in a CSV, and I'll label". The agents write 50 queries in one CSV with an empty
+   label column; the user supplies every label, blind. This replaces the draft's
+   ~100-query, author-labelled set.
+6. **Non-ASCII / non-English legitimate queries (11.4, 11.6).** Accepted as a known
+   v1 limitation.
+7. **Second real negative source.** Rejected, not deferred. The user's words:
+   "Amazon ESCI contains all sorts of queries not just furtinure, home accessories.
+   let's try to model a real use case, not not mix in irrelevant queris like
+   \"iphone 11 case\", etc." Consequences: the use case is a furniture and
+   home-goods shop (section 1); the sanity set's legitimate queries are in-domain
+   queries not in WANDS (8.6.1), not queries from other shop domains as the draft
+   proposed; ESCI is removed from section 14; off-domain shopping queries get no
+   label (2.1, Q10).
+8. **Branch.** Commit only to `master`. The local branch was renamed from `main` to
+   `master`; CLAUDE.md stays as written. (The remote still has only `main`;
+   pushing is out of scope.)
+9. **Deployment.** Out of scope. Only the input truncation (11.2) is a
+   serving-related decision.
+
+Also noted by the user: the `.claude/agents` files were cleaned of their previous
+project's references in commit `e2e4421`; nothing in this design depends on them.
+
+### 12.2 Still open
+
+10. **Off-domain shopping queries (2.1).** `iphone 11 case` is not legitimate for
+    this shop (Q7) and the user did not say it is illegitimate. The design treats
+    such queries as outside both classes: not generated, not in the sanity set,
+    behaviour unmeasured. Should they instead become a positive family (a shop may
+    want to drop searches it cannot serve) or a negative one (a real shopper typed
+    it; a zero-result page costs no sale)?
+    *Recommend: keep them outside both classes in v1.* Discarding them is a
+    product-policy choice, not bot detection, and training on them would teach the
+    model "furniture vocabulary = legitimate" even more strongly, which is the
+    artefact section 4 works to avoid. If the user wants the policy, it becomes a
+    separate family after v1 numbers exist, with its own LOFO row. This question
+    does not block planning.
 
 ## 13. Probe findings and unverified assumptions
 
@@ -568,13 +691,14 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 
 ## 14. Later (deferred, not in scope)
 
+Not in this list because the user rejected them (12.1): LLM-generated positives
+(Q2) and a second query source such as Amazon ESCI (Q7).
+
 - **Behavioural features** (rate, session, IP reputation): the only way to catch
   scrapers that send well-formed queries. Different data, different project.
-- **Second real negative source** (Amazon ESCI sample, Home Depot queries) for
-  evaluation-only FPR on a different shop and for non-English coverage.
 - **Catalogue-anchored cluster labelling**: label a cluster legitimate if its members
-  are close to product names from WANDS `product.csv` (90 MB). Removes the need for
-  seed labels in section 9.2.
+  are close to product names from WANDS `product.csv` (90 MB, in-domain). Removes
+  the need for seed labels in section 9.2.
 - **String-level augmentation of negatives** (typo injection, word dropout) as a more
   meaningful alternative to SMOTE for text.
 - **Word + char feature union**, and a `char_wb` comparison, if the FP list suggests
@@ -584,6 +708,6 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 - **Calibration** of scores (not needed while the decision is a thresholded rank).
 - **Family E (off-topic natural language) as a training family**, if the
   evaluation-only run shows it is separable without new false positives.
-- **LLM-generated positives** for diversity, with the user's approval of paid calls.
+- **Off-domain shopping queries as a family**, if the user decides Q10 that way.
 - **Serving**: input contract (11.2) is the only serving decision taken; a model
   file format, latency budget and monitoring would come with a deployment decision.

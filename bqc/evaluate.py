@@ -1,11 +1,14 @@
-"""Outer folds and per-fold data for both arms (DESIGN.md 8.1, 8.2, 8.3, 11.16).
+"""Outer folds, per-fold data, thresholds and the primary-arm runner (DESIGN.md 8.1, 8.2,
+8.3, 8.4, 11.16, 11.30).
 
 Fold units are the real queries (one group each) and the training templates
-(one group each, nominal size QUOTA). Spans are never fold units.
+(one group each, nominal size QUOTA). Spans are never fold units. `select_threshold`
+picks the threshold from the real queries' scores, `check_finite` stops the run on a
+non-finite score, and `run_primary_fold` cross-fits one fold of the primary arm.
 """
 import math
-from collections import Counter
 import warnings
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any, NamedTuple
 
@@ -331,7 +334,7 @@ class FoldResult(NamedTuple):
     """One fold's scores at one arm, with the threshold they were judged against.
 
     `test_scores` line up with the fold's `test_texts`, `test_y`, `test_families` and
-    `test_groups`, copied here unchanged. `fit_warnings` are the warnings raised by
+    `test_groups`, all copied here unchanged. `fit_warnings` are the warnings raised by
     `fit`, as "Category: message" (11.12).
     """
     repeat: int
@@ -340,6 +343,7 @@ class FoldResult(NamedTuple):
     model: str
     threshold: Threshold
     test_scores: np.ndarray
+    test_texts: list[str]
     test_y: list[int]
     test_families: list[str | None]
     test_groups: list[tuple[str, str] | None]
@@ -378,4 +382,4 @@ def run_primary_fold(
         check_finite(scores[rows], **context, score_set=score_set)
     return FoldResult(
         data.repeat, data.fold, data.arm, model, threshold, scores,
-        list(data.test_y), list(data.test_families), list(data.test_groups), fit_warnings)
+        list(data.test_texts), list(data.test_y), list(data.test_families), list(data.test_groups), fit_warnings)

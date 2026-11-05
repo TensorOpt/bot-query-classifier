@@ -165,7 +165,7 @@ class RunnerThresholdTest(unittest.TestCase):
         self.assertNotEqual(base, moved)
 
     def test_same_t_judges_every_test_side_score_set(self):
-        # t is 1.0-ish when one threshold query scores 1.0 and the target allows one flag
+        # t is 0.7 when one threshold query scores 0.7, the highest, and the target allows one flag
         factory = Factory({"u12v": 0.7, "tq-": 0.7, "pos 11": 0.7, "e!!": 0.7, "e 99": 0.69})
         result = run_fold(factory=factory, target_fpr=0.1)
         t = result.threshold.threshold
@@ -179,6 +179,7 @@ class RunnerShapeTest(unittest.TestCase):
         data = make_data()
         result = run_fold(data)
         self.assertEqual(len(result.test_scores), len(data.test_texts))
+        self.assertEqual(result.test_texts, data.test_texts)
         self.assertEqual(result.test_y, data.test_y)
         self.assertEqual(result.test_families, data.test_families)
         self.assertEqual(result.test_groups, data.test_groups)

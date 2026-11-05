@@ -3,6 +3,7 @@
 Fold units are the real queries (one group each) and the training templates
 (one group each, nominal size QUOTA). Spans are never fold units.
 """
+import math
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from typing import Any, NamedTuple
@@ -249,3 +250,52 @@ def iter_fold_data(
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
                      "span_removals": removals, "train": train.report, "test": test.report},
                 )
+
+
+class Threshold(NamedTuple):
+    """A chosen threshold over the real queries' scores (8.4, 11.10, 11.11).
+
+    `fpr` is the share of those scores flagged at `threshold`. `target_unmet` is set
+    when no score reaches the target. `warning` is None, or says that the target is
+    below the resolution 1/n of the scores.
+    """
+    threshold: float
+    fpr: float
+    target_unmet: bool
+    warning: str | None
+
+
+def is_illegitimate(score: float, threshold: float) -> bool:
+    """The one decision rule (11.19): a score at the threshold is illegitimate."""
+    return score >= threshold
+
+
+def select_threshold(scores: Sequence[float], target_fpr: float) -> Threshold:
+    """Smallest score in `scores` whose FPR is at or below `target_fpr` (8.4).
+
+    `scores` are the real queries' scores only (8.2). If no score reaches the target,
+    returns the score with the smallest FPR and `target_unmet=True` (11.10). Raises
+    ValueError on no scores or a non-finite score.
+    """
+    if len(scores) == 0:
+        raise ValueError("no scores to select a threshold from")
+    if not all(math.isfinite(s) for s in scores):
+        raise ValueError("scores must be finite")
+    n = len(scores)
+    ordered = sorted(scores, reverse=True)
+    best: tuple[float, float] | None = None  # (threshold, fpr), lowest qualifying score
+    for flagged, score in enumerate(ordered, start=1):
+        if flagged < n and ordered[flagged] == score:
+            continue  # flagged counts every score tied at this one
+        fpr = flagged / n
+        if fpr > target_fpr:
+            break
+        best = (score, fpr)
+    unmet = best is None
+    if best is None:
+        top = ordered[0]
+        best = (top, sum(1 for s in ordered if is_illegitimate(s, top)) / n)
+    warning = None
+    if target_fpr < 1 / n:
+        warning = f"target_fpr {target_fpr} is below the resolution 1/{n} of the scores"
+    return Threshold(best[0], best[1], unmet, warning)

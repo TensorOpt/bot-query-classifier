@@ -994,7 +994,7 @@ Sign-off: pending.
   - `target_unmet`;
   - no scores raises `ValueError`.
 - **Depends on:** M1.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T5: Cross-fit outer-fold runner (primary arm)
 

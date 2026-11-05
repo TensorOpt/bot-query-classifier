@@ -436,7 +436,7 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each pattern kind appears in the
   output; payload characters survive lowercasing.
 - **Depends on:** M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T4: Family C, enumeration and scraping
 

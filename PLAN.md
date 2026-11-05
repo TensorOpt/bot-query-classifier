@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.1 (commit `6cec6c6`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `99037a5`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -102,11 +102,8 @@ exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 
 ### Open questions for `fable`
 
-| Id | Blocks | Question |
-|----|--------|----------|
-| PQ-5 | nothing yet | **How is an MLP run "on request" expressed if the MLP takes over 5 minutes per fit?** Section 10 says LOFO and the catalogue gap then run for the MLP only on request, 8.2 says the full run is one invocation, and no flag separates "fit this model" from "run LOFO for this model". M4.T4 measures the fit and reports the number; if it stays under 5 minutes, nothing is needed. |
-
-PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and applied below; their text is in `530de4f`.
+None open. PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and PQ-5 in section 10, and all are applied
+below; their text is in `530de4f` and `a3cf42e`.
 
 ### Facts checked while planning
 
@@ -400,14 +397,14 @@ Follow-ups:
   In `tests/test_fetch.py`: the command fetches both files; a failure on the second returns non-zero
   and leaves the first; nothing downloads.
 - **Depends on:** M1.T7.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `1b02ff3`. Criterion 6, real load re-run by `opus` on a copy with the
   pinned hash at `data/raw/product.csv`: 42,994 rows, 42,577 distinct names, no error, 0.85 s, peak RSS
-  577.5 MB. `python -m bqc fetch` hasn't completed a real `product.csv` download: the sandbox was too
-  slow, so only stubbed tests cover criterion 1, and the URL answers with the expected
-  90,621,131 bytes. M6.T1 runs it from a clean clone. Process deviation: the failing run was reported
-  as a summary, not verbatim (F1). M1's sign-off doesn't cover this task; `fable` reviews it as for
-  M1.T7.
+  577.5 MB. `fable`'s review: diff read, suite 245 OK. Accepted known issues: the failing run was
+  reported as a summary, not verbatim (F1); the real run was closed with a hash-matching copy; and
+  `python -m bqc fetch` hasn't completed a real `product.csv` download, so only stubbed tests cover
+  criterion 1 (the URL answers with the expected 90,621,131 bytes). M6.T1 exercises it first, from a
+  clean clone.
 
 ---
 
@@ -672,25 +669,27 @@ Sign-off: pending.
 
 ### M2.T11: Drop exact matches without showing them
 
-- **Goal:** a filter that removes strings equal to a list and returns only counts, for spans and
-  any audited drop (3.2, 11.25).
-- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 4 (rule 4), 8.6.1, 11.25.
+- **Goal:** the audit's dropping entry point, next to the raising `check_exact`: it removes strings
+  equal to any of several lists and returns only survivors and counts (3.2, 11.25).
+- **Design refs:** `DESIGN.md` `99037a5`: 3.2, 4 (rule 4), 8.6.1, 11.25.
 - **Files:** `bqc/synth/audit.py`, `tests/test_synth_audit.py`.
 - **Brief:** this task isn't template authoring, and it doesn't read the sanity file.
 - **Acceptance criteria:**
-  1. `drop_exact(strings, others)` returns the strings that aren't equal to any of `others` after
-     `normalise()`, in order, and the number removed. It returns no removed text and raises nothing
-     that contains any.
-  2. `check_exact` and `near_duplicates` don't change.
-- **Tests:** identical; differing only in case and whitespace; `others` normalised too; order kept;
-  empty inputs; input not mutated; removed text absent from the return value.
+  1. `drop_exact(strings, lists)` takes the candidate strings and a mapping from list name to strings.
+     It returns the candidates that aren't equal to any listed string after `normalise()`, in order,
+     and a count per list name. A candidate in several lists counts once, under the first.
+  2. It never returns, logs or raises the removed text.
+  3. `check_exact` and `near_duplicates` don't change.
+- **Tests:** identical; differing only in case and whitespace; listed strings normalised too; order
+  kept; per-list counts, including a candidate in two lists and a list with no hits; empty inputs;
+  input not mutated; removed text absent from the return value and from captured logs.
 - **Depends on:** M2.T7.
 - **Status:** todo
 
 ### M2.T12: Product-name spans
 
 - **Goal:** build the training negatives of 3.2 in one home.
-- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.3, 11.25, 11.26, 11.27, 13.17, 13.19.
+- **Design refs:** `DESIGN.md` `99037a5`: 3.2, 8.3, 11.25, 11.26, 11.27, 13.17, 13.19.
 - **Files:** `bqc/negatives.py`, `tests/test_negatives.py`.
 - **Brief:** this task isn't template authoring. The builder takes the sanity queries as a list of
   strings and never reads the file; tests use invented strings.
@@ -701,9 +700,10 @@ Sign-off: pending.
      `random.Random(seed)`, draws `k` from the constant word-count distribution of 3.2, a product
      uniformly among those with at least `k` words, and a start uniformly. So a short product redraws
      the product, not the length (11.27).
-  3. A span is dropped if, after `normalise()`, it is empty, already drawn, or equal to a real query,
-     a P string or a sanity query, the last three through `drop_exact`. It returns the spans and a
-     count per kind of removal, with no removed text.
+  3. A span empty after `normalise()` is dropped and counted. The other four removals go through
+     `drop_exact`: equal to an already drawn span, a real query, a P string or a sanity query (3.2 step
+     3). So candidates are drawn in batches, deduplicated within the batch into the same "drawn" count.
+     It returns the spans and a count per kind of removal, with no removed text.
   4. Each span carries `product_id`, `k` and `seed`. It stops at `n` (default 5,000, one home here).
   5. If `n` can't be reached, it raises an error with the count reached, and never pads (11.25).
   6. `token_occurrences(strings)` returns every whitespace token of the normalised strings, with
@@ -1062,7 +1062,7 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
 
 - **Goal:** measure what happens when a shopper searches for something the catalogue doesn't
   describe (8.6 item 5).
-- **Design refs:** `DESIGN.md` `6cec6c6`: 3.1, 3.2, 8.2, 8.6 (item 5), 11.25, 11.28, 12.1 (item 14), 13.19.
+- **Design refs:** `DESIGN.md` `99037a5`: 3.1, 3.2, 8.2, 8.6 (item 5), 11.25, 11.28, 12.1 (item 14), 13.18, 13.19.
 - **Files:** `bqc/evaluate.py`, `tests/test_catalogue_gap.py`.
 - **Acceptance criteria:**
   1. Per outer fold of every arm that runs, take the `query_class` values of the test-side real
@@ -1076,7 +1076,9 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
   4. A `catalogue_gap` section under each arm in the run JSON gives pooled FPR with the Wilson CI of
      M3.T7, recall, the flagged queries and `gap_failed`, which is true when the CI's lower bound exceeds
      the target. A pass with its point estimate above target is reported as
-     `point_estimate_above_target`. The two arms' results come from the same folds and are paired.
+     `point_estimate_above_target`. The two arms' results come from the same folds and are paired. In
+     the primary arm it also records the number of products removed per fold and the unclassified count:
+     products with an empty `classes` can never be removed, so the check errs lenient (8.6 item 5).
   5. It never stops a run, and nothing acts on the result: failure is a user decision.
   6. Off by default, enabled by a parameter (`--catalogue-gap` is wired in M4.T4).
 - **Tests** (with the fake), in both arms:
@@ -1084,6 +1086,8 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
     product with one matching class.
   - Comparison: no training-side query of those classes is in any fit or the threshold set.
   - The threshold set excludes those classes' training-side queries; empty-class queries stay.
+  - An empty-class product is never removed; the per-fold removed count and the unclassified count are
+    hand-checked.
   - The removal differs per fold, and the normal run's spans are unaffected.
   - `gap_failed` at lower bound just above, exactly at, and just below the target.
   - Hand-computed pooled FPR uses `k = total / 3` at `n = 480`.
@@ -1222,28 +1226,33 @@ Sign-off: pending.
 ### M4.T4: `bqc evaluate` command
 
 - **Goal:** run the harness with the real models from the command line, in either arm.
-- **Design refs:** `DESIGN.md` `6cec6c6`: 8.2, 8.4, 8.5, 8.6, 10, 13.9.
+- **Design refs:** `DESIGN.md` `99037a5`: 8.2, 8.4, 8.5, 8.6, 10, 13.9.
 - **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`, `DESIGN.md` (section 13.9, the measurement only).
 - **Acceptance criteria:**
   1. `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
-     [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo] [--catalogue-gap]` runs the chosen models
+     [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo [MODELS]] [--catalogue-gap [MODELS]]` runs the chosen models
      and arms and writes one run JSON, including the sanity section or its skip record, and
      `part_number_diagnostic` for each model. `--negatives` takes a comma list. The defaults are
      `product`, 5,000 and all three models.
-  2. `--target-fpr` outside `(0, 1)`, a non-positive `--negatives-size` and an unknown model or arm
-     are usage errors. A missing raw file exits non-zero with a message pointing at `fetch`. An
+  2. `--target-fpr` outside `(0, 1)`, a non-positive `--negatives-size`, an unknown model or arm, and a
+     `--lofo` or `--catalogue-gap` model outside `--models` are usage errors. A missing raw file exits non-zero with a message pointing at `fetch`. An
      exhausted span pool exits non-zero with its count.
   3. The real run scores the committed sanity labels. The skip path stays covered by fixtures
      (M3.T11).
-  4. `--lofo` runs in every arm for LR and the trivial baseline, and for the MLP in the primary arm only
-     (8.6 item 1). `--catalogue-gap` is valid with either arm, and runs for every chosen model.
-  5. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records the
-     result with date and versions in 13.9. If it exceeds 5 minutes, the task report says so and PQ-5
-     needs an answer before M6.T1.
+  4. `--lofo` and `--catalogue-gap` take an optional comma list of models, default all of `--models`;
+     naming or omitting `mlp` there is the request (section 10). The main fits, SMOTE and the final
+     model always cover every model in `--models`. A model left out has its rows reported as not run,
+     with the reason. `--lofo` never runs the MLP in the comparison arm (8.6 item 1). `--catalogue-gap`
+     is valid with either arm.
+  5. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records it in the
+     run JSON and, with date and versions, in 13.9. The task report says if it exceeds 5 minutes.
 - **Tests:** on a tiny config and fixtures: end-to-end with each flag and each arm setting; `product,real`
   writes one file with both arms; JSON has one entry per model, including the diagnostic; `--models`
-  limits the entries; `--lofo` has no MLP rows in the comparison arm; the trivial baseline's report row
-  is present; `--catalogue-gap` adds its section; each usage error; each missing raw file;
+  limits the entries; `--lofo` has no MLP rows in the comparison arm; `--lofo lr,trivial` and
+  `--catalogue-gap lr,trivial` report the MLP's rows as not run, with the reason, while its main fit and
+  final model are present; bare `--lofo` covers all of `--models`; the fit time is in the JSON; the
+  trivial baseline's report row is present; `--catalogue-gap` adds its section; each usage error; each
+  missing raw file;
   **real model and fold determinism end to end** (11.18).
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
 - **Status:** todo
@@ -1408,13 +1417,15 @@ Sign-off: pending.
 
 - **Goal:** produce the v1 numbers and hand them to `fable`, who records them in the M6
   sign-off (12.3).
-- **Design refs:** `DESIGN.md` `6cec6c6`: 6.2, 6.3, 7, 8.2, 8.5, 8.6, 9, 10, 12.1 (items 13, 14), 12.2
+- **Design refs:** `DESIGN.md` `99037a5`: 6.2, 6.3, 7, 8.2, 8.5, 8.6, 9, 10, 12.1 (items 13, 14), 12.2
   (Q12), 13.2, 13.9, 13.15, 13.19.
 - **Files:** none committed (`results/` is gitignored), apart from this task's status.
 - **Acceptance criteria:**
-  1. `fetch`, `generate`, one `evaluate --negatives product,real` invocation (with `--lofo`,
-     `--catalogue-gap` and `--smote`, within the runtime budget of section 10) and `cluster` all
-     complete on the real data from a clean clone with a fresh `.venv`. The primary arm is the headline.
+  1. `fetch`, `generate`, one `evaluate --negatives product,real` invocation (with `--smote`, `--lofo`
+     and `--catalogue-gap`) and `cluster` all complete on the real data from a clean clone with a fresh
+     `.venv`. This is the first real `product.csv` download by `fetch`. If M4.T4's measured MLP fit
+     exceeds 5 minutes, the invocation is `--lofo lr,trivial --catalogue-gap lr,trivial`, and the report
+     says the MLP's rows weren't run and why (section 10). The primary arm is the headline.
   2. The report to `fable` gives, for each arm, model and SMOTE setting: headline recall with
      achieved FPR and CI; per-family recall including E; per-template recall; LOFO recall, achieved
      FPR and the paired difference to the main run; the trivial baseline gap; `smote_comparison` and

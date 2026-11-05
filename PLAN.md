@@ -384,7 +384,7 @@ Sign-off: pending.
   - A family with 5 templates, with a quota other than 20, or with one hard-positive
     template raises (rule 6).
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T2: Family A, gibberish
 

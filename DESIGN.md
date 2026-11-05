@@ -361,10 +361,15 @@ rule 5's floor of 50 distinct strings is far below 209, so the report also lists
 each template's distinct count at the required size (a template under 50% distinct
 is a finding, not a failure). A shortfall is **not redistributed** to other
 templates or families: that would change the family mix to hide a template's lack
-of variety. So the training side is balanced *up to reported shortfalls*; at the
-default size it is 4,804 positives to 5,000 spans (13.20), with family B under
-its quarter because `B.script` yields 60 distinct strings and `B.traversal` 168 of
-208. Widening those two templates is a follow-up, not a condition of M2. Training and test positives equal, after
+of variety. So the training side is balanced *up to reported shortfalls*. At M2
+sign-off it was 4,804 positives to 5,000 spans because `B.script` yielded 60
+distinct strings and `B.traversal` 168 of 208; after M2.T13 widened both (13.20)
+it is **4,992 to 5,000**, the 8 missing being `5,000 // 24` rounding, with no
+template short. `B.script`'s capacity is exactly 396 distinct strings, so at the
+20,000 sensitivity run (833 per template) it is a reported finding again (47.5%
+distinct), accepted there. `B.traversal` outputs are long (median 53 characters
+against the spans' 19); bounded and measured by the trivial baseline (6.3). The
+CLI's "positives:" count includes the 120 E strings. Training and test positives equal, after
 `normalise()`, to a training negative, a real query or a P string are dropped by
 the audit (rule 4), counted, never shown; one equal to a sanity query fails the
 generation (rule 4). Test-side templates render 100 each (8.3).
@@ -1728,6 +1733,12 @@ pairs above Jaccard 0.6; 3 sanity queries above 0.5 to some positive (ids and
 scores in the report, no text). `opus` measured the span length mix across seeds:
 one-word 3.9-4.5% (target 4.8%), two-word 20.0-21.0% (22.7%), mean 3.46-3.49 words
 (3.38); at 20,000 spans one-word 3.3%. Basis for the acceptances in 3.2 and 4.
+After M2.T13 (`e60416d`, widened `B.script` and `B.traversal`), the same run by
+`fable` gives 4,992 training positives of 5,000 (rounding only), 5,112 with E, no
+template short, 0 audit drops, 2 near-duplicate pairs, 3 sanity ids above 0.5.
+Sonnet's first attempt (traversal depth 2) tripped the sanity gate; the author
+was told only to restore the validated minimum of 3, which is at most one bit of
+information about the sanity set (rule 8, recorded).
 
 ## 14. Later (deferred, not in scope)
 
@@ -1761,8 +1772,9 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Per-length quotas for spans** (draw and deduplicate within each word-count
   bucket so the realised mix equals the target), if the one-word false-positive
   count differs between the 5,000 and 20,000 runs (3.2, 13.20).
-- **More variety in `B.script` and `B.traversal`** (more argument and form
-  choices), so family B reaches its full quarter of the positives (section 4).
+- **More variety in `B.script`** beyond its 396 distinct strings, only if the
+  20,000 sensitivity run's per-template recall for it looks off (section 4; done
+  for 5,000 by M2.T13).
 - **Category-aware thresholds or real-query negatives for uncovered categories**,
   if the catalogue-gap check (8.6 item 5) fails in the full run; the user decides.
 - **Serving**: input contract (11.2) is the only serving decision taken; a model

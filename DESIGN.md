@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.7, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.8, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -123,15 +123,32 @@ is *benign* if, after `normalise()` and whitespace splitting, it is either
 
 - a **vocabulary word**: a token of the vocabulary passed to the generator (the
   whitespace tokens of the normalised WANDS queries of the fold); or
-- a **number-shaped token**: it contains a digit and matches
-  `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, which covers bare numbers (`72`),
-  part numbers (`w003412`, `sku000123`, `wf-2049x`), and the measurement forms
-  WANDS uses (`18x18`, `3/4`, `72.5`, `3-3/4`, `36"`, `7qt`, `e12/candelabra`).
+- a **number-shaped token**: it contains a digit, matches
+  `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, **and has at most three letter/digit
+  blocks** (a block is a maximal run of letters or of digits; separators do not
+  count). This covers bare numbers (`72`), part numbers (`w003412`, `sku000123`,
+  `wf-2049x`), and the measurement forms WANDS uses (`18x18`, `3/4`, `72.5`,
+  `3-3/4`, `36"`, `7qt`, `e12/candelabra`); all 36 digit-bearing WANDS tokens match
+  and have at most 3 blocks (verified 2026-11-05). The block limit is what keeps
+  `xk9qz7vplm` (5 blocks) and UUID/hash-like tokens non-benign, as the table below
+  requires; without it the regex alone would match them. (Corrected 2026-11-05
+  after `opus` found the omission.)
 
 A string made only of benign tokens is the shape of a legitimate query
 (`leather sofa w003412`, `area rug 18x18`, `sofa`, `w003412`, `72`), and no family
-may emit one as a positive. This subsumes the earlier whole-query ban on a lone
-part-number token or bare number.
+may emit one as a positive. The earlier whole-query ban (a lone token matching
+the part-number regex of the bullet above, or a bare number) is **kept as a
+separate check in family C's tests**: the two overlap but neither contains the
+other (`/123` matches the part-number regex yet is not benign).
+
+**Accepted consequence:** a real part number with four or more blocks (`a1b2c3`)
+is non-benign, so a template may lawfully emit `leather sofa a1b2c3` as a
+positive. This is accepted because the shop's own part numbers have at most three
+blocks (every digit-bearing WANDS token does), because family A's four-block rule
+makes four-plus blocks the gibberish signature on purpose, and because the
+part-number diagnostic (8.6 item 4) generates the three-block shapes the user's
+decision is about. If such part numbers turn up in real traffic, the block limit
+is one constant to change.
 
 Why "plain word" means *vocabulary word* and not *letters-only token*: family A's
 keyboard mashes (`asdkjh qwe`) and family E's sentences (`what is the capital of

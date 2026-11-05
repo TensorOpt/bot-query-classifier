@@ -897,7 +897,7 @@ Sign-off: pending.
 - **Tests:** the fake meets the protocol; it returns one score per text; it records its
   fit input.
 - **Depends on:** M1.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T3: Outer folds and per-fold data
 

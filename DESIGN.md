@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.8, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.9, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -121,8 +121,9 @@ digits:
 in every family, must contain **at least one token that is not benign**. A token
 is *benign* if, after `normalise()` and whitespace splitting, it is either
 
-- a **vocabulary word**: a token of the vocabulary passed to the generator (the
-  whitespace tokens of the normalised WANDS queries of the fold); or
+- a **vocabulary word**: a member of `set(vocabulary)`, where the vocabulary
+  passed to the generator is the list of whitespace-token occurrences of the fold's
+  normalised WANDS queries, with repeats (8.3); membership ignores the repeats; or
 - a **number-shaped token**: it contains a digit, matches
   `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, **and has at most three letter/digit
   blocks** (a block is a maximal run of letters or of digits; separators do not
@@ -174,7 +175,12 @@ Family A templates that use digits must additionally produce at least four
 letter/digit blocks in **every** digit-bearing token (so a token never has a
 part-number shape even inside a longer string), and family A's hard-positive
 templates combine vocabulary words with gibberish tokens only, never with
-digits. The benign-token predicate, the block-count function and the
+digits. Four is the floor, not the target: the implemented A template uses a
+minimum of **seven** blocks (M2.T2), which keeps training positives further
+from three-block part numbers; the section 2 examples `xk9f2m` and sanity row
+`xk9qz7vplm` (five blocks each) are illustrations of the shape, not strings the
+template must be able to produce. Revisit the minimum if the M6 run misses that
+sanity row. The benign-token predicate, the block-count function and the
 "at least one non-benign token" check have one home, `bqc/synth/registry.py`;
 the registry contract test (`assert_template_rules`) applies them to every
 output of every template in every family, with a fold-sized vocabulary. The
@@ -255,7 +261,9 @@ anti-inflation measures in section 8 possible.
    baseline in 6.3 quantifies how much of the result is explained by length alone.
 3. Every family has a hard-positive sub-generator that embeds real product words
    (section 2). Product words are sampled only from the *training fold's* WANDS
-   queries (8.3) so test-fold vocabulary never leaks into training positives.
+   queries (8.3) so test-fold vocabulary never leaks into training positives, and
+   they are sampled **from token occurrences, with repeats**, so common words
+   appear in hard positives as often as in real queries (8.3, 13.17).
 4. Near-duplicate audit after generation: character-3-gram Jaccard similarity between
    every positive and every negative; any pair above 0.6 is reported, and the
    generation fails if any positive is identical, after `normalise()` (section 5),
@@ -514,6 +522,21 @@ templates then draw vocabulary only from training-fold negatives when producing
 training positives, and from test-fold negatives when producing test positives.
 Implementation detail for the plan: generation takes a vocabulary argument; the
 runner passes the right one.
+
+**The vocabulary is the list of token occurrences, not the set of distinct words
+(ruled 2026-11-05 after M2.T2 validation, 13.17).** Callers (`bqc generate`, the
+fold builder, the final-model fit) pass every whitespace token of every normalised
+negative on their side, **with repeats, in file order**, and hard-positive
+templates sample from that list uniformly. Sampling from the set of distinct
+words would draw one-off words (brands, collection names) in 71% of word slots
+against 37% of real token occurrences, and `chair` in 0.1% of slots against 2.2%
+of real tokens; the model would then learn "common furniture word = legitimate,
+rare or brand word = illegitimate", which is the section 2 artefact and a false
+positive on every real brand query. With occurrences, hard positives carry product
+words at their real frequencies and the remaining signal is the illegitimate
+pattern itself. The benign-token check of 2.2 tests membership and uses
+`set(vocabulary)`; a list with repeats changes nothing there. A fold's training
+vocabulary still comes from training negatives only.
 
 ### 8.4 Operating point: "minimise false positives"
 
@@ -796,8 +819,11 @@ negatives (the 480 training positives of A-D **and** the 120 of family E, each
 sample tagged with its family so E is never confused with the training set), runs
 the audit (section 4, rules 2 and 4) over all 600, and writes one JSON report to
 `results/` holding the generated samples with their metadata, the per-family length
-statistics next to WANDS', the near-duplicate pairs, and the 100 part-number
-diagnostic strings (8.6 item 4) under their own key, never mixed with the positives. It exists so the positives
+statistics next to WANDS', the near-duplicate pairs, the 100 part-number
+diagnostic strings (8.6 item 4) under their own key, never mixed with the
+positives, and two numbers that keep 8.3's occurrence rule visible: the share of
+hard-positive word slots filled by WANDS one-off words, next to the one-off share
+of WANDS token occurrences (expected to be close; 13.17). It exists so the positives
 can be inspected by eye; fold runs regenerate their own positives (8.3) and never
 read its output.
 
@@ -1205,6 +1231,15 @@ drew from 4,000 random code points, 40 `Cf` characters, 200 marks, whitespace,
 uppercase, full-width and `İ`/`ẞ`. WANDS is ASCII and the generators are ASCII by
 rule, so no v1 data is affected either way; the change matters for ad-hoc input
 and for the honesty of the claim in section 5.
+
+### 13.17 Vocabulary types vs occurrences (2026-11-05, Python 3.12.16, stdlib)
+
+WANDS: 1,623 token occurrences, 834 types, 595 one-off types. One-off words are
+**36.7% of occurrences** but **71.3% of types**; `chair` is **2.16% of
+occurrences** but one type in 834 (0.12%). `opus` measured the implemented hard
+positives at M2.T2 validation: 70.7% of hard-positive word slots were one-off
+WANDS words and `chair` filled 0.15% of them, i.e. sampling was uniform over
+types. Basis for the occurrence rule in 8.3 and the two report numbers in 10.
 
 ## 14. Later (deferred, not in scope)
 

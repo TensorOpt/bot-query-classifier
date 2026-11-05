@@ -850,9 +850,16 @@ Follow-ups:
   - Each new form appears in the output.
   - Registry tests pass for this family.
 - **Depends on:** M2.T3, M2.T8, M2.T10.
-- **Status:** done
-- **Status note:** M2's sign-off doesn't cover this task. It isn't a condition of M2, and it comes before
-  M6.T1. It can run while M3 is on hold.
+- **Status:** validated
+- **Status note:** implemented in `e60416d`. Real `generate` re-run by `opus`: 4,992 positives of A-D
+  (`n // 24` x 24, 8 short of 5,000 by rounding only) plus 120 of E. The summary's "positives: 5112"
+  includes E, as "positives: 4924" did before this task. No template is short; 0 dropped; 0 all-benign;
+  3 sanity queries above 0.5. Longest output 141 characters, all ASCII and normalised. The rule 4 gate
+  worked: a first attempt at a minimum depth of 2 failed `generate` on a sanity collision, and the
+  coordinator told the author only to restore the validated minimum of 3. The leak to the author is
+  one bit at most. Process deviation (F1): a hand-typed `errors=0` in the failing block, corrected by the
+  author, and only the last lines of the final `-v` run. M2's sign-off doesn't cover this task; `fable`
+  reviews it as for M1.T8. It isn't a condition of M2.
 
 ---
 

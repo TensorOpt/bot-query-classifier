@@ -574,15 +574,8 @@ Sign-off: pending.
   - No `P` sample appears in the training output or in family E.
   - Collision with a WANDS fixture query, and with a sanity fixture query, raises.
 - **Depends on:** M2.T1, M2.T7.
-- **Status:** done
-- **Changes requested (`opus`, 2026-11-05, on `7b0678a`; scope `fix(M2.T9)`):**
-  1. `bqc/synth/partnumbers.py:43`: a suffix of a letter then a digit makes a four-block token, which 2.2
-     says isn't a part-number shape and treats as non-benign; 4 of the 100 real outputs do this. Keep
-     every token at three blocks or fewer.
-  2. `tests/test_synth_partnumbers.py`: add a test that every output's tokens are benign against the given
-     vocabulary, using `has_non_benign_token`.
-  3. `bqc/synth/partnumbers.py:22`: the docstring says "often zero-padded", but the digits are uniform.
-     Correct the docstring.
+- **Status:** validated
+- **Status note:** implemented in `7b0678a`, corrected in `e3f2229`. `opus`'s correction list is in `3ef106b`.
 
 ### M2.T8: `bqc generate`
 
@@ -907,7 +900,8 @@ Sign-off: pending.
 - **Acceptance criteria:**
   1. Scores the M2.T9 set with each final model of M3.T10, at that model's threshold.
   2. The run JSON has a `part_number_diagnostic` section, separate from the headline, giving per
-     model the fraction flagged, and the min, median and max score.
+     model the fraction flagged, overall and per shape (`template_id`), and the min, median and max
+     score.
   3. Flagging uses the one `score >= t` rule of M3.T4.
   4. The set is never used in any fit or threshold selection, and doesn't change any other
      metric. Part-number scores are reported, not selected on.
@@ -915,7 +909,7 @@ Sign-off: pending.
   - No `P` text in any fit input, including the inner folds.
   - 100 scores for each model.
   - The fraction is computed with `score >= t`: a score exactly at `t` counts as flagged.
-  - Hand-computed fraction, min, median and max.
+  - Hand-computed fraction, overall and per shape, min, median and max.
   - The other sections of the report are unchanged with and without the diagnostic.
 - **Depends on:** M2.T9, M3.T8, M3.T10.
 - **Status:** todo
@@ -1143,8 +1137,8 @@ Sign-off: pending.
   4. The sanity section is reported per configuration, twice: over all 50 rows, and over the rows at or
      below Jaccard 0.5 in the `generate` report, naming the excluded ids (8.6.1). Each gives the
      raw-count confusion matrix and full list of disagreements.
-  5. **Part-number diagnostic:** the report gives, per model, the fraction flagged and the min,
-     median and max score, next to the model's result on the three part-number rows of the
+  5. **Part-number diagnostic:** the report gives, per model, the fraction flagged, overall and per
+     shape, and the min, median and max score, next to the model's result on the three part-number rows of the
      sanity set (ids 16, 39, 43). It states these so the user can answer Q12. The answer isn't
      needed for `done`.
   6. **One-word false positives:** per model, the count flagged out of 23, and the words (8.5).

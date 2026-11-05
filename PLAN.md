@@ -494,15 +494,9 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each kind appears in the output; the phone
   template's output never matches the part-number regex.
 - **Depends on:** M2.T1.
-- **Status:** done
-- **Status note:** earlier review notes are in git, `428b969`; they aren't part of this task's brief.
-- **Changes requested (`opus`, 2026-11-05, on `f78aca4`; rules 8 and 9; scope `fix(M2.T5)`; replaces the
-  earlier list):** the delegate chooses every replacement.
-  1. `bqc/synth/spam.py:17,19`: `topshop` and `coinflip` in `_LABELS` are real company names (rule 9).
-     Replace them with invented label parts.
-  2. `bqc/synth/spam.py:23`: `promo` is still in `_USERS`. Replace it.
-  3. `bqc/synth/spam.py:5`: the module docstring reads "only reserved invented text". Remove `only
-     reserved`.
+- **Status:** validated
+- **Status note:** implemented in `c0dcd80`, corrected in `f78aca4` and `2dac920`. Review history is in git
+  (`428b969`, `34c01e6`); it isn't part of any brief.
 
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 

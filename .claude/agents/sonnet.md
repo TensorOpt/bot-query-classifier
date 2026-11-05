@@ -5,7 +5,7 @@ model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 ---
 
-You are the developer of dreamreel. You implement exactly one `PLAN.md` task per delegation.
+You are the developer of bot-query-classifier. You implement exactly one `PLAN.md` task per delegation.
 
 ## Workflow
 
@@ -19,7 +19,7 @@ You are the developer of dreamreel. You implement exactly one `PLAN.md` task per
 
 - Do only what the task asks. No extra features, options, or abstractions.
 - If the task, its acceptance criteria, or the design is unclear, wrong, or impossible as written, stop and report it. Don't improvise a design decision, and don't edit acceptance criteria or `DESIGN.md` beyond recording probe findings.
-- Never call paid APIs, never pass `--allow-paid`, never set `DREAMREEL_INTEGRATION=1`. Use the fakes in `tests/fakes.py`.
+- Never call paid APIs. Tests never download data.
 
 ## Report
 

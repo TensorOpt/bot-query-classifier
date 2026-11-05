@@ -272,7 +272,7 @@ Sign-off: pending.
     every query at most 512 code points after `normalise()` (11.2). This test must pass both blank and fully labelled, so it asserts nothing about label
     values.
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** done
+- **Status:** validated
 
 ---
 
@@ -490,7 +490,8 @@ Sign-off: pending.
      with a message pointing at `fetch`.
   5. `main` dispatches on `args.command`, replacing the M1.T5 shortcut that runs `fetch` for any
      parsed command, with each command's error handling kept to that command.
-  6. The real run passes the audit, with the real sanity queries among the checked lists, and its near-duplicate count goes in the task report.
+  6. The real run passes the audit, with the real sanity queries, loaded through `load_sanity`
+     with the real WANDS queries, among the checked lists, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
   - Length statistics and near-duplicate pairs are present.
@@ -744,7 +745,9 @@ Sign-off: pending.
      disagreements (query, user's label, model's score), per configuration, using the
      threshold of M3.T10. There is no macro F1, ROC-AUC, confidence interval or decimal
      rate.
-  3. A duplicate of a WANDS query fails the run with the offending `id` (11.21).
+  3. A duplicate of a WANDS query fails the run with the offending `id` (11.21). The loader is
+     given all the WANDS queries of the run, never an empty list: the real-file test in M1.T6
+     can't make this check, because tests don't read `data/raw/`.
   4. Sanity data is never passed to any `fit` or threshold selection.
 - **Tests** (with the fake, and fixture files; none uses the real labels):
   - Blank, partial and bad-label fixtures give the skip record, with the rest of the

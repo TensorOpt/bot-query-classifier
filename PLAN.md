@@ -242,7 +242,7 @@ Sign-off: pending.
   (run `bqc.__main__` with `runpy` and `main` patched, because in-process tests of `main`
   can't see `__main__` dropping it).
 - **Depends on:** M1.T4.
-- **Status:** done
+- **Status:** validated
 
 ### M1.T6: Sanity set loader
 
@@ -488,7 +488,9 @@ Sign-off: pending.
      overwrite. M3.T8 and M5.T3 import it from there.
   4. An audit failure exits non-zero, and a missing `data/raw/query.csv` exits non-zero
      with a message pointing at `fetch`.
-  5. The real run passes the audit, with the real sanity queries among the checked lists, and its near-duplicate count goes in the task report.
+  5. `main` dispatches on `args.command`, replacing the M1.T5 shortcut that runs `fetch` for any
+     parsed command, with each command's error handling kept to that command.
+  6. The real run passes the audit, with the real sanity queries among the checked lists, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
   - Length statistics and near-duplicate pairs are present.
@@ -497,6 +499,7 @@ Sign-off: pending.
   - Collision with a negative, or with a sanity fixture query, exits non-zero, for a family E
     sample too.
   - Missing raw file exits non-zero.
+  - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9.
 - **Status:** todo
 

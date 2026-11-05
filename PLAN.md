@@ -995,6 +995,23 @@ Sign-off: pending.
   - no scores raises `ValueError`.
 - **Depends on:** M1.T2.
 - **Status:** done
+- **Status note:** implemented in `52f8df7`. The code is right: no mismatch with a brute-force oracle of
+  8.4 on 20,000 random cases, ties as one block; at a 1% target, 384 scores flag 3, 233 flag 2 and 190
+  flag 1, none with a warning. Additions beyond the criteria, accepted: `fpr` on `Threshold`, and
+  `ValueError` on a non-finite score (without it `sorted` gives an undefined order; 11 has no path for
+  this, reported to `fable`). Process shortfall, third task running: the implementation went in by an
+  inline Python string replace and the skeleton and tests by Bash heredocs, not the Edit tool; disclosed.
+- **Changes requested** (tests only, in `tests/test_threshold.py`; `opus` confirmed in a scratch copy
+  that these close all three surviving mutants):
+  1. `tests/test_threshold.py:57`: a target-unmet run above resolution never checks `warning`, so
+     warning on `unmet` instead of `target_fpr < 1/n` passes, merging 11.10 and 11.11. Add
+     `assertIsNone(result.warning)`.
+  2. `tests/test_threshold.py:68`: the warning is only tested where a hard-coded `1/100` gives the same
+     answer. Add a case on the given size: no warning at (n, target) (384, 0.005), (233, 0.01) and
+     (190, 0.01), a warning at (50, 0.01).
+  3. `tests/test_threshold.py:80`: no tie reaches the lowest score at a target that the block before it
+     would meet, so `flagged < n - 1` in the tie check passes. Add `[0.1, 0.1]` at target 0.5: `fpr` 1.0
+     and `target_unmet`.
 
 ### M3.T5: Cross-fit outer-fold runner (primary arm)
 
@@ -1344,7 +1361,7 @@ Sign-off: pending.
   limits the entries; `--lofo` has no MLP rows in the comparison arm; `--lofo lr,trivial` and
   `--catalogue-gap lr,trivial` report the MLP's rows as not run, with the reason, while its main fit and
   final model are present; bare `--lofo` covers all of `--models`; the fit time is in the JSON; the
-  trivial baseline's report row is present; `--catalogue-gap` adds its section; each usage error; each
+  trivial baseline's report row is present; `--catalogue-gap` adds its section; each usage error, including `--target-fpr nan` (`select_threshold` would flag every query with `target_unmet` false); each
   missing raw file;
   **real model and fold determinism end to end** (11.18).
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.

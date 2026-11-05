@@ -1,9 +1,9 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.3, 2026-11-05. The user answered the v1 open questions
-(12.1); `opus`'s plan-review questions and additions are resolved in 12.3 and
-applied in the body. One question (12.2, Q10) is still open and does not block
-planning.
+Owner: `fable`. Status: v1.4, 2026-11-05. The user answered Q1-Q11 (12.1);
+`opus`'s plan-review questions and additions are resolved in 12.3 and applied in
+the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
+waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
 
 Each decision is written as **Decision** / **Rationale**. Unverified assumptions and
 probe findings live in section 13. Deferred ideas live in section 14 ("Later").
@@ -49,7 +49,7 @@ synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
 |----|--------|----------|--------------------------|
 | A | gibberish | `asdkjh qwe`, `xk9f2m`, `aaaaaaaa`, UUID/hash-like strings | keyboard mashing, fuzzers, random IDs |
 | B | injection / probing payloads | `sofa' or 1=1--`, `<script>alert(1)</script>`, `${{7*7}}`, `../../etc/passwd`, `{"$gt":""}` | security scanners |
-| C | enumeration / scraping | bare SKU/ID sequences (`w003412987`), `a`, `aa`, `ab`, ... dictionary walks, URL paths, `page=2&sort=price` | catalogue scrapers |
+| C | enumeration / scraping | `a`, `aa`, `ab`, ... dictionary walks, URL paths (`/category/sofas?page=3`), query-string fragments (`page=2&sort=price`), pagination/offset sweeps (`offset=340&limit=20`) | catalogue scrapers walking the search engine rather than the catalogue |
 | D | spam / promotional | URLs, emails, phone numbers, `buy cheap ... click here`, crypto/SEO phrases | comment-spam bots hitting every text field |
 
 **Not trained on in v1:**
@@ -61,12 +61,45 @@ synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
 | - | off-domain shopping queries (`iphone 11 case`) | **No label in v1**; excluded from every data set. See 2.1 and Q10. |
 | - | typos and misspellings | **Legitimate**. WANDS contains `desk for kids tjat ate 10 year old`, `trinaic towel rod`, `cool desins`. Generators must not produce "typo" positives. |
 | - | single-word queries | **Legitimate**. WANDS has 23 one-word queries incl. `zen`, `owl`, `gold`, `canadian`. Family C "dictionary walk" positives are 1-2 character strings only, never real words. |
+| - | SKUs, part numbers, model numbers (`sku000123`, `w003096809`, `wf-2049x desk`) | **Legitimate** (user decision 2026-11-05, Q11: "SKUs should remain legit, customers might search by part numbers"). Removed from family C. WANDS itself contains `ines shag rug w003096809` (13.15). No generator may emit a part-number shape as a whole query (2.2). |
 
 **Rationale.** A-D are unambiguously not produced by a shopper and have textual
 fingerprints (character classes, punctuation patterns, structure) that TF-IDF over
 character n-grams can see. E is a judgement call about product policy, not about
 bots, and is the family most likely to produce false positives on unusual but real
 queries.
+
+### 2.2 Part numbers vs gibberish: the boundary for template authors
+
+Removing SKUs from the positives is not enough if family A can still emit strings
+that look like part numbers. The user's sanity labels draw the line: `xk9qz7vplm`
+and `qqqqwwwweeee 8374651` are illegitimate, `wf-2049x desk` and `sku000123` are
+legitimate. The distinguishing feature is **block structure**, not the presence of
+digits:
+
+- A **part-number shape** is a short alphabetic prefix (1-4 letters), an optional
+  `-` or `/`, a run of 3 or more digits, and at most one short alphanumeric suffix;
+  or a bare run of digits. Letters and digits form at most three contiguous blocks.
+  Regex, applied to a whole token after `normalise()`:
+  `^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$`.
+- **Gibberish with digits** (family A) interleaves letters and digits in four or
+  more blocks (`xk9qz7vplm` is `xk|9|qz|7|vplm`), or combines a digit run with a
+  keyboard-mash or repeated-character token in the same string.
+
+**Decision:** no template in any family may produce a query that, as a whole, is a
+single token matching the part-number regex, nor a bare number. Family A templates
+that use digits must produce at least four letter/digit blocks in every digit-
+bearing token. The registry test asserts both over every template's output.
+Family C keeps its dictionary-walk template (1-2 character strings), which the regex
+does not match because it requires 3 digits.
+
+**Family C after the change (section 4 rule 6 still holds: six templates, at least
+two hard-positive):** (1) dictionary walks; (2) URL paths; (3) generic query-string
+fragments with random keys; (4) pagination and offset sweeps with the usual key
+names; (5) hard-positive: product words plus a query-string fragment
+(`area rug&page=2`); (6) hard-positive: a search-URL form around product words
+(`/search?q=accent+chair`). Templates 3 and 4 are distinct in what they vary:
+3 varies the keys, 4 varies the numbers.
 
 ### 2.1 Off-domain shopping queries
 
@@ -461,9 +494,25 @@ WANDS from *these generators*". Three additional checks make that limitation vis
    **50 queries**; the **user supplies every label** without being told the
    author's intent (user decision, Q5). Full mechanics in 8.6.1. Scored by the final
    models (8.7), reported separately, never used for fitting or selection.
+4. **Part-number diagnostic** (added 2026-11-05 with Q11). Part numbers are
+   legitimate (section 2) but WANDS, the only negative source, has one such token
+   in 480 queries and no bare part-number query (13.15), so the 1% FPR measured on
+   WANDS says nothing about them, and family A teaches the model that letter-digit
+   mixtures are illegitimate. The run therefore generates **100 part-number-shaped
+   strings** (`bqc/synth/partnumbers.py`, tag `family="P"`, label 0, same seeded
+   machinery; shapes: bare prefix+digits like `sku000123`, bare digit runs,
+   prefix-digits-suffix like `wf-2049x`, and product words from the full WANDS
+   vocabulary plus a part number like `ines shag rug w003096809`), never used in any
+   fit, threshold or audit-as-positive, and scores them with each final model (8.7).
+   Reported per model: the **fraction flagged at the model's threshold** (the
+   expected FPR on such queries), with min/median/max score. The three part-number
+   rows of the sanity set give a second, human-labelled look at the same thing.
 
-All three are reported, not optimised. A run that looks great on 8.5 and poor on
-8.6 is reported as exactly that.
+All four are reported, not optimised. A run that looks great on 8.5 and poor on
+8.6 is reported as exactly that. If the diagnostic shows part numbers flagged at a
+high rate, the remedy (synthetic part-number negatives) changes the decision that
+negatives are real WANDS queries, so it is a question for the user (12.2, Q12),
+not something this design does on its own.
 
 #### 8.6.1 Sanity set mechanics
 
@@ -753,6 +802,11 @@ Each item names the component and the designed behaviour.
 22. **Off-domain shopping query** (`iphone 11 case`) at scoring time. No defined
     behaviour in v1 (2.1); the score is whatever the model gives. Must not appear in
     the sanity set.
+23. **Part-number or SKU query** (`sku000123`, `w003096809`, `wf-2049x desk`).
+    Legitimate by decision (section 2, Q11) but nearly absent from the negatives
+    (13.15), so the model may flag it. Not an error at scoring time; measured by the
+    part-number diagnostic (8.6 item 4). Generators must not emit such a shape as a
+    whole query (2.2), and the registry test asserts it.
 
 ## 12. Decisions taken by the user, and open questions
 
@@ -785,24 +839,36 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
    pushing is out of scope.)
 9. **Deployment.** Out of scope. Only the input truncation (11.2) is a
    serving-related decision.
+10. **Off-domain shopping queries (2.1).** Answered "ok" on 2026-11-05 to keeping
+    them outside both classes in v1: not generated, not in the sanity set,
+    behaviour unmeasured. Discarding them would be a product-policy choice, not
+    bot detection. (The question as asked: positive family, negative family, or
+    neither; recommendation was neither.)
+11. **SKUs and part numbers are legitimate.** The user's words, 2026-11-05: "SKUs
+    should remain legit, customers might search by part numbers." Prompted by the
+    user labelling the sanity rows `sku000123` and `sku000124` as legitimate, which
+    contradicted family C's "bare SKU/ID sequences". Applied: removed from family C
+    and listed as legitimate (section 2); family C re-specified with six templates
+    (2.2); boundary rule between part numbers and family A gibberish, asserted by
+    test (2.2); part-number diagnostic added (8.6 item 4); edge case 11.23; WANDS
+    measured (13.15).
 
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
 
 ### 12.2 Still open
 
-10. **Off-domain shopping queries (2.1).** `iphone 11 case` is not legitimate for
-    this shop (Q7) and the user did not say it is illegitimate. The design treats
-    such queries as outside both classes: not generated, not in the sanity set,
-    behaviour unmeasured. Should they instead become a positive family (a shop may
-    want to drop searches it cannot serve) or a negative one (a real shopper typed
-    it; a zero-result page costs no sale)?
-    *Recommend: keep them outside both classes in v1.* Discarding them is a
-    product-policy choice, not bot detection, and training on them would teach the
-    model "furniture vocabulary = legitimate" even more strongly, which is the
-    artefact section 4 works to avoid. If the user wants the policy, it becomes a
-    separate family after v1 numbers exist, with its own LOFO row. This question
-    does not block planning.
+12. **Synthetic part-number negatives?** WANDS has no bare part-number query
+    (13.15), so the model cannot learn from the negatives that part numbers are
+    legitimate, and the 1% FPR target does not cover them. The design measures the
+    problem (8.6 item 4) but does not fix it, because adding generated negatives
+    would change the recorded decision that negatives are real WANDS queries
+    (section 1, section 3). *Recommend: wait for the diagnostic.* If the final
+    models flag a large share of the 100 part-number strings, the proportionate fix
+    is a small set of generated hard negatives (real product words plus a part
+    number, ~50-100 rows) added to the negatives with their own group tag so folds
+    and the FP list can tell them apart; if the share is small, do nothing. Does
+    not block any task before M6.
 
 ### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
 
@@ -996,6 +1062,17 @@ the "other seeds" cells) differ slightly, as expected when groups are encoded
 differently; the real-seed row matches exactly. Basis for 8.1 (assert families on
 the training side only), 8.5 (pooled per-family recall) and 11.16.
 
+### 13.15 Part-number-shaped queries in WANDS (2026-11-05, Python 3.12.16, stdlib `csv`/`re`)
+
+Over the 480 queries: 44 contain a digit. Tokens that mix letters and digits:
+`12v`, `18x18`, `5x6`, `70s`, `7qt`, `e12/candelabra`, `w003096809` (7 tokens, 7
+queries). Excluding measurement and spec forms (`18x18`, `7qt`, `70s`, `5x6`),
+**3 queries contain a code-like token** (`ines shag rug w003096809`,
+`e12/candelabra`, `12v dirt bike`), of which **one** (`w003096809`) is a SKU/part
+number in the sense of Q11. **Zero** queries are a bare SKU or part number, and
+zero are all digits. The negatives therefore contain almost no evidence that
+part-number shapes are legitimate; basis for 8.6 item 4, 11.23 and Q12.
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives
@@ -1015,6 +1092,10 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Calibration** of scores (not needed while the decision is a thresholded rank).
 - **Family E (off-topic natural language) as a training family**, if the
   evaluation-only run shows it is separable without new false positives.
-- **Off-domain shopping queries as a family**, if the user decides Q10 that way.
+- **Sequential enumeration** (a bot walking `sku000123`, `sku000124`, ...): each
+  query is a legitimate part number on its own (Q11), so a per-query text model
+  cannot see the pattern; it belongs to a rate or session check, with the
+  behavioural features above.
+- **Synthetic part-number hard negatives**, only if the user decides Q12 that way.
 - **Serving**: input contract (11.2) is the only serving decision taken; a model
   file format, latency budget and monitoring would come with a deployment decision.

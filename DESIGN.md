@@ -1447,8 +1447,8 @@ runs in every arm (8.6 item 5). Nits: "inner validation" wording (8.4, 8.5, 11.1
 11.11), no recall interval (8.5), five checks (8.6), vocabulary definition (2.2,
 rule 3), 13.19 deviation list, the near-duplicate share at 5,000 (10), balance
 wording (4). The user then confirmed the catalogue-gap failure rule (12.1 item 14)
-and approved the embedding probe (12.1 item 15; section 5 unchanged until it
-reports, 12.2 Q16).
+and approved the embedding probe (12.1 item 15; since resolved: embeddings
+abandoned for latency, section 5 unchanged, the SVD probe open as 12.2 Q17).
 
 ## 13. Probe findings and unverified assumptions
 

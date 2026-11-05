@@ -30,7 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T13.
+**Next task:** M3.T7.
 
 ### Order constraints
 
@@ -1075,7 +1075,7 @@ Sign-off: pending.
   - Changing test-side scores doesn't change the threshold.
   - Test-side strings equal the primary arm's for each repeat and fold.
 - **Depends on:** M3.T5.
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `8ca9124`. The `_test_result` refactor leaves the primary arm unchanged:
   a real fold gives byte-identical scores and the same `t` before and after. Real runs by `opus`, all 15
   comparison folds: test strings equal the primary arm's in 15 of 15; 0 of 75 inner training folds lose a
@@ -1083,23 +1083,12 @@ Sign-off: pending.
   rows removed, as LOFO will do, 0 of 300 lose another family or have a one-class held-out side. One real
   fold with a scratch logistic regression: 6 fits, `float64` scores, no overlap between fit and test side.
   A one-class held-out side raises `FoldError` from `check_fold`, not an sklearn crash; it never occurs on
-  the real data and isn't tested, accepted.
-- **Changes requested** (`opus` confirmed items 1-3 in a scratch copy):
-  1. `bqc/evaluate.py:438`: only the real queries' out-of-fold scores are checked, so a `NaN` on an
-     out-of-fold positive passes, against 11.30's "every score array". Call
-     `check_finite(out_of_fold, **context, score_set="out-of-fold scores")` before taking `[real]`, and add
-     a test with a `NaN` on a positive next to `tests/test_runner_comparison.py:197`.
-  2. `tests/test_runner_comparison.py:87`: the fake ignores what it was fitted on, so scoring the test side
-     with an inner model instead of the refit passes, and so does scoring held-out rows with an earlier
-     inner fold's model, which would leak. Add a test with a scorer recording what it scores: each inner
-     scorer scores nothing it fitted, the inner scorers together score every training row once, and the
-     last scores exactly `test_texts`.
-  3. `tests/test_runner_comparison.py:149`: the test passes for the right reason today (`training fold
-     lacks families ['D']`), but a `FoldError` for any other reason would pass too. Use `assertRaisesRegex`
-     on the family.
-  4. `tests/test_runner.py:111`: since the refactor `run_primary_fold` builds its own context for the
-     threshold check only, and swapping its repeat and fold passes. Assert the repeat, fold, arm and model
-     there too.
+  the real data and isn't tested, accepted. Corrected in `0faf062`, list in `ae52a87`: the whole
+  out-of-fold array is checked, as `out-of-fold scores`, and tests now pin which model scores what. All
+  mutations are caught except that one-class check. Process deviation
+  (F1): `sonnet`'s report on `0faf062` didn't paste the per-test lines and may have mistranscribed one
+  `AssertionError`; the coordinator re-ran the per-test command on the final state instead of returning it. The
+  failing stage of that commit therefore rests on the mutation run, not the report.
 
 ### M3.T7: Metrics and aggregation
 

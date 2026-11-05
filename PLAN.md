@@ -732,7 +732,13 @@ Sign-off: pending.
   - Spans are contiguous words of their product, and `product_id` and `k` match.
   - `token_occurrences` keeps repeats and order; the cap keeps the first 10,000.
 - **Depends on:** M1.T8, M2.T11.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `17ed0ac`. Real builds by `opus`: 5,000 spans take 0.34 s; 589,376
+  distinct spans are available, so exhaustion can't fire on real data at 40,000 or on half the catalogue.
+  Deduplication shifts the `k` shares a little: `k=1` 3.9-4.5% against 4.8%, `k=2` 20-21% against 22.7%,
+  mean words 3.47 against 3.38; 3.3% for `k=1` at 20,000. Minor, for the next edit of that file:
+  `test_cap_keeps_the_first_tokens` lands exactly on the cap, so it doesn't exercise the slice at
+  `bqc/negatives.py:132`.
 
 ### M2.T8: `bqc generate`
 
@@ -775,8 +781,10 @@ Sign-off: pending.
      generated positive, as its id and its maximum Jaccard, computed with the M2.T7 function. It holds
      no query text, and it never fails a run (rule 4, 8.6.1).
   10. The real run takes the sanity queries through `load_sanity` with the real WANDS queries, passed
-     as `[q.query for q in sanity.queries]`. Its near-duplicate and span audit counts and its runtime
-     go in the task report.
+     as `[q.query for q in sanity.queries]`, and gives `build_spans` the real queries, the real P strings
+     and those sanity queries: M2.T12's real run had the last two empty, so this is the first proof of
+     those filters on real data. Its near-duplicate and span audit counts, which count draws rather
+     than distinct strings, and its runtime go in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with spans and positives, with their metadata.
   - Length statistics, distinct counts, shortfalls, span audit counts, near-duplicate pairs and both

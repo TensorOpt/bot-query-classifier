@@ -496,18 +496,14 @@ Sign-off: pending.
 - **Depends on:** M2.T1.
 - **Status:** done
 - **Status note:** earlier review notes are in git, `428b969`; they aren't part of this task's brief.
-- **Changes requested (`opus`, 2026-11-05; rules 8 and 9; scope `fix(M2.T5)`):** all in `bqc/synth/spam.py`
-  and `tests/test_synth_spam.py`. The delegate chooses every replacement.
-  1. `_SPAM_ITEMS`: replace `followers`. `_CRYPTO_SEO`: replace the casino line. `_LABELS` and `_USERS`:
-     replace `promo` and `deals`.
-  2. Domains: label parts from `_LABELS`, plus the TLDs of rule 9: `.biz`, `.info`, `.xyz`, `.top`,
-     `.club`, `.online`, `.shop`, `.site`, `.com`, `.net`.
-  3. Phones: random area codes and random 7-digit shapes. Update the module docstring to match.
-  4. Remove real brand and product names (rule 9): `whatsapp` in `_CONTACT_VERBS` and
-     `viagra alternatives` in `_SPAM_ITEMS`.
-  5. Tests: replace `InertTextTest` and the `.example`/`555` patterns in the regexes. Over every
-     template, no output contains `.example`, `.test`, `.invalid` or `555-01`, and no token is a bare
-     digit run.
+- **Changes requested (`opus`, 2026-11-05, on `f78aca4`; rules 8 and 9; scope `fix(M2.T5)`; replaces the
+  earlier list):** the delegate chooses every replacement.
+  1. `bqc/synth/spam.py:17,19`: `topshop` and `coinflip` in `_LABELS` are real company names (rule 9).
+     Replace them with invented label parts.
+  2. `bqc/synth/spam.py:23`: `promo` is still in `_USERS`. Replace it.
+  3. `bqc/synth/spam.py:5`: the module docstring reads "only reserved invented text". Remove `only
+     reserved`.
+
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.

@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.9 (commit `0a29571`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.10 (commit `7482987`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -23,7 +23,8 @@ Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, are retired, and aren't reused.
 `M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
 appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
-order: M2.T9 was added later and comes before M2.T8. M1.T7 may run in parallel with M2.
+order: M2.T9 was added later and comes before M2.T8. M1.T7 may run in parallel with M2. In M2, the
+corrections run first, in this order, each validated before the next: M2.T2, M2.T3, M2.T5. Then M2.T6.
 
 ### Order constraints
 
@@ -385,7 +386,7 @@ Sign-off: pending.
     letter token, a punctuation-bearing token or a 5-block gibberish token pass. With `a` in the
     vocabulary, `a` fails and `aa` passes.
   - **Every digit-bearing token in family A has at least 4 letter/digit blocks, and family A's
-    hard-positive output has no digit (2.2).** `xk9qz7vplm` counts 5 blocks and `wf-2049x` 3.
+    hard-positive output has no digit (2.2).**
   - Every sample has its metadata.
   - A family with 5 templates, with a quota other than 20, or with one hard-positive
     template raises (rule 6).
@@ -398,9 +399,12 @@ Sign-off: pending.
 
 - **Goal:** generate keyboard mashing, random IDs and hash-like strings, plus hard
   positives, without producing part-number shapes.
-- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family A, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `7482987`: 2 (family A, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/gibberish.py`, `tests/test_synth_gibberish.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Exactly 6 templates, at least 2 hard-positive (rule 6). Covers mashing, repeated
      characters and UUID/hash-like strings, with hard positives such as
@@ -423,21 +427,40 @@ Sign-off: pending.
   Also remove `test_is_part_number_query_is_gone` from `tests/test_synth_registry.py`: asserting
   that a function is absent has no future value.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** done
+- **Changes requested (`opus`, 2026-11-05; rule 8; scope `fix(M2.T2)`):** nothing about the templates'
+  shapes or ranges changes.
+  1. `tests/test_synth_gibberish.py`: remove `IsolationTest.test_no_template_emits_a_sanity_query`,
+     and the imports only it uses. Keep `test_no_output_is_a_part_number_shape`.
+  2. `bqc/synth/gibberish.py`: in the docstrings of `_mash_token`, `_repeat_token` and `_alnum_token`,
+     remove every mention of the sanity set and its strings.
 
 ### M2.T3: Family B, injection and probing payloads
 
 - **Goal:** generate scanner payloads, plus hard positives.
-- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family B, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `7482987`: 2 (family B, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers SQL, script, template, path-traversal and
   NoSQL patterns, with hard positives such as `leather sofa' union select`.
   Registered with family `B`. Payloads are only ever generated as text, never executed.
 - **Tests:** registry tests pass for this family; each pattern kind appears in the
   output; payload characters survive lowercasing.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** done
+- **Changes requested (`opus`, 2026-11-05; rule 8; scope `fix(M2.T3)`):** two delegations, so that
+  the one writing new payloads hasn't seen the text being removed.
+  1. **Removal, first delegation:**
+     - `bqc/synth/payloads.py`: remove the JNDI form from `_template` and the `drop` kind from
+       `_sql_payload`, and every mention of the sanity set from the docstrings of `_sql_payload`,
+       `_script`, `_template` and `_traversal`.
+     - `tests/test_synth_payloads.py`: remove `SanityIsolationTest`, and the `drop table` and
+       `${jndi:` markers and the `drop table` alternative in `SQL_RE`.
+  2. **Replacement, second delegation, with a brief as above:** add one SQL kind to `_sql_payload` and
+     one form to `_template`, of the delegate's choosing, each with a test that it appears.
 
 ### M2.T4: Family C, enumeration and scraping
 
@@ -446,6 +469,9 @@ Sign-off: pending.
 - **Design refs:** `DESIGN.md` `0a29571`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
 - **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** registered with family `C`, with exactly the six templates of 2.2:
   1. dictionary walks (1-2 letters), skipping vocabulary tokens (2.2);
   2. URL paths;
@@ -471,30 +497,41 @@ Sign-off: pending.
 
 - **Goal:** generate URLs, emails, phone numbers and promotional phrases, plus hard
   positives.
-- **Design refs:** `DESIGN.md` `0a29571`: 2 (family D, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `7482987`: 2 (family D, hard positives), 2.2, 4 (rules 8, 9).
 - **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers each
   listed kind, with hard positives such as `cheap area rug http://x.co`. Registered with
-  family `D`. Phone numbers are never a bare digit run (2.2).
+  family `D`. Phone numbers are never a bare digit run (2.2). Domains and numbers follow rule 9.
 - **Tests:** registry tests pass for this family; each kind appears in the output; the phone
   template's output never matches the part-number regex.
 - **Depends on:** M2.T1.
 - **Status:** done
-- **Pending `fable`'s ruling (`opus`, 2026-11-05, on `c0dcd80`):** the criteria are met, but it isn't
-  validated until these two points are ruled on.
-  1. **Reserved strings:** `exam`, `xamp`, `.exa` and `555-` carry weights of 0.36 to 0.49 in a scratch
-     model. Should templates use invented non-reserved domains and non-555 numbers?
-  2. **Sanity independence:** `followers`, `casino bonus free spins` and `promo-deals` trace only to
-     `data/sanity.csv`; so does `${jndi:ldap://...}` in M2.T3. Should they be replaced, and should
-     briefs forbid opening that file while authoring templates?
-
+- **Status note:** earlier review notes are in git, `428b969`; they aren't part of this task's brief.
+- **Changes requested (`opus`, 2026-11-05; rules 8 and 9; scope `fix(M2.T5)`):** all in `bqc/synth/spam.py`
+  and `tests/test_synth_spam.py`. The delegate chooses every replacement.
+  1. `_SPAM_ITEMS`: replace `followers`. `_CRYPTO_SEO`: replace the casino line. `_LABELS` and `_USERS`:
+     replace `promo` and `deals`.
+  2. Domains: label parts from `_LABELS`, plus the TLDs of rule 9: `.biz`, `.info`, `.xyz`, `.top`,
+     `.club`, `.online`, `.shop`, `.site`, `.com`, `.net`.
+  3. Phones: random area codes and random 7-digit shapes. Update the module docstring to match.
+  4. Remove real brand and product names (rule 9): `whatsapp` in `_CONTACT_VERBS` and
+     `viagra alternatives` in `_SPAM_ITEMS`.
+  5. Tests: replace `InertTextTest` and the `.example`/`555` patterns in the regexes. Over every
+     template, no output contains `.example`, `.test`, `.invalid` or `555-01`, and no token is a bare
+     digit run.
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.
-- **Design refs:** `DESIGN.md` `0a29571`: 2 (family E, 2.1), 2.2, 4.
+- **Design refs:** `DESIGN.md` `7482987`: 2 (family E, 2.1), 2.2, 4 (rule 8).
 - **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Generated by the same machinery, with `family="E"`, exactly 6 templates of 20 and at
      least 2 hard-positive (rule 6).
@@ -512,7 +549,7 @@ Sign-off: pending.
 
 - **Goal:** fail on exact collisions with negatives or sanity queries, report
   near-duplicates, and log length distributions.
-- **Design refs:** 4 (rules 2 and 4), 8.6.1 (independence paragraph), 11.7.
+- **Design refs:** `DESIGN.md` `7482987`: 4 (rules 2 and 4), 8.6.1 (independence paragraph), 11.7.
 - **Files:** `bqc/synth/audit.py`, `tests/test_synth_audit.py`.
 - **Acceptance criteria:**
   1. A positive identical, after `normalise()`, to a negative **or to a sanity query**
@@ -520,13 +557,14 @@ Sign-off: pending.
      on its own, because it runs on every generation, including the per-fold ones (rule
      4, M3.T3). The sanity queries come from the M1.T6 loader, which exposes them
      regardless of label state.
-  2. Every positive-negative pair with character-3-gram Jaccard above 0.6 is reported. This
-     report runs only in `bqc generate` (rule 4) and covers negatives only.
+  2. One function reports every pair of positive and other string with character-3-gram Jaccard
+     above a given threshold. `bqc generate` is its only caller and uses it twice: negatives at 0.6,
+     sanity queries at 0.5 (rule 4, M2.T8). Neither threshold fails a run.
   3. Length statistics are returned per family, alongside those of WANDS.
 - **Tests:**
   - Identical pair; pair differing only in case and whitespace; the same two cases
     against a sanity fixture query (the fixture is not the real file).
-  - Jaccard exactly 0.6 (not reported) and just above it (reported).
+  - Jaccard exactly at the threshold (not reported) and just above it (reported), at 0.6 and at 0.5.
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
 - **Depends on:** M1.T3, M1.T6, M2.T1.
 - **Status:** todo
@@ -536,19 +574,20 @@ Sign-off: pending.
 - **Goal:** generate the 100 legitimate part-number strings for the diagnostic of 8.6 item 4.
 - **Design refs:** 2 (SKU row), 2.2, 8.6 (item 4), 11.23, 13.15.
 - **Files:** `bqc/synth/partnumbers.py`, `tests/test_synth_partnumbers.py`.
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2, 4 and 8.6
+  item 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file
+  or `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Generates 100 distinct strings, `family="P"`, label 0, seeded, with `template_id` and
-     `seed` metadata, 25 per shape: bare prefix+digits (`sku000123`), bare digit runs,
-     prefix-digits-suffix (`wf-2049x`), and product words plus a part number
-     (`ines shag rug w003096809`).
+     `seed` metadata, 25 per shape: bare prefix+digits (`ab004512`), bare digit runs,
+     prefix-digits-suffix (`bf-7731x`), and product words plus a part number
+     (`leather sofa w003412`).
   2. Product words come from a vocabulary argument; the callers pass the occurrence list of all
      480 negatives (8.3).
   3. It isn't a registered positive family, so it is outside the 480 and the 600, the rule 6
      template check, the 2.2 registry assertions and the Jaccard report.
   4. It must not collide with a WANDS or sanity query after `normalise()`: it reuses the
-     exact-match check of M2.T7. The examples above can't be emitted as they stand:
-     `sku000123` is a sanity query and `ines shag rug w003096809` is a WANDS query. On a
-     collision the generator changes, never the sanity file.
+     exact-match check of M2.T7. On a collision the generator changes, never the sanity file.
 - **Tests:**
   - Exactly 100 distinct strings; 25 per shape; each has `family="P"` and label 0.
   - The first three shapes match the part-number regex as a whole, and the last token of the
@@ -565,7 +604,7 @@ Sign-off: pending.
 
 - **Goal:** generate the full-vocabulary positives from the command line and write the
   report for inspection by eye.
-- **Design refs:** `DESIGN.md` `0a29571`: 4, 8.3, 10, 13.17.
+- **Design refs:** `DESIGN.md` `7482987`: 4, 8.3, 8.6.1, 10, 13.17.
 - **Files:** `bqc/report.py`, `bqc/cli.py`, `tests/test_report.py`,
   `tests/test_cli_generate.py`.
 - **Acceptance criteria:**
@@ -589,7 +628,10 @@ Sign-off: pending.
   6. In the real run, every one of the 600 outputs has a non-benign token against the vocabulary of
      all 480 negatives, which the contract's synthetic vocabulary can't show (2.2). A fold's
      vocabulary is a subset of it, so a fixed marker that passes here passes in every fold.
-  7. The real run passes the audit, with the real sanity queries, loaded through `load_sanity`
+  7. The report lists, report-only, every sanity query with character-3-gram Jaccard above 0.5 to any
+     generated positive, as its id and its maximum Jaccard, computed with the M2.T7 function. It holds
+     no query text, and it never fails a run (rule 4, 8.6.1).
+  8. The real run passes the audit, with the real sanity queries, loaded through `load_sanity`
      with the real WANDS queries, among the checked lists, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
@@ -601,6 +643,8 @@ Sign-off: pending.
   - Collision with a negative, or with a sanity fixture query, exits non-zero, for a family E
     sample too.
   - Missing raw file exits non-zero.
+  - With a sanity fixture: a query just above 0.5 is listed with its id and maximum Jaccard, one at 0.5
+    isn't, and the run still exits zero.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9.
 - **Status:** todo
@@ -737,7 +781,7 @@ Sign-off: pending.
 ### M3.T7: Metrics and aggregation
 
 - **Goal:** compute every number in 8.5 from fold results.
-- **Design refs:** 8.1, 8.4, 8.5, 13.13, 13.14.
+- **Design refs:** `DESIGN.md` `7482987`: 8.1, 8.4, 8.5, 13.13, 13.14.
 - **Files:** `bqc/evaluate.py`, `tests/test_metrics.py`.
 - **Acceptance criteria:**
   1. Per repeat and pooled: headline recall and achieved FPR, Wilson 95% CI (standard
@@ -755,15 +799,18 @@ Sign-off: pending.
   4. The per-fold breakdown records each family's test count and caught count, with recall
      `null` where the count is 0. A family with zero test samples in a fold is normal (13.14)
      and doesn't raise or divide by zero.
-  5. The full list of false positives, each with the raw WANDS query string as stored in
+  5. One-word false positives: per model, the count flagged out of the one-word negatives, and the words
+     (23 in real WANDS; 8.5).
+  6. The full list of false positives, each with the raw WANDS query string as stored in
      `query.csv` (8.5).
-  6. No metric feeds any selection.
+  7. No metric feeds any selection.
 - **Tests:**
   - Wilson against the 13.13 values, to 5 decimals: `0/480`, `5/480`, `1/96`, `0/30`,
     `480/480`, including `k = 0` and `k = n`.
   - Pooled total 15 over 3 repeats gives point 15/1440 and interval `[0.00446, 0.02415]`,
     not the `15/1440` row. Pooled total 0 gives upper bound 0.00794.
   - Non-integer `k` (total 16) gives bounds between those of `5/480` and `6/480`.
+  - Hand-computed one-word count and words, with a one-word query counted once after `normalise()`.
   - Hand-computed confusion matrix and pooled per-family recall.
   - A fold where a family has zero test samples: count 0, caught 0, recall `null`, and the
     pooled recall is unaffected by it.
@@ -846,7 +893,7 @@ Sign-off: pending.
   1. **Blank or partial file:** the message is printed, the run JSON records
      `"sanity": {"status": "skipped", "unlabelled": n}`, and everything else proceeds.
   2. **Fully labelled file:** reports the raw-count confusion matrix and the full list of
-     disagreements (query, user's label, model's score), per configuration, using the
+     disagreements (id, query, user's label, model's score), per configuration, using the
      threshold of M3.T10. There is no macro F1, ROC-AUC, confidence interval or decimal
      rate.
   3. A duplicate of a WANDS query fails the run with the offending `id` (11.21). The loader is
@@ -1093,7 +1140,7 @@ Sign-off: pending.
 
 - **Goal:** produce the v1 numbers and hand them to `fable`, who records them in the M6
   sign-off (12.3).
-- **Design refs:** 6.2, 6.3, 7, 8.5, 8.6, 9, 12.2 (Q12), 13.2, 13.9, 13.15.
+- **Design refs:** `DESIGN.md` `7482987`: 6.2, 6.3, 7, 8.5, 8.6, 9, 12.2 (Q12), 13.2, 13.9, 13.15.
 - **Files:** none committed (`results/` is gitignored), apart from this task's status.
 - **Acceptance criteria:**
   1. `fetch`, `generate`, `evaluate` (with `--lofo` and the SMOTE comparison) and `cluster`
@@ -1104,13 +1151,15 @@ Sign-off: pending.
      rules, including noise fraction.
   3. The false-positive list is included, and reviewed by eye for queries that look
      machine-generated (13.2, 13.9).
-  4. The sanity section is reported per configuration: its raw-count confusion matrix and full
-     list of disagreements.
+  4. The sanity section is reported per configuration, twice: over all 50 rows, and over the rows at or
+     below Jaccard 0.5 in the `generate` report, naming the excluded ids (8.6.1). Each gives the
+     raw-count confusion matrix and full list of disagreements.
   5. **Part-number diagnostic:** the report gives, per model, the fraction flagged and the min,
      median and max score, next to the model's result on the three part-number rows of the
      sanity set (ids 16, 39, 43). It states these so the user can answer Q12. The answer isn't
      needed for `done`.
-  6. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
+  6. **One-word false positives:** per model, the count flagged out of 23, and the words (8.5).
+  7. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
      this is reported as a finding. The rework is `fable`'s decision (6.3, 8.6), and this
      task doesn't change generators.
 - **Tests:** none (no code). The determinism test of M4.T4 covers reproducibility.

@@ -2,8 +2,8 @@
 
 Six templates: four spam templates (bare URLs, email addresses, phone numbers,
 promotional / crypto / SEO phrases) and two hard positives (product words next to a
-URL, product words next to a contact detail). Output is inert text: only reserved
-invented text built at run time and never fetched or dialled (rule 9): domains are
+URL, product words next to a contact detail). Output is inert text: invented
+text built at run time and never fetched or dialled (rule 9): domains are
 label parts plus a common spam TLD, phone numbers use random area codes and random
 7-digit shapes. No phone number is a bare digit run (2.2).
 """

@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.2, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.3, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -466,7 +466,9 @@ sublinear_tf=True, min_df=2)`, fitted inside each training fold only.
   exactly the characters that distinguish families B and C.
 - Char n-grams see punctuation sequences, digit runs, and letter-pair plausibility
   (gibberish), and degrade gracefully on out-of-vocabulary words.
-- `(1, 4)` with `min_df=2` gives ~5.2k features on 960 strings (13.3); `(2, 5)` gives
+- `(1, 4)` with `min_df=2` gives ~5.2k features on the 960 strings of the
+  comparison arm (13.3) and **24,056-29,728 features per fold in the primary arm**
+  at 5,000 spans plus 5,000 positives (13.21); `(2, 5)` gives
   ~6.4k with no obvious benefit at this size. `analyzer="char"` rather than
   `"char_wb"` so that cross-token patterns like `' or` are kept.
 - `min_df=2` removes n-grams that occur in one string only; these can only memorise.
@@ -1353,8 +1355,15 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     1.67% [0.85, 3.25] passes and is reported as "point estimate above target".
 15. **Embedding probe (2026-11-05).** The user approved a read-only probe of a
     1024-dimension embedding model as a possible replacement for the TF-IDF
-    features of section 5. Nothing is decided; section 5 stays as it is until the
-    probe reports (12.2, Q16).
+    features of section 5. **Resolved the same day: embeddings are abandoned
+    because of their added latency** (about 100 ms per query against 0.21 ms for
+    TF-IDF, as reported to the user), although the probe showed a real accuracy
+    gain (13.21). Work continues with TF-IDF; section 5 is unchanged; section 6's
+    no-PyTorch decision stands.
+16. **SVD (2026-11-05).** The user wants truncated SVD on the TF-IDF features
+    tried. A read-only probe is running in the scratch directory; it is an
+    experiment, section 5 stays as it is, and no milestone waits for it (12.2,
+    Q17).
 
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
@@ -1374,13 +1383,18 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     number, ~50-100 rows) added to the negatives with their own group tag so folds
     and the FP list can tell them apart; if the share is small, do nothing. Does
     not block any task before M6.
-16. **Embedding features instead of TF-IDF?** A read-only probe of a
-    1024-dimension embedding model is running (user approval, 12.1 item 15).
-    Section 5 is unchanged until it reports. What the probe must show to change
-    the design: a paired gain in recall at FPR <= 1% on the same folds and test
-    strings as 13.19 that clears the 7.1 rule, the catalogue-gap check not worse,
-    and a stated cost (model size, dependency, fit and scoring time) that fits an
-    experiment-sized project. Blocks nothing before M4.
+17. **Truncated SVD on the TF-IDF features?** (Q16, embeddings, was resolved by
+    the user: abandoned for latency, 12.1 item 15.) A read-only probe of
+    `TruncatedSVD` applied to the section 5 features before the estimator is
+    running (12.1 item 16). What it must show to change section 5: a paired gain
+    in recall at FPR <= 1% on the same folds and test strings as 13.21 (logistic
+    regression, 5,000 spans) that clears the 7.1 rule, or an equal result with a
+    stated benefit (fewer features, faster MLP fits) that matters to the runtime
+    budget of 10; the catalogue-gap check and the one-word false positives not
+    worse; the achieved FPR within noise of the TF-IDF arm; and a per-query
+    scoring cost that stays within a millisecond, since latency is what ruled out
+    embeddings. Dimensions tried and the fit time of the SVD itself are part of
+    the cost. Blocks nothing; M3 proceeds on section 5 as written.
 
 ### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
 
@@ -1685,7 +1699,9 @@ Arms at 20,000 negatives unless noted (BASE = v1 protocol, 384 / 384):
 | BP real + P2 spans | 1.32 [0.62, 2.79] | 85.6 | 21.8 | .9798 | 3.8 | 4.33 | 37 |
 
 The three bare part-number shapes were flagged 100% in every arm. Paired P2 vs
-BASE over 15 folds: FPR +0.21 pp [-0.49, +0.90], recall +12.4 pp [+6.2, +18.9],
+BASE (intervals from the probe's bootstrap over queries and templates in
+`compare.py` and `analyze.py`, not from the 15 folds): FPR +0.21 pp [-0.49, +0.90],
+recall +12.4 pp [+6.2, +18.9],
 AUC +.0198 [+.0043, +.0399], FPR at 90% recall -6.9 pp [-15.3, -0.8]. No arm has
 lower FPR than BASE at the 1% target; P3 and P4 add nothing clear over P2; BP
 shows no gain and more false positives (rejected); P1's score distribution does not
@@ -1739,6 +1755,34 @@ template short, 0 audit drops, 2 near-duplicate pairs, 3 sanity ids above 0.5.
 Sonnet's first attempt (traversal depth 2) tripped the sanity gate; the author
 was told only to restore the validated minimum of 3, which is at most one bit of
 information about the sanity set (rule 8, recorded).
+
+### 13.21 Embedding probe (2026-11-05, probe agent, read-only; numbers checked by `fable` against its `analysis.txt` and `extras.txt`)
+
+Logistic regression on 5,000 product spans and matched positives (design v2.0
+templates), the 8.2 cross-fit protocol, 5 x 3 folds; arms: `T` = section 5 TF-IDF,
+`E` = a 1,024-dimension sentence embedding, `TE` = both concatenated, `EM` = the MLP
+on `E`. Intervals are bootstraps over queries and templates.
+
+| arm | FPR % [Wilson] | recall % at FPR <= 1% | E % | AUC | FPR at 90% recall | features per fold |
+|---|---|---|---|---|---|---|
+| T | 0.76 [0.29, 2.02] | 81.7 | 18.4 | .9729 | 6.46 | 24,056-29,728 |
+| E | 0.69 [0.25, 1.92] | 88.7 | 60.9 | .9921 | 0.83 | 1,024 |
+| TE | 0.83 [0.32, 2.12] | 91.5 | 49.9 | .9942 | 0.62 | 25,080-30,752 |
+| EM | 0.56 [0.18, 1.72] | 90.1 | 55.3 | .9881 | 0.76 | 1,024 |
+
+Paired `TE - T`: FPR +0.07 pp [-0.83, +1.04], recall +9.9 pp [+1.7, +19.5], AUC
++.0213 [+.0066, +.0392], FPR at 90% recall -5.8 pp [-15.1, -0.2]; family B +22.1
+pp and family E +31.5 pp (both beyond a Bonferroni correction), family C -4.4 pp
+(the dictionary-walk template collapses under embeddings: `C.walk` 84% -> 46%,
+5% with `E` alone). Catalogue gap: T 1.39% [0.66, 2.89] vs TE 1.46% [0.71, 2.98],
+recall 83.4 vs 93.9. One-word false positives 3.0/23 (T) vs 1.7 (TE), within
+noise. Part numbers: embeddings flag bare digit runs less (-20 to -48 pp) but
+`words + part number` more (+16 to +25 pp). The gain concentrates in the hard
+positives (+17 pp) and `D.promo` (+83 pp). Latency as reported to the user: about
+0.21 ms per query for TF-IDF against about 100 ms for the embedding model (the
+output files carry per-fold feature times, 0.21-0.24 s for T against 0.06-0.93 s
+for E on cached vectors, not the per-query figure). **Decision: abandoned by the
+user for latency** (12.1 item 15), the accuracy gain notwithstanding.
 
 ## 14. Later (deferred, not in scope)
 

@@ -257,9 +257,13 @@ these six steps, in this order, in one function with one home
 1. Remove every character whose Unicode category is `Cc` (control) or `Cf` (format,
    which includes zero-width characters) **unless `str.isspace()` is true for it**.
    So `\t` and `\n` survive this step and `a\tb` becomes `a b` in step 5, while
-   U+200B and U+FEFF are deleted. This runs **before** NFKC so that a sequence the
-   removal leaves adjacent (`e` + U+200B + U+0301 -> `e` + U+0301) is composed by
-   the next step instead of being left for a second call to compose (13.16).
+   U+200B and U+FEFF are deleted. Removal before the first NFKC is the specified
+   order; with step 4 present, no known input distinguishes it from removing after
+   the first NFKC or collapsing earlier (`opus` searched every code point in six
+   embeddings and 500,000 random strings, 2026-11-05), so the behaviour tests
+   cannot pin this position and validation checks it by reading the code. The
+   behaviour that matters (`e` + U+200B + U+0301 -> `é`, stable on a second call)
+   is pinned by test (13.16).
 2. Unicode NFKC normalisation (`unicodedata.normalize("NFKC", s)`).
 3. Lowercase with `str.lower()` (the same operation `TfidfVectorizer(lowercase=True)`
    applies, so the two agree).
@@ -285,13 +289,18 @@ normalise(s)` held for every class probed in 13.16 (every single code point, eve
 code point followed by a combining mark, base + format character + mark for every
 `Cf` character, 200,000 random mixed strings, strings straddling the truncation
 boundary) and failed for none. No exhaustive proof over all strings exists, so the
-rule for callers is: **every string is normalised exactly once, at the boundary
-where it enters the package** (the WANDS loader, the sanity loader, the generator
-registry on output, and the `Scorer` adapters on ad-hoc input), and later code
-passes normalised strings through. Idempotence is a safety net that makes a double
-call harmless, not a licence to normalise at every layer. Applied identically to
-negatives, positives and the sanity set. An empty string after preprocessing is a
-valid input (11.1).
+rule for where it runs (settled 2026-11-05) is: **loaders return raw text; the
+`Scorer` adapters normalise every text they receive, in both `fit` and `score`.**
+The WANDS and sanity loaders do not normalise (the raw query is the record, and
+the FP list in 8.5 shows it as typed); comparisons that need normal form (the
+sanity-vs-WANDS duplicate check, the generator exact-match audit, the fold
+vocabulary) call `normalise()` on both sides at the point of comparison; the
+generator registry emits strings for which `normalise(s) == s` already holds and
+asserts it. So pipeline strings reach an adapter once, raw, and are normalised
+there, exactly like ad-hoc input; the adapter cannot and need not tell the two
+apart. Idempotence is the safety net that makes any extra call harmless. Applied
+identically to negatives, positives and the sanity set. An empty string after
+preprocessing is a valid input (11.1).
 
 ## 6. Models
 
@@ -493,8 +502,10 @@ For each model x SMOTE setting, per repeat and pooled:
   exactly one test fold per repeat); for E, which is scored in every outer fold,
   they are 120 per fold, 600 per repeat and 1800 overall. The per-fold breakdown in the JSON records each family's test
   count and caught count, with recall `null` where the count is 0.
-- The list of all false positives (the actual WANDS queries that would be discarded).
-  With ~5 FPs at 1% this list *is* the most useful output of the whole project.
+- The list of all false positives (the actual WANDS queries that would be discarded,
+  as stored in `query.csv`: the loader does not normalise, section 5, so the three
+  double-space queries appear with their double space). With ~5 FPs at 1% this
+  list *is* the most useful output of the whole project.
 
 Macro F1 and ROC-AUC are reported because the user asked for them; they are not used
 for any selection. Selection (threshold) uses only FPR on inner validation data.

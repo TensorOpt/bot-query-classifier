@@ -222,3 +222,7 @@ __marimo__/
 
 # Throwaway probe scripts (see CLAUDE.md)
 scratch/
+
+# Project data and outputs (DESIGN.md section 10)
+data/raw/
+results/

@@ -160,7 +160,7 @@ Sign-off: pending.
      1.9.1, numpy 2.5.4, imbalanced-learn 0.14.2).
 - **Tests:** `SEED == 20261105`; an unknown command exits non-zero.
 - **Depends on:** M1.T1 (schedule order only).
-- **Status:** todo
+- **Status:** done
 
 ### M1.T3: `normalise()`
 

@@ -732,7 +732,7 @@ Sign-off: pending.
   - Spans are contiguous words of their product, and `product_id` and `k` match.
   - `token_occurrences` keeps repeats and order; the cap keeps the first 10,000.
 - **Depends on:** M1.T8, M2.T11.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T8: `bqc generate`
 

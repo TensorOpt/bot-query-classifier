@@ -422,7 +422,7 @@ Sign-off: pending.
   Also remove `test_is_part_number_query_is_gone` from `tests/test_synth_registry.py`: asserting
   that a function is absent has no future value.
 - **Depends on:** M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T3: Family B, injection and probing payloads
 

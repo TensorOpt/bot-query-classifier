@@ -1,1 +1,2 @@
 """Synthetic positive generators (DESIGN.md sections 2 and 4)."""
+from bqc.synth import gibberish  # noqa: F401  (registers family A)

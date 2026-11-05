@@ -20,7 +20,7 @@ from synth_stubs import build_family, build_registry, gibberish, letters
 ROOT = Path(__file__).resolve().parent.parent
 # Families whose templates are registered; each of M2.T2-T6 adds its family here
 # and imports its module in bqc/synth/__init__.py (M2.T1 criterion 8).
-IMPLEMENTED_FAMILIES = ()
+IMPLEMENTED_FAMILIES = ("A",)
 # Fold-sized, with the short WANDS words and number tokens that are vocabulary words.
 FOLD_VOCAB = [
     "".join(chr(97 + (i // 26 ** p) % 26) for p in range(3)) for i in range(384)
@@ -75,9 +75,6 @@ class HelpersTest(unittest.TestCase):
             self.assertTrue(reg.PART_NUMBER_RE.match(t), t)
         for t in ["xk9qz7vplm", "12", "sofa", "abcde123", "a1b2c3"]:
             self.assertFalse(reg.PART_NUMBER_RE.match(t), t)
-
-    def test_is_part_number_query_is_gone(self):
-        self.assertFalse(hasattr(reg, "is_part_number_query"))
 
     def test_number_shaped_regex_matches_wands_forms(self):
         for t in ["72", "w003412", "sku000123", "wf-2049x", "18x18", "3/4", "72.5",

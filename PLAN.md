@@ -883,7 +883,8 @@ Sign-off: pending.
   - After fitting on a training split, no n-gram exclusive to the test split is in the
     vocabulary (11.9).
 - **Depends on:** M1.T3.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `540e125`.
 
 ### M3.T2: `Scorer` port and fake
 

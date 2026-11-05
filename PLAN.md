@@ -812,17 +812,12 @@ Sign-off: pending.
   hard-positive word slots against 16.8% of span occurrences. `--negatives-size` below 24 is a usage
   error (no render per template). Real-data proof of the span filter: all 50 sanity queries and 100 P
   strings reached `build_spans`, and at 20,000 and 40,000 spans it removed 2 and 4 spans for sanity.
-- **Changes requested (`opus`, 2026-11-05, on `aeb7f41`; scope `fix(M2.T8)`):** the code is correct. These
-  behaviours have no test: each mutation below passes `tests/test_cli_generate.py`.
-  1. `bqc/cli.py:180`: passing `[]` instead of the sanity queries, or instead of the P strings, to
-     `build_spans`. Test through `build_generate_report` with fixture products that make a span equal to
-     a sanity fixture query and to a P string: both are dropped and counted under their kinds.
-  2. `bqc/cli.py:278`: printing the `SanityError` message instead of withholding it. Test with a fixture
-     whose query equals a WANDS fixture query: exit 1, and the query text is absent from stderr.
-  3. `bqc/cli.py:217`: adding the P strings to the near-duplicate pairs (criterion 3). Test that
-     `near_duplicates` receives no P text, or a fixture where a P string is near a span.
-  4. `bqc/cli.py:182`: removing the vocabulary cap. Test with a small patched `VOCABULARY_CAP` that
-     `span_occurrences` equals it.
+- **Changes requested (`opus`, 2026-11-05, on `ffc6694`; scope `fix(M2.T8)`; replaces the earlier list in
+  `a57249b`):** the rest of that list is done.
+  1. `tests/test_cli_generate.py:292`: `test_near_duplicates_against_spans_never_see_p_strings` checks only
+     the second argument. The mutation `near_duplicates(texts + p_texts, span_texts, ...)` at
+     `bqc/cli.py:217` still passes it. Assert that no P string is in either argument of any
+     `near_duplicates` call, including the sanity overlap at 0.5.
 
 ---
 

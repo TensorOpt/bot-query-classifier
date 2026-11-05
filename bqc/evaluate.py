@@ -5,13 +5,15 @@ Fold units are the real queries (one group each) and the training templates
 """
 import math
 from collections import Counter
-from collections.abc import Iterator, Sequence
+import warnings
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any, NamedTuple
 
 import numpy as np
 from sklearn.model_selection import StratifiedGroupKFold
 
 from bqc import SEED
+from bqc.models import Scorer
 from bqc.negatives import DEFAULT_N, VOCABULARY_CAP, build_spans, token_occurrences
 from bqc.synth.audit import SanityCollision, screen_samples
 from bqc.synth.registry import (
@@ -299,3 +301,81 @@ def select_threshold(scores: Sequence[float], target_fpr: float) -> Threshold:
     if target_fpr < 1 / n:
         warning = f"target_fpr {target_fpr} is below the resolution 1/{n} of the scores"
     return Threshold(best[0], best[1], unmet, warning)
+
+
+class NonFiniteScoreError(ValueError):
+    """A score array held NaN or an infinity (11.30)."""
+
+
+def check_finite(
+    scores: Sequence[float],
+    repeat: int,
+    fold: int,
+    arm: str,
+    model: str,
+    score_set: str,
+) -> np.ndarray:
+    """Return `scores` as an array; raise NonFiniteScoreError on any NaN or inf (11.30).
+
+    The message names the repeat, fold, arm, model and score set.
+    """
+    array = np.asarray(scores, dtype=float)
+    if not np.isfinite(array).all():
+        raise NonFiniteScoreError(
+            f"non-finite score in {score_set} (repeat {repeat}, fold {fold}, arm {arm}, "
+            f"model {model})")
+    return array
+
+
+class FoldResult(NamedTuple):
+    """One fold's scores at one arm, with the threshold they were judged against.
+
+    `test_scores` line up with the fold's `test_texts`, `test_y`, `test_families` and
+    `test_groups`, copied here unchanged. `fit_warnings` are the warnings raised by
+    `fit`, as "Category: message" (11.12).
+    """
+    repeat: int
+    fold: int
+    arm: str
+    model: str
+    threshold: Threshold
+    test_scores: np.ndarray
+    test_y: list[int]
+    test_families: list[str | None]
+    test_groups: list[tuple[str, str] | None]
+    fit_warnings: list[str]
+
+
+def run_primary_fold(
+    data: FoldData,
+    make_scorer: Callable[[], Scorer],
+    target_fpr: float,
+    model: str,
+) -> FoldResult:
+    """Cross-fit one primary-arm fold (8.2): fit once on `data.train_texts`, set `t` from
+    the scores of `data.threshold_texts` (training-side real queries, not in the fit),
+    and score the test side, which includes family E. Every score array goes through
+    `check_finite`. Warnings raised by `fit` are returned, not raised (11.12).
+    Raises ValueError if `data` is not the primary arm.
+    """
+    if data.arm != PRIMARY:
+        raise ValueError(f"run_primary_fold needs the {PRIMARY!r} arm, got {data.arm!r}")
+    context = dict(repeat=data.repeat, fold=data.fold, arm=data.arm, model=model)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        scorer = make_scorer().fit(data.train_texts, data.train_y)
+    fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
+    threshold = select_threshold(
+        check_finite(scorer.score(data.threshold_texts), **context,
+                     score_set="threshold queries"),
+        target_fpr)
+    scores = np.asarray(scorer.score(data.test_texts), dtype=float)
+    for score_set, family_matches in (
+            ("test queries", lambda f: f is None),
+            ("E", lambda f: f == EVAL_FAMILY),
+            ("test positives", lambda f: f is not None and f != EVAL_FAMILY)):
+        rows = [family_matches(f) for f in data.test_families]
+        check_finite(scores[rows], **context, score_set=score_set)
+    return FoldResult(
+        data.repeat, data.fold, data.arm, model, threshold, scores,
+        list(data.test_y), list(data.test_families), list(data.test_groups), fit_warnings)

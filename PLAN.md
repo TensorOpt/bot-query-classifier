@@ -1035,7 +1035,7 @@ Sign-off: pending.
   - Across a repeat, each real query is a test item exactly once.
   - A fake emitting `ConvergenceWarning` is captured, not raised (11.12).
 - **Depends on:** M3.T2, M3.T3, M3.T4.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T13: Nested runner (comparison arm)
 

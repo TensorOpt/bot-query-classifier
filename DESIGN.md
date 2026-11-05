@@ -1,8 +1,9 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.2, 2026-11-05. The user answered the v1 open questions
-(12.1); `opus`'s eight plan-review questions are resolved in 12.3 and applied in the
-body. One question (12.2, Q10) is still open and does not block planning.
+Owner: `fable`. Status: v1.3, 2026-11-05. The user answered the v1 open questions
+(12.1); `opus`'s plan-review questions and additions are resolved in 12.3 and
+applied in the body. One question (12.2, Q10) is still open and does not block
+planning.
 
 Each decision is written as **Decision** / **Rationale**. Unverified assumptions and
 probe findings live in section 13. Deferred ideas live in section 14 ("Later").
@@ -314,8 +315,11 @@ Without `--smote` there is no SMOTE arm and no comparison section.
 
 **Verdict rule.** The report computes a boolean `smote_justified` per model: true
 only if the mean paired difference in headline recall is positive **and** exceeds
-twice its standard error (`sd / sqrt(15)`), **and** the mean paired difference in
-achieved FPR is not positive. Otherwise the difference is "within fold-to-fold
+twice its standard error (`sd / sqrt(15)`, where `sd` is the **sample standard
+deviation of the 15 paired differences, `ddof=1`**, i.e. `statistics.stdev`),
+**and** the mean paired difference in achieved FPR is not positive. The callable
+`sampling_strategy` is a **module-level function** (not a lambda or closure) so a
+fitted SMOTE scorer pickles for 8.7. Otherwise the difference is "within fold-to-fold
 noise", SMOTE is not justified, and the default stays off. The rule is a crude
 paired t at about 2 sigma; it is stated so the conclusion is reproducible, not
 because 15 correlated folds support a formal test. The numbers behind it are all
@@ -333,9 +337,15 @@ different seeds (15 outer fits per model; seconds of compute). Groups: each WAND
 query is its own group (all unique, 13.1); each synthetic sample's group is
 `(family, template_id)` so that near-duplicates from one template never straddle a
 fold. With groups of 20 (section 4, rule 6) stratification keeps the test-fold
-positive share within about 0.45-0.51 rather than exactly 0.50 (probe 13.10); the
-runner records each fold's class counts in the run JSON and asserts both classes and
-all four training families are present on both sides (11.16).
+positive share within about 0.45-0.51 rather than exactly 0.50 (probe 13.10). The
+splitter stratifies on class only, so a family's six groups spread unevenly over the
+five test folds: with the real seeds a training family has **zero test samples in 8
+of the 15 outer folds**, while no training fold ever lacks a family (13.14). That is
+expected and harmless: every group is in exactly one test fold per repeat, so each
+family is fully scored once per repeat (8.5). The runner therefore records each
+fold's class and per-family counts in the run JSON and asserts, **on the training
+side only**, that both classes and all four training families are present (outer
+and inner, 11.16). On the test side it asserts both classes only.
 
 ### 8.2 Nested fitting: everything inside the training fold
 
@@ -407,7 +417,12 @@ For each model x SMOTE setting, per repeat and pooled:
 - Per-family recall (which kinds of illegitimate queries are missed), including
   family E, which is scored by every outer-fold model at that fold's threshold but
   never trained on (section 2). E's number is reported in its own row, marked
-  evaluation-only, and is never pooled into the headline recall.
+  evaluation-only, and is never pooled into the headline recall. **Per-family recall
+  is a pooled quantity**: caught / total over all test folds of a repeat (120 per
+  family per repeat) and over the three repeats (360), never a mean of per-fold
+  values, because a family is absent from the test side of about half the outer
+  folds (8.1, 13.14). The per-fold breakdown in the JSON records each family's test
+  count and caught count, with recall `null` where the count is 0.
 - The list of all false positives (the actual WANDS queries that would be discarded).
   With ~5 FPs at 1% this list *is* the most useful output of the whole project.
 
@@ -487,8 +502,7 @@ message naming the count of such rows (`sanity set: 50 of 50 rows unlabelled,
 skipping`). So ` 1` is a valid `1` and `2`, `yes`, `1.0` are not (resolved
 2026-11-05, OQ-2; a person labelling in a text editor will leave stray spaces, and
 rejecting those would make the user re-edit for nothing). The run JSON records
-`"sanity": {"status": "skipped", "unlabelled": n}` when skipping,
-and the run JSON records `"sanity": {"status": "skipped", "unlabelled": n}`. Blank
+`"sanity": {"status": "skipped", "unlabelled": n}` when skipping. Blank
 is never treated as a class and a partially labelled file is not scored (a subset
 chosen by the labeller could be biased). Everything else in the run proceeds.
 
@@ -503,9 +517,14 @@ confidence intervals on this set.
 
 ### 8.7 Final model for inspection
 
-After evaluation, one model per configuration is fitted on all 960 samples (threshold
-from a 5-fold OOF on all data) and saved with `pickle` to `results/` for the
-sanity-set scoring and manual probing. Not a deployment artefact.
+After evaluation, one model per configuration is fitted on all 960 samples and saved
+with `pickle` to `results/` for the sanity-set scoring and manual probing. Its
+threshold comes from the inner procedure of 8.2 applied to all 960 rows:
+`StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups
+of 8.1, out-of-fold scores, then the threshold rule of 8.4. Positives are generated
+once from the vocabulary of all 480 negatives; family E is excluded. Not a
+deployment artefact. The pickle holds the scorer and its threshold; the SMOTE
+callable of 7.1 is a module-level function so that SMOTE configurations pickle too.
 
 ## 9. Label discovery with HDBSCAN (separate experiment)
 
@@ -589,6 +608,7 @@ bqc/                      package
   models.py               Scorer protocol + three adapters (section 6)
   evaluate.py             folds, nested threshold selection, metrics (section 8)
   cluster.py              HDBSCAN experiment (section 9)
+  report.py               write_report(): config fields, naming, no overwrite
   cli.py                  command implementations
 tests/                    unittest; python -m unittest discover -s tests
 data/raw/                 gitignored downloads; data/CHECKSUMS committed; data/sanity.csv committed (8.6.1)
@@ -597,11 +617,20 @@ scratch/                  gitignored probes
 ```
 
 `python -m bqc generate` generates the positives with vocabulary from all 480
-negatives, runs the audit (section 4, rules 2 and 4), and writes one JSON report to
+negatives (the 480 training positives of A-D **and** the 120 of family E, each
+sample tagged with its family so E is never confused with the training set), runs
+the audit (section 4, rules 2 and 4) over all 600, and writes one JSON report to
 `results/` holding the generated samples with their metadata, the per-family length
 statistics next to WANDS', and the near-duplicate pairs. It exists so the positives
 can be inspected by eye; fold runs regenerate their own positives (8.3) and never
 read its output.
+
+Every JSON file under `results/` (from `generate`, `evaluate` and `cluster`) is
+written by one `write_report()` function in `bqc/report.py`: it adds the config
+fields (parameters, seed, git commit hash, library versions), names the file by
+config hash and timestamp, and refuses to overwrite. It lives in its own module
+rather than in `cli.py` because `evaluate.py` and `cluster.py` call it, and they
+must not import the command layer.
 
 - **Seeds:** one `SEED = 20261105` constant with one home; every `random_state`,
   `random.Random` and repeat seed derives from it (`SEED + repeat_index`).
@@ -680,8 +709,10 @@ Each item names the component and the designed behaviour.
     happened in 7 of 75 inner folds with 3 templates per family, never with 5 or
     more). Section 4 rule 6 fixes 6 templates per family, and the runner **asserts**
     that both classes and every training family (A-D) are present in every outer
-    and inner training fold and raises otherwise. LOFO removes one family on purpose
-    and asserts the other three.
+    and inner training fold and raises otherwise. The **test side is not asserted
+    for families**: a family missing from a test fold is normal (8 of 15 outer folds
+    with the real seeds, 13.14) and is handled by pooling per-family recall (8.5).
+    LOFO removes one family on purpose and asserts the other three.
 17. **All-noise HDBSCAN result.** Reported as 0 clusters, 100% noise; the seed rule
     then labels everything legitimate (FPR 0, recall 0). Not an error.
 18. **Non-determinism.** Two runs with the same config and seed must produce
@@ -751,9 +782,10 @@ project's references in commit `e2e4421`; nothing in this design depends on them
 
 ### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
 
-`opus` raised eight questions while planning (`PLAN.md`, "Open questions for
-`fable`"). None alters a user decision in 12.1, changes scope, or adds cost, so they
-were resolved here and recorded in the body:
+`opus` raised eight questions while planning (`PLAN.md` at commit `5d76c8e`,
+"Open questions for `fable`"; later plan revisions removed them). None alters a user
+decision in 12.1, changes scope, or adds cost, so they were resolved here and
+recorded in the body:
 
 | OQ | Resolved in | One line |
 |----|-------------|----------|
@@ -766,11 +798,21 @@ were resolved here and recorded in the body:
 | 7 | 7.1 | `--smote` runs both arms in one run and one JSON; `smote_comparison` section; `smote_justified` boolean with a stated rule. |
 | 8 | 9, 9.2 | `bqc/cluster.py`; ties resolve to legitimate; ARI/AMI/homogeneity/completeness on non-noise points, seed-rule metrics over all rows. |
 
-Readings `opus` took (plan, "Readings taken"): all six accepted and written into
-the body (LOFO in 8.6; SMOTE arms in 7.1; `generate` in 10; exact-match audit in
-4 rule 4; `bqc/sanity.py` and `SEED` home in 10; no results document: the v1
+Readings `opus` took (same commit, "Readings taken"): all six accepted and written
+into the body (LOFO in 8.6; SMOTE arms in 7.1; `generate` in 10; exact-match audit
+in 4 rule 4; `bqc/sanity.py` and `SEED` home in 10; no results document: the v1
 numbers go into the M6 sign-off record in `PLAN.md`, and `results/` stays
 gitignored).
+
+Plan additions `opus` made at commit `91a1058`, ruled on 2026-11-05: accepted a
+`cli.py` skeleton in the scaffold task with `sanity.py` left to the sanity-loader
+task; accepted one shared report writer, but placed in `bqc/report.py`, not
+`cli.py` (section 10); accepted the module-level SMOTE callable (7.1); accepted
+the sanity real-file test checking the 512-code-point bound (11.2); accepted the
+generator registry depending on `normalise()` (rule 4 and rule 7 need it);
+accepted the fold builder running the per-fold exact-match check and returning
+class and per-family counts (8.1). The 8.1/11.16 contradiction it found is fixed:
+only the training side asserts family presence (13.14).
 
 ## 13. Probe findings and unverified assumptions
 
@@ -846,11 +888,11 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 
 - The 480 WANDS queries contain no bot traffic (13.2); not provable, mitigated by
   reviewing the FP list by eye.
-- Wilson interval implementation: written in-house with the standard library
-  (`math`); its tests use the reference values in 13.13.
 
-The two items this section held before (imblearn `Pipeline` at predict time, Wilson
-reference values) were probed on 2026-11-05: 13.12 and 13.13.
+This is the only unverified assumption left. Of the three items this section held
+in v1.1, the imblearn `Pipeline` behaviour and the Wilson reference values were
+probed on 2026-11-05 (13.12, 13.13); the in-house Wilson function is a decision
+(standard library `math`, tested against 13.13), not an assumption.
 
 ### 13.10 StratifiedGroupKFold with template-sized groups (2026-11-05, scikit-learn 1.9.1)
 
@@ -910,6 +952,25 @@ class>), estimator])` on 300/200 sparse rows:
 The 0.77% quoted in the v1.1 draft of 8.4 was the exact bound; the design reports
 Wilson, so 8.4 now says 0.79%. These values are the test oracle for the in-house
 Wilson function (13.9).
+
+### 13.14 Family presence per fold side, 6 x 20 groups (2026-11-05, scikit-learn 1.9.1, numpy 2.5.4)
+
+Reproduction of counts `opus` reported while planning. 480 singleton negatives plus
+4 families x 6 templates x 20 samples (the shape of section 4 rule 6), groups
+`(family, template_id)`, `StratifiedGroupKFold(5, shuffle=True)`; inner splits use
+the same splitter and seed on the outer training rows; LOFO inner splits drop one
+family's groups first.
+
+| seeds | outer folds with a family absent from **test** | from outer **train** | inner train | LOFO inner train |
+|---|---|---|---|---|
+| `SEED`, `SEED+1`, `SEED+2` | **8 / 15** | 0 / 15 | 0 / 75 | 0 / 300 |
+| 0..99 | 359 / 500 | 0 / 500 | 2 / 2500 | 16 / 10000 |
+
+Test-side positives per family with the real seeds take values in {0, 20, 40, 60};
+e.g. seed `SEED` fold 4 has [0, 0, 60, 20]. `opus`'s own counts (369, 3 and 7 for
+the "other seeds" cells) differ slightly, as expected when groups are encoded
+differently; the real-seed row matches exactly. Basis for 8.1 (assert families on
+the training side only), 8.5 (pooled per-family recall) and 11.16.
 
 ## 14. Later (deferred, not in scope)
 

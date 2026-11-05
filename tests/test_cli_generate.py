@@ -282,16 +282,21 @@ class WiringTest(DataTestCase):
         self.assertEqual(args[5], sanity)
         self.assertEqual(list(args[3]), self.queries)
 
-    def test_near_duplicates_against_spans_never_see_p_strings(self):
+    def test_near_duplicate_calls_never_see_p_strings(self):
+        self.write_sanity(["kzqv hwxj 4417", "plmn rtsy 9082"])
         with mock.patch.object(cli, "near_duplicates", wraps=cli.near_duplicates) as near:
             r = self.report()
         p_texts = {p["text"] for p in r["part_numbers"]}
         span_texts = [s["text"] for s in r["spans"]]
-        calls = [c.args for c in near.call_args_list if c.args[2] == 0.6]
-        self.assertEqual(len(calls), 2)  # real queries vs spans, positives vs spans
-        for _, others, _ in calls:
-            self.assertEqual(list(others), span_texts)
-            self.assertFalse(p_texts & set(others))
+        calls = [c.args for c in near.call_args_list]
+        by_threshold = [c[2] for c in calls]
+        # real queries vs spans, positives vs spans, sanity queries vs positives
+        self.assertEqual(sorted(by_threshold), [0.5, 0.6, 0.6])
+        for first, second, threshold in calls:
+            self.assertFalse(p_texts & set(first))
+            self.assertFalse(p_texts & set(second))
+            if threshold == 0.6:
+                self.assertEqual(list(second), span_texts)
 
     def test_vocabulary_cap_limits_the_span_occurrences(self):
         with mock.patch.object(cli, "VOCABULARY_CAP", 50):

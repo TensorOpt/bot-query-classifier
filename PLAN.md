@@ -30,8 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T1, the first of M3. M3 stays on hold until the embedding probe reports (Q16). M2.T13
-isn't on hold, and it must come before M6.T1.
+**Next task:** M3.T1, the first of M3. M3 stays on hold until the embedding probe reports (Q16).
 
 ### Order constraints
 

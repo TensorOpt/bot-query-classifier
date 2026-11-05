@@ -14,13 +14,13 @@ from bqc.synth.registry import Template, register
 
 FAMILY = "D"
 
-_LABELS = ("topoffer", "superprize", "bestoffer", "megasale", "cheapstuff", "winbig", "topshop",
+_LABELS = ("topoffer", "superprize", "bestoffer", "megasale", "cheapstuff", "winbig", "greenpick",
            "hotdeal", "luckyday", "fastcash", "bigsavings", "clickhere", "freegift",
-           "seoboost", "coinflip", "pillbox")
+           "seoboost", "luckwheel", "pillbox")
 _TLDS = ("biz", "info", "xyz", "top", "club", "online", "shop", "site", "com", "net")
 _PATHS = ("", "", "/", "/offer", "/buy-now", "/deal?id=7", "/win", "/signup", "/sale/1")
 _SCHEMES = ("http://", "https://", "www.", "", "http://www.")
-_USERS = ("sales", "info", "promo", "winner", "support", "offers", "admin", "bonus",
+_USERS = ("sales", "info", "hello", "winner", "support", "offers", "admin", "bonus",
           "marketing", "contact", "ceo", "billing")
 _CONTACT_VERBS = ("call", "text", "message", "dial", "contact", "ring")
 _SPAM_ITEMS = ("comments", "watches", "pills", "likes", "handbags", "sunglasses",

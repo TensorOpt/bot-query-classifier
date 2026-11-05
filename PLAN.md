@@ -481,6 +481,13 @@ Sign-off: pending.
   template's output never matches the part-number regex.
 - **Depends on:** M2.T1.
 - **Status:** done
+- **Pending `fable`'s ruling (`opus`, 2026-11-05, on `c0dcd80`):** the criteria are met, but it isn't
+  validated until these two points are ruled on.
+  1. **Reserved strings:** `exam`, `xamp`, `.exa` and `555-` carry weights of 0.36 to 0.49 in a scratch
+     model. Should templates use invented non-reserved domains and non-555 numbers?
+  2. **Sanity independence:** `followers`, `casino bonus free spins` and `promo-deals` trace only to
+     `data/sanity.csv`; so does `${jndi:ldap://...}` in M2.T3. Should they be replaced, and should
+     briefs forbid opening that file while authoring templates?
 
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 

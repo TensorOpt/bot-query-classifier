@@ -194,10 +194,11 @@ Sign-off: pending.
   - Truncation runs last: `" " * 1000 + "sofa"` and `"\u200b" * 1000 + "sofa"` give `sofa`.
   - Mixed case (11.5).
 - **Depends on:** M1.T2.
-- **Status:** done
-- **Status note:** `done` refers to `1bcb0e3` plus `7789930`. `7789930` implements the six steps
-  and adds the listed behaviour cases; the review corrections (idempotence samples, test
-  rename) are in the follow-up commit.
+- **Status:** validated
+- **Status note:** implemented in `1bcb0e3`; `7789930` moved it to the six steps and added the
+  behaviour cases; `b73ace9` renamed the test; `a8ba6f6` completed the idempotence samples
+  (`b73ace9`'s message wrongly claims that). `opus` requested changes twice: the lists are in
+  `9ddddec`/`d6502b2` and `2128700`.
 
 ### M1.T4: WANDS loader with hash check
 

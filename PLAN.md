@@ -94,7 +94,48 @@ groups hold.
 
 ## M1: Foundation
 
-Sign-off: pending.
+**Sign-off: 2026-11-05, `fable`, verdict POSITIVE** (audited at `589c4b7`).
+
+- Suite: `.venv/bin/python -m unittest discover -s tests`, 54 tests, OK, run by `fable`.
+- Diff read: `a36823a..589c4b7` for `bqc/`, `tests/`, `pyproject.toml`, `.gitignore`,
+  `data/CHECKSUMS` (24 files, 751 insertions). `normalise()` is the six steps of
+  DESIGN.md section 5 in the specified order; `fetch` is hash-gated before any write
+  and atomic (`<target>.tmp` then `os.replace`); loaders return raw text; the sanity
+  loader strips labels and nothing else and normalises both sides only for the WANDS
+  duplicate check; `SEED` has one home; dependencies are exactly those of section 6.
+- Real-data check by `fable`: `python -m bqc fetch` exits 0 against the pinned hash;
+  `load_queries` returns 480 rows, `query_id` 0..487, 480 distinct, the 3 double-space
+  queries intact; `load_sanity` on the real file with the real WANDS list is scorable
+  (0 invalid rows, no overlap).
+- Invariants: pinned hash, atomic write, no secrets, tests never download, YAGNI
+  (nothing beyond the six tasks; the `opener` parameter exists for the tests only).
+- Probes: all recorded (13.8-13.16); none performed in M1 without a record.
+- Process record, noted without penalty: M1.T2 skipped the failing-test stage
+  (disclosed; `opus` confirmed by mutation that the tests catch breakage); M1.T3's fix
+  commit `7789930` has no failing-run record because the agent was stopped by accident
+  before reporting; M1.T5's report has 2 unexplained errors of 9, with test strength
+  confirmed by reading. Follow-up F1 below. Early commits carry a wrong co-author line
+  (`Claude Opus 5.5`), disclosed to the user, no history rewrite.
+
+Follow-ups:
+
+- **F1 (process):** every `sonnet` report from M2 on includes the failing-run output
+  (step 3 of TDD) verbatim or names the commit where it can be reproduced.
+- **F2 (new task M1.T7, `fix(M1.T7)`, `bqc/wands.py`, for `opus` to add; may run in
+  parallel with M2):** in `fetch`, (a) catch `http.client.HTTPException` alongside
+  `OSError` so a truncated download (`IncompleteRead`) becomes `WandsError` as the
+  docstring promises; (b) call the opener with `timeout=60` so a stalled connection
+  cannot hang (`urllib.request.urlopen` accepts it; test stubs already take `**k`);
+  (c) a test that an opener raising `IncompleteRead` mid-read raises `WandsError` and
+  leaves nothing. The `finally` cleanup stays untested: the temp file exists only
+  between `write_bytes` and `os.replace`, and the mid-download test covers the path
+  that matters.
+- **F3 (README, user's file, not a plan task):** the status line "3 of 36 tasks are
+  validated" is out of date (M1 signed off, 6 of 36); and the arrow from "Extra
+  checks" to the fold metrics is a simplification: the 50 hand-labelled queries and
+  the 100 part numbers are scored by the final model (DESIGN.md 8.6.1, 8.6 item 4,
+  8.7), while the 120 off-topic queries and the held-out families are scored per
+  fold. Everything else in the diagram matches the design.
 
 ### M1.T1: Author the unlabelled sanity set
 
@@ -131,7 +172,7 @@ Sign-off: pending.
   The validator doesn't record any breakdown of the content by intended class, in
   `PLAN.md` or in its report, because the user reads both before labelling.
 - **Depends on:** none.
-- **Status:** validated (implemented in `74def5b`; `opus` PASS; status recorded by
+- **Status:** signed off (implemented in `74def5b`; `opus` PASS; status recorded by
   `fable` on 2026-11-05 per the delegation note above). Not verifiable from the
   repository: criterion 2 (the shuffle), because the authoring script was deleted as
   criterion 6 requires; and whether the queries were written from scratch and what
@@ -160,7 +201,7 @@ Sign-off: pending.
      1.9.1, numpy 2.5.4, imbalanced-learn 0.14.2).
 - **Tests:** `SEED == 20261105`; an unknown command exits non-zero.
 - **Depends on:** M1.T1 (schedule order only).
-- **Status:** validated
+- **Status:** signed off
 
 ### M1.T3: `normalise()`
 
@@ -194,7 +235,7 @@ Sign-off: pending.
   - Truncation runs last: `" " * 1000 + "sofa"` and `"\u200b" * 1000 + "sofa"` give `sofa`.
   - Mixed case (11.5).
 - **Depends on:** M1.T2.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `1bcb0e3`; `7789930` moved it to the six steps and added the
   behaviour cases; `b73ace9` renamed the test; `a8ba6f6` completed the idempotence samples
   (`b73ace9`'s message wrongly claims that). `opus` requested changes twice: the lists are in
@@ -218,7 +259,7 @@ Sign-off: pending.
   - a double-space query kept as is.
   Failure paths: wrong hash; missing file; wrong header.
 - **Depends on:** M1.T2.
-- **Status:** validated
+- **Status:** signed off
 
 ### M1.T5: `bqc fetch` and the real checksum
 
@@ -242,7 +283,7 @@ Sign-off: pending.
   (run `bqc.__main__` with `runpy` and `main` patched, because in-process tests of `main`
   can't see `__main__` dropping it).
 - **Depends on:** M1.T4.
-- **Status:** validated
+- **Status:** signed off
 
 ### M1.T6: Sanity set loader
 
@@ -272,7 +313,7 @@ Sign-off: pending.
     every query at most 512 code points after `normalise()` (11.2). This test must pass both blank and fully labelled, so it asserts nothing about label
     values.
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** validated
+- **Status:** signed off
 
 ---
 

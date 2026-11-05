@@ -108,7 +108,10 @@ class RunnerFiniteTest(unittest.TestCase):
     def test_nan_in_threshold_scores_is_not_the_select_threshold_error(self):
         with self.assertRaises(NonFiniteScoreError) as ctx:
             run_fold(factory=Factory({"a1": float("nan")}))
-        self.assertIn("threshold queries", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("threshold queries", message)
+        for part in ("repeat 2", "fold 3", "product", "lr"):
+            self.assertIn(part, message)
 
     def test_infinities_in_test_positives(self):
         self.assert_stops("pos 11", "test positives", float("inf"))

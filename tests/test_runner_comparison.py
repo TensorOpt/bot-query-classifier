@@ -146,8 +146,38 @@ class FitTest(unittest.TestCase):
             train_y=[base.train_y[i] for i in rows],
             train_families=[base.train_families[i] for i in rows],
             train_groups=[base.train_groups[i] for i in rows])
-        with self.assertRaises(FoldError):
+        with self.assertRaisesRegex(FoldError, r"lacks families \['D'\]"):
             run_fold(data)
+
+
+class RecordingScorer(FakeScorer):
+    def __init__(self):
+        super().__init__()
+        self.scored = []
+
+    def score(self, texts):
+        self.scored += list(texts)
+        return super().score(texts)
+
+
+class ScoringTest(unittest.TestCase):
+    def setUp(self):
+        self.data = make_data()
+        self.factory = Factory(cls=RecordingScorer)
+        run_fold(self.data, self.factory)
+        self.inner = self.factory.made[:INNER]
+
+    def test_each_inner_scorer_scores_nothing_it_fitted(self):
+        for scorer in self.inner:
+            self.assertTrue(scorer.scored)
+            self.assertFalse(set(scorer.scored) & set(scorer.fit_texts))
+
+    def test_inner_scorers_together_score_every_training_row_once(self):
+        scored = [t for scorer in self.inner for t in scorer.scored]
+        self.assertEqual(sorted(scored), sorted(self.data.train_texts))
+
+    def test_the_refit_scores_exactly_the_test_texts(self):
+        self.assertEqual(self.factory.made[-1].scored, self.data.test_texts)
 
 
 class GenerationTest(unittest.TestCase):
@@ -196,6 +226,9 @@ class FiniteTest(unittest.TestCase):
 
     def test_nan_in_out_of_fold_scores(self):
         self.assert_stops(REAL_TRAIN[5], "out-of-fold", float("nan"))
+
+    def test_nan_in_out_of_fold_positive_scores(self):
+        self.assert_stops(POSITIVES[0][0], "out-of-fold", float("nan"))
 
     def test_nan_in_test_queries(self):
         self.assert_stops("tq-", "test queries", float("nan"))

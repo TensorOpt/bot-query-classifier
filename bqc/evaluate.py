@@ -433,8 +433,7 @@ def run_comparison_fold(
             out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
         scorer = make_scorer().fit(texts, y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
+    out_of_fold = check_finite(out_of_fold, **context, score_set="out-of-fold scores")
     real = [i for i, f in enumerate(families) if f is None]
-    threshold = select_threshold(
-        check_finite(out_of_fold[real], **context, score_set="out-of-fold queries"),
-        target_fpr)
+    threshold = select_threshold(out_of_fold[real], target_fpr)
     return _test_result(data, scorer, threshold, model, fit_warnings)

@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.3 (commit `f07a5da`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.4 (commit `a8b8600`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -1009,7 +1009,7 @@ Sign-off: pending.
 
 - **Goal:** for each outer fold, fit on spans and positives, set the threshold on the training-side
   real queries, and score the test side and family E.
-- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.5 (family E), 11.9, 11.12, 11.16, 13.19.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.5 (family E), 11.9, 11.12, 11.16, 13.19; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_runner.py`.
 - **Acceptance criteria:**
   1. Depends only on the `Scorer` port, via a factory; imports no sklearn estimator.
@@ -1018,7 +1018,16 @@ Sign-off: pending.
   4. The same `t` applies to the test-side queries, the test-side positives and family E.
   5. Warnings raised during `fit` (11.12) are captured per fold and returned, and don't
      raise.
+  6. One finite-score check lives in `bqc/evaluate.py` (11.30): a function taking a score array and a
+     context of repeat, fold, arm, model and score-set name, which raises on any `NaN` or `inf` with all
+     five in the message. The runner calls it on every score array as it's produced: threshold queries,
+     test queries, test positives and E. `select_threshold`'s own check stays as a second line.
 - **Tests** (with the fake):
+  - A `NaN` in test-query scores raises, with the repeat, fold, arm, model and `test queries` in the
+    message; the same for E (11.30).
+  - The same error, not `select_threshold`'s `ValueError`, for a `NaN` in threshold-query scores; and for
+    `+inf` and `-inf` in test positives.
+  - A finite array passes the check untouched.
   - No real query, test-side text or E text in any recorded fit input (11.9).
   - Number of fits equals the number of outer folds.
   - Changing test-side scores doesn't change the threshold; changing training-side query scores does.
@@ -1032,7 +1041,7 @@ Sign-off: pending.
 
 - **Goal:** run the v1 protocol on the same outer folds, so that results pair fold by fold with the
   primary arm.
-- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 11.9, 11.16, 13.10.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 11.9, 11.16, 13.10; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_runner_comparison.py`.
 - **Acceptance criteria:**
   1. Inner folds are `StratifiedGroupKFold(n_splits=5, shuffle=True,
@@ -1044,7 +1053,10 @@ Sign-off: pending.
      families, 11.16).
   4. It returns the same result shape as M3.T5, under its own arm name, with the same test-side
      strings.
+  5. Every score array, the out-of-fold threshold scores included, goes through the M3.T5 finite-score
+     check (11.30).
 - **Tests** (with the fake):
+  - A `NaN` in the out-of-fold scores raises the 11.30 error, naming the score set.
   - No test-side or E text in any recorded fit input (11.9).
   - No group on both sides of an inner fold.
   - Generation runs once per outer fold.
@@ -1131,7 +1143,7 @@ Sign-off: pending.
 ### M3.T9: Leave-one-family-out
 
 - **Goal:** report recall and achieved FPR on each family at a threshold chosen without it.
-- **Design refs:** `DESIGN.md` `6cec6c6`: 8.2, 8.6 (item 1), 11.16.
+- **Design refs:** `DESIGN.md` `6cec6c6`: 8.2, 8.6 (item 1), 11.16; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_lofo.py`.
 - **Acceptance criteria:**
   1. For each F in A-D (E has no LOFO row), per outer fold and per arm: the arm's training negatives
@@ -1147,7 +1159,9 @@ Sign-off: pending.
   5. Results go in the run JSON as their own section, under each arm, separate from the headline.
   6. Off by default, enabled by a parameter (`--lofo` is wired in M4.T4).
   7. The fold check asserts the other three families and both classes, in the inner folds too (11.16).
+  8. Every LOFO score array goes through the M3.T5 finite-score check, with its own score-set name (11.30).
 - **Tests** (with the fake), in both arms:
+  - A `NaN` in LOFO scores raises the 11.30 error, naming the score set.
   - No F text in any fit input.
   - Training positives equal training negatives in count, up to rounding, with F's templates removed.
   - The test strings equal the main run's for that fold, restricted to F's templates and the queries.
@@ -1163,7 +1177,7 @@ Sign-off: pending.
 
 - **Goal:** measure what happens when a shopper searches for something the catalogue doesn't
   describe (8.6 item 5).
-- **Design refs:** `DESIGN.md` `99037a5`: 3.1, 3.2, 8.2, 8.6 (item 5), 11.25, 11.28, 12.1 (item 14), 13.18, 13.19.
+- **Design refs:** `DESIGN.md` `99037a5`: 3.1, 3.2, 8.2, 8.6 (item 5), 11.25, 11.28, 12.1 (item 14), 13.18, 13.19; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_catalogue_gap.py`.
 - **Acceptance criteria:**
   1. Per outer fold of every arm that runs, take the `query_class` values of the test-side real
@@ -1180,9 +1194,12 @@ Sign-off: pending.
      `point_estimate_above_target`. The two arms' results come from the same folds and are paired. In
      the primary arm it also records the number of products removed per fold and the unclassified count:
      products with an empty `classes` can never be removed, so the check errs lenient (8.6 item 5).
-  5. It never stops a run, and nothing acts on the result: failure is a user decision.
+  5. Its result never stops a run, and nothing acts on it: failure is a user decision.
   6. Off by default, enabled by a parameter (`--catalogue-gap` is wired in M4.T4).
+  7. Every gap score array goes through the M3.T5 finite-score check, with its own score-set name; a
+     non-finite score stops the run like any other (11.30).
 - **Tests** (with the fake), in both arms:
+  - A `NaN` in gap scores raises the 11.30 error, naming the score set.
   - Primary: no product of a test-side class contributes a span in that fold, including a multi-class
     product with one matching class.
   - Comparison: no training-side query of those classes is in any fit or the threshold set.
@@ -1199,7 +1216,7 @@ Sign-off: pending.
 ### M3.T10: Final models
 
 - **Goal:** fit one model per configuration of each arm, and pickle it with its threshold.
-- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.2, 8.3, 8.7, 10.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.2, 8.3, 8.7, 10; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_final_model.py`.
 - **Acceptance criteria:**
   1. **Primary arm:** `n` spans with seed `SEED`, and positives from all 24 templates rendered from the
@@ -1213,7 +1230,10 @@ Sign-off: pending.
      fails; one equal to a training negative, a real query or a P string is dropped and counted.
   4. The pickle goes to `results/` and holds the scorer and threshold, and loading it
      reproduces the same scores.
+  5. Every final-model score array, inner out-of-fold scores included, goes through the M3.T5
+     finite-score check (11.30). A final model has no outer fold, and the context says so.
 - **Tests** (with the fake):
+  - A `NaN` in final-model threshold scores raises the 11.30 error, naming arm, model and score set.
   - Primary: no real query or E in the fit input; one fit; the threshold is the M3.T4 function over all
     480 scores.
   - Comparison: 960-equivalent fit input with no E; the threshold comes from out-of-fold scores.
@@ -1225,7 +1245,7 @@ Sign-off: pending.
 
 - **Goal:** score the sanity set with the final models when it's fully labelled, and skip
   it otherwise.
-- **Design refs:** 8.6.1, 11.20, 11.21.
+- **Design refs:** 8.6.1, 11.20, 11.21, 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_sanity_section.py`.
 - **Acceptance criteria:**
   1. **Blank or partial file:** the message is printed, the run JSON records
@@ -1239,7 +1259,9 @@ Sign-off: pending.
      given all the WANDS queries of the run, never an empty list: the real-file test in M1.T6
      can't make this check, because tests don't read `data/raw/`.
   4. Sanity data is never passed to any `fit` or threshold selection.
+  5. Sanity scores go through the M3.T5 finite-score check (11.30); the message carries no query text.
 - **Tests** (with the fake, and fixture files; none uses the real labels):
+  - A `NaN` in sanity scores raises the 11.30 error, naming the score set.
   - Blank, partial and bad-label fixtures give the skip record, with the rest of the
     report present (11.20).
   - A labelled fixture gives the expected counts and disagreements, and no forbidden
@@ -1253,7 +1275,7 @@ Sign-off: pending.
 
 - **Goal:** score the 100 part-number strings with each final model, and report how many would
   be discarded.
-- **Design refs:** 8.6 (item 4), 8.7, 11.23.
+- **Design refs:** 8.6 (item 4), 8.7, 11.23, 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_part_number_diagnostic.py`.
 - **Acceptance criteria:**
   1. Scores the M2.T9 set with each final model of M3.T10, at that model's threshold.
@@ -1263,7 +1285,9 @@ Sign-off: pending.
   3. Flagging uses the one `score >= t` rule of M3.T4.
   4. The set is never used in any fit or threshold selection, and doesn't change any other
      metric. Part-number scores are reported, not selected on.
+  5. Part-number scores go through the M3.T5 finite-score check (11.30).
 - **Tests** (with the fake):
+  - A `NaN` in part-number scores raises the 11.30 error, naming the score set.
   - No `P` text in any fit input, including the inner folds.
   - 100 scores for each model.
   - The fraction is computed with `score >= t`: a score exactly at `t` counts as flagged.
@@ -1338,7 +1362,7 @@ Sign-off: pending.
      `product`, 5,000 and all three models.
   2. `--target-fpr` outside `(0, 1)`, a non-positive `--negatives-size`, an unknown model or arm, and a
      `--lofo` or `--catalogue-gap` model outside `--models` are usage errors. A missing raw file exits non-zero with a message pointing at `fetch`. An
-     exhausted span pool exits non-zero with its count.
+     exhausted span pool exits non-zero with its count. A non-finite score (11.30) exits non-zero with its message.
   3. The real run scores the committed sanity labels. The skip path stays covered by fixtures
      (M3.T11).
   4. `--lofo` and `--catalogue-gap` take an optional comma list of models, default all of `--models`;
@@ -1354,7 +1378,7 @@ Sign-off: pending.
   `--catalogue-gap lr,trivial` report the MLP's rows as not run, with the reason, while its main fit and
   final model are present; bare `--lofo` covers all of `--models`; the fit time is in the JSON; the
   trivial baseline's report row is present; `--catalogue-gap` adds its section; each usage error, including `--target-fpr nan` (`select_threshold` would flag every query with `target_unmet` false); each
-  missing raw file;
+  missing raw file; a stub model returning `NaN` exits non-zero and writes no run JSON;
   **real model and fold determinism end to end** (11.18).
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
 - **Status:** todo

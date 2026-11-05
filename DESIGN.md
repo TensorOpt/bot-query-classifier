@@ -1,8 +1,8 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.1, 2026-11-05. The user answered the v1 open questions;
-the answers are recorded in section 12 and applied in the body. One question (12,
-Q10) is still open and does not block planning.
+Owner: `fable`. Status: v1.2, 2026-11-05. The user answered the v1 open questions
+(12.1); `opus`'s eight plan-review questions are resolved in 12.3 and applied in the
+body. One question (12.2, Q10) is still open and does not block planning.
 
 Each decision is written as **Decision** / **Rationale**. Unverified assumptions and
 probe findings live in section 13. Deferred ideas live in section 14 ("Later").
@@ -159,9 +159,24 @@ anti-inflation measures in section 8 possible.
    queries (8.3) so test-fold vocabulary never leaks into training positives.
 4. Near-duplicate audit after generation: character-3-gram Jaccard similarity between
    every positive and every negative; any pair above 0.6 is reported, and the
-   generation fails if any positive is identical to a negative after strip+lower.
+   generation fails if any positive is identical to a negative after `normalise()`
+   (section 5). The exact-match check runs on every generation, including the
+   per-fold ones (8.3); the Jaccard report runs only in `bqc generate` (section 10).
 5. Template-level diversity: each template must be able to produce at least 50
    distinct strings; the generator test asserts this.
+6. **Templates per family (decided 2026-11-05, OQ-3).** Each family has **exactly 6
+   templates**, of which **at least 2 are hard-positive** (rule 3). The family's 120
+   is split equally, 20 per template, so every `(family, template_id)` group has 20
+   samples. Family E follows the same rule (6 templates, 20 each). **Rationale:**
+   groups are the fold unit (8.1). Probe 13.10 shows that with 3 templates per
+   family (groups of 40) a family is absent from 7 of 75 inner training folds and
+   test-fold class share swings 0.46-0.56 (outer) and 0.34-0.51 (inner); with 5-8
+   templates no family is ever absent and shares stay within 0.44-0.56. Six is the
+   smallest count in that safe range that leaves room for two hard-positive
+   templates plus four pattern templates per family. The runner still asserts family
+   presence (11.16) rather than relying on this.
+7. Every generated string is at most 512 code points after `normalise()` (11.2), so
+   no positive is ever truncated; the generator test asserts this.
 
 ## 5. Features: TF-IDF
 
@@ -184,10 +199,30 @@ sublinear_tf=True, min_df=2)`, fitted inside each training fold only.
   `"char_wb"` so that cross-token patterns like `' or` are kept.
 - `min_df=2` removes n-grams that occur in one string only; these can only memorise.
 
-**Decision:** preprocessing before vectorisation is exactly: Unicode NFKC normalise,
-`str.strip()`, collapse internal whitespace runs to one space, lowercase. Applied
-identically to negatives and positives, in one function with one home (`DRY`). An
-empty string after preprocessing is a valid input (11.1).
+**Decision (`normalise()`, resolved 2026-11-05, OQ-1):** preprocessing before
+vectorisation is exactly these five steps, in this order, in one function with one
+home (`bqc/preprocess.py`):
+
+1. Unicode NFKC normalisation (`unicodedata.normalize("NFKC", s)`).
+2. Remove every character whose Unicode category is `Cc` (control) or `Cf` (format,
+   which includes zero-width characters) **unless `str.isspace()` is true for it**.
+   So `\t` and `\n` survive this step and `a\tb` becomes `a b` in step 3, while
+   U+200B and U+FEFF are deleted.
+3. Collapse whitespace: `" ".join(s.split())`. This also strips both ends.
+4. Lowercase with `str.lower()` (the same operation `TfidfVectorizer(lowercase=True)`
+   applies, so the two agree).
+5. Truncate to the first **512 code points**, then `rstrip()` so a cut inside a
+   whitespace run leaves no trailing space.
+
+Truncation is **silent**: `normalise()` is a pure `str -> str` function and nothing
+in the pipeline reports whether it truncated (11.2). Truncation comes last because
+NFKC can lengthen a string (`ﬁ` x10 becomes 20 code points) and the three earlier
+steps are linear and cheap: a 1 MB input normalises in ~70 ms (13.11); the cost
+truncation guards against is character n-gram extraction, which only ever sees 512
+code points. The function is idempotent for every Unicode code point (13.11), which
+is what lets every caller apply it without caring whether a string was already
+normalised. Applied identically to negatives, positives and the sanity set. An empty
+string after preprocessing is a valid input (11.1).
 
 ## 6. Models
 
@@ -248,14 +283,43 @@ training folds, compared against the no-SMOTE run on identical folds and seeds
   query lies on, and correspond to no string. For a small MLP this acts as a within-
   class mixup regulariser, which might help a little or not at all. It is not more
   data.
-- Therefore the design does not promise an improvement; it measures one. Report:
-  paired per-fold difference in the headline metric (8.5), with and without SMOTE,
-  for the MLP and the LR. If the difference is within fold-to-fold noise, the
-  conclusion is "not justified" and the flag stays off.
+- Therefore the design does not promise an improvement; it measures one (7.1).
 - Leakage rule: SMOTE must be fitted and applied to the training portion only.
-  `imblearn.pipeline.Pipeline` does this correctly (sampling steps are skipped at
-  `predict` time); the pipeline test asserts that the test fold row count is
-  unchanged.
+  `imblearn.pipeline.Pipeline` does this: the sampler's `fit_resample` is called
+  once during `fit` and zero times during `predict_proba`, for both `LogisticRegression`
+  and `MLPClassifier` on sparse input (probe 13.12); the pipeline test asserts that
+  the test fold row count is unchanged.
+
+### 7.1 Sizing, flag semantics and verdict (resolved 2026-11-05, OQ-6, OQ-7)
+
+**Sizing.** `sampling_strategy` is a **callable** that doubles each class present in
+the `y` passed to `fit`: `{c: 2 * count_c}`. This is a factor, not an absolute
+count, so the same adapter works for outer training folds (~384 per class), inner
+training folds (~307) and the final fit on all 960 (8.7). An absolute `n` would
+have to exceed the largest class count it is ever used with, and `imblearn` raises
+`ValueError` when a requested count is below the existing one (13.12). The factor 2
+is the only knob and is not tuned; the experiment asks whether SMOTE helps at all.
+`k_neighbors` stays at the default 5, which every fold's class counts satisfy.
+
+**Flag semantics.** `python -m bqc evaluate --smote` runs **both arms in the same
+run**: the three models without SMOTE, plus the MLP and the LR with SMOTE (the
+trivial baseline has no SMOTE arm; its three hand features are not what SMOTE is
+being tested on). Both arms use identical folds, seeds and generated positives
+because they come from one fold construction. The run JSON holds every arm's
+metrics under its own configuration key, plus a `smote_comparison` section with,
+for the MLP and the LR separately: the per-fold paired differences in headline
+recall (SMOTE minus no-SMOTE, 15 values), their mean and standard deviation, the
+number of folds where SMOTE wins, and the paired difference in achieved FPR.
+Without `--smote` there is no SMOTE arm and no comparison section.
+
+**Verdict rule.** The report computes a boolean `smote_justified` per model: true
+only if the mean paired difference in headline recall is positive **and** exceeds
+twice its standard error (`sd / sqrt(15)`), **and** the mean paired difference in
+achieved FPR is not positive. Otherwise the difference is "within fold-to-fold
+noise", SMOTE is not justified, and the default stays off. The rule is a crude
+paired t at about 2 sigma; it is stated so the conclusion is reproducible, not
+because 15 correlated folds support a formal test. The numbers behind it are all
+in the JSON for a reader who wants to judge differently.
 
 A more meaningful augmentation for text (string-level perturbation of real negatives)
 is in section 14.
@@ -268,7 +332,10 @@ is in section 14.
 different seeds (15 outer fits per model; seconds of compute). Groups: each WANDS
 query is its own group (all unique, 13.1); each synthetic sample's group is
 `(family, template_id)` so that near-duplicates from one template never straddle a
-fold. Stratification keeps the 50/50 class ratio per fold (13.7).
+fold. With groups of 20 (section 4, rule 6) stratification keeps the test-fold
+positive share within about 0.45-0.51 rather than exactly 0.50 (probe 13.10); the
+runner records each fold's class counts in the run JSON and asserts both classes and
+all four training families are present on both sides (11.16).
 
 ### 8.2 Nested fitting: everything inside the training fold
 
@@ -281,6 +348,18 @@ threshold selection:
   (8.4). With ~384 training negatives the inner FPR resolution is 1/384 ~ 0.26%.
 - The model is then refitted on the whole training fold and `t` is applied to the
   outer test fold.
+
+**Inner splitter (resolved 2026-11-05, OQ-4):** the inner folds are
+`StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`
+over the outer training rows, with the **same groups** as 8.1. Positives are **not
+regenerated per inner fold**: the outer training fold's positives (generated from the
+outer training vocabulary, 8.3) are split as they are. So an inner-training hard
+positive may contain a product word that also occurs in an inner-validation
+negative. This is accepted because the inner loop only chooses a threshold, and
+any bias it introduces shows up in the *achieved* outer FPR, which is what 8.5
+reports; regenerating per inner fold would add a second generation layer for a
+threshold whose quality is measured anyway. Probe 13.10 shows the inner split with
+groups of 20 keeps every family present and the class share within 0.44-0.51.
 
 ### 8.3 Positives are regenerated per fold
 
@@ -302,7 +381,7 @@ illegitimate queries at FPR <= 1%**, pooled over outer test folds, with the
 **Rationale:** "minimise FPR" alone has the trivial solution of serving everything.
 A target makes it an operating point. Why 1%: with 480 negatives, one false positive
 per outer fold of 96 negatives is already 1.04%, and an observed 0/480 has a 95%
-upper bound of 0.77% (rule of three ~0.6%). Anything below 1% is not demonstrable
+Wilson upper bound of 0.79% (13.13; rule of three ~0.6%). Anything below 1% is not demonstrable
 with this data; the design says so rather than report a number it cannot support.
 The target is a CLI parameter with default `0.01` so that the sensitivity of recall
 to the target can be reported; 1% is the number that decisions are made on.
@@ -312,6 +391,16 @@ to the target can be reported; 1% is the number that decisions are made on.
 For each model x SMOTE setting, per repeat and pooled:
 
 - Headline: recall at FPR <= 1% (8.4), achieved FPR with Wilson 95% CI.
+  **Pooling and `n` (resolved 2026-11-05, OQ-5):** each repeat scores every
+  negative exactly once, so a repeat's FPR is `k_r / 480` with a Wilson interval at
+  `n = 480`. The pooled point estimate is the total over the 3 repeats divided by
+  1440, but its interval is computed at **`n = 480` with `k = total / 3`** (the mean
+  FP count per repeat; the Wilson formula takes a proportion and needs no integer
+  `k`). The 1440 observations are three re-scorings of the same 480 queries, not
+  independent, and an interval at `n = 1440` (0 FPs: upper bound 0.27%) would claim
+  a precision the data does not have; at `n = 480` it is 0.79% (13.13), which is
+  the figure 8.4's argument rests on. The same rule applies to the recall interval
+  if one is reported: `n = 480` positives.
 - Confusion matrix at the chosen thresholds (pooled out-of-fold).
 - Macro F1, precision, recall (positive class) at the chosen thresholds.
 - ROC-AUC, mean +/- sd over folds and pooled (threshold-free sanity number).
@@ -330,11 +419,18 @@ for any selection. Selection (threshold) uses only FPR on inner validation data.
 No real bot data exists, so the standard CV above measures "can the model separate
 WANDS from *these generators*". Three additional checks make that limitation visible:
 
-1. **Leave-one-family-out (LOFO).** For each family F: train on all other families
-   (plus training-fold negatives, same nested protocol), test on F plus test-fold
-   negatives. Report recall on F at the threshold chosen without F. This is the
-   closest proxy for "a kind of bot we did not anticipate". Expect it to be much
-   lower than in-distribution recall; that gap is the honest generalisation number.
+1. **Leave-one-family-out (LOFO).** For each training family F in A-D (E is never
+   trained on, so it has no LOFO row; its evaluation-only recall in 8.5 already is
+   the "unseen family" number for E): reuse the outer folds of 8.1, drop F's groups
+   from the training side, train on the remaining three families plus
+   training-fold negatives with the same nested protocol (threshold chosen without
+   F), and test on all of F generated from test-fold vocabulary plus the test-fold
+   negatives. The training side is then 3:4 positive to negative; no re-balancing
+   is applied, because the point is the threshold's transfer, not the class ratio.
+   Report recall on F at that threshold, and the achieved FPR. This is the closest
+   proxy for "a kind of bot we did not anticipate". Expect it to be much lower than
+   in-distribution recall; that gap is the honest generalisation number. Off by
+   default; `--lofo` adds it to the run JSON as its own section.
 2. **Trivial baseline gap** (6.3). If length + punctuation ratio alone reaches the
    MLP's recall, the generators are too easy.
 3. **Blind-labelled sanity set** (`data/sanity.csv`, committed). The agents write
@@ -362,9 +458,13 @@ so their order carries no information.
 *Authorship, kept independent of the generators.* The set is written in a plan task
 that is scheduled and committed **before any generator module exists** (`bqc/synth/`
 must be empty or absent at that commit; git history is the evidence), by a
-delegation whose brief contains only this section, not sections 2 or 4 in detail.
-After that commit the file is modified only by the user adding labels. The loader
-test asserts that no sanity query equals a WANDS query after `normalise()`.
+delegation whose brief contains **this section, the `SEED` value (section 10), the
+WANDS `query.csv` URL (13.1) and the plan task's own text, and nothing else from
+`DESIGN.md` or `PLAN.md`**. The seed is needed for the shuffle and the URL for the
+overlap check; neither says anything about the generators. The delegate must not
+open `DESIGN.md` or any other plan task. After that commit the file is modified only
+by the user adding labels. The loader test asserts that no sanity query equals a
+WANDS query after `normalise()`.
 
 *Content guideline for the author (not recorded in the file).* All queries stay in
 the furniture and home-goods domain, with no off-domain shopping queries (2.1).
@@ -380,9 +480,14 @@ model number like `wf-2049x`). The ambiguous ones are the point: they are the ki
 of false positive that costs a sale. The author does not know how the user will
 label them, and must not reveal the intended mix in the commit message.
 
-*Evaluation behaviour.* `bqc evaluate` reads the file. If **any** `label` is blank
-or not exactly `0` or `1`, the sanity section is **skipped** with a message naming
-the count of unlabelled rows (`sanity set: 50 of 50 rows unlabelled, skipping`),
+*Evaluation behaviour.* `bqc evaluate` reads the file. The loader strips leading
+and trailing whitespace from each `label` cell and nothing else; if **any** cell is
+then blank or not exactly `0` or `1`, the sanity section is **skipped** with a
+message naming the count of such rows (`sanity set: 50 of 50 rows unlabelled,
+skipping`). So ` 1` is a valid `1` and `2`, `yes`, `1.0` are not (resolved
+2026-11-05, OQ-2; a person labelling in a text editor will leave stray spaces, and
+rejecting those would make the user re-edit for nothing). The run JSON records
+`"sanity": {"status": "skipped", "unlabelled": n}` when skipping,
 and the run JSON records `"sanity": {"status": "skipped", "unlabelled": n}`. Blank
 is never treated as a class and a partially labelled file is not scored (a subset
 chosen by the labeller could be biased). Everything else in the run proceeds.
@@ -404,8 +509,11 @@ sanity-set scoring and manual probing. Not a deployment artefact.
 
 ## 9. Label discovery with HDBSCAN (separate experiment)
 
-**Decision:** clustering is a **separate experiment** (`experiments/cluster`), not a
-stage of the training pipeline. The training pipeline always uses known labels.
+**Decision:** clustering is a **separate experiment**, implemented in
+`bqc/cluster.py` and run with `python -m bqc cluster` (section 10; resolved
+2026-11-05, OQ-8a), not a stage of the training pipeline. It shares the
+preprocessing and vectoriser factory with the pipeline and nothing else; the
+training pipeline always uses known labels.
 
 **Rationale:** the user's scenario is "in production we may not have labels". That
 is a question about whether the two classes are *discoverable*, which is answered by
@@ -441,7 +549,22 @@ Clusters carry no class. Two rules are implemented and both reported:
   Clusters with no seed, and all **noise points, are labelled legitimate (fail
   open)**, because a false positive is the expensive error. Report resulting
   accuracy, FPR and recall against the true labels, averaged over 20 random seed
-  draws.
+  draws. Seed draws use `random.Random(SEED + draw_index)` over all 960 rows,
+  including noise points (a human does not know which queries are noise).
+
+**Ties and noise in the metrics (resolved 2026-11-05, OQ-8b, 8c):**
+
+- A tie, in either rule (seed 1-1, or an oracle cluster that is exactly half and
+  half), resolves to **legitimate**. Fail open is the rule everywhere in this design;
+  an oracle tie also means the cluster has purity 0.5, which the purity report shows.
+- ARI, AMI, homogeneity and completeness are computed **on non-noise points only**
+  (rows with HDBSCAN label `-1` removed from both the true and the predicted label
+  arrays), with the noise fraction reported next to them. Treating noise as one
+  extra cluster would reward dumping everything into noise. The seed rule's
+  accuracy, FPR and recall are computed **over all 960 rows** with noise labelled
+  legitimate, because that is the decision the rule would actually make. An
+  all-noise result (11.17) therefore has no ARI/AMI (reported as `null` with
+  `"non_noise": 0`) and seed-rule FPR 0, recall 0.
 
 **Many clusters** is expected (product categories cluster among the legitimate
 queries; families cluster among the positives) and is not a problem for either rule:
@@ -456,19 +579,29 @@ would remove the need for seeds, but needs the 90 MB file; section 14.
 
 ```
 bqc/                      package
+  __init__.py             SEED constant (one home)
+  __main__.py             python -m bqc entry point
   preprocess.py           normalise() (section 5), one home
   wands.py                download + hash check + load (section 3)
-  synth/                  one module per family + registry; sample metadata
+  sanity.py               sanity set loader and validity check (8.6.1, 11.20, 11.21)
+  synth/                  one module per family + registry + audit; sample metadata
   features.py             vectoriser factory (section 5)
   models.py               Scorer protocol + three adapters (section 6)
   evaluate.py             folds, nested threshold selection, metrics (section 8)
   cluster.py              HDBSCAN experiment (section 9)
-  cli.py                  python -m bqc <command>
+  cli.py                  command implementations
 tests/                    unittest; python -m unittest discover -s tests
 data/raw/                 gitignored downloads; data/CHECKSUMS committed; data/sanity.csv committed (8.6.1)
 results/                  gitignored JSON reports and pickles, one file per run
 scratch/                  gitignored probes
 ```
+
+`python -m bqc generate` generates the positives with vocabulary from all 480
+negatives, runs the audit (section 4, rules 2 and 4), and writes one JSON report to
+`results/` holding the generated samples with their metadata, the per-family length
+statistics next to WANDS', and the near-duplicate pairs. It exists so the positives
+can be inspected by eye; fold runs regenerate their own positives (8.3) and never
+read its output.
 
 - **Seeds:** one `SEED = 20261105` constant with one home; every `random_state`,
   `random.Random` and repeat seed derives from it (`SEED + repeat_index`).
@@ -499,9 +632,11 @@ Each item names the component and the designed behaviour.
    The CLI/`Scorer` accepts it and returns a score; the evaluation reports it. Not an
    error. (A real search box can submit empty input.)
 2. **Very long input** (e.g. 10 kB pasted text or a 1 MB payload). `normalise()`
-   truncates to 512 characters before vectorising; the truncation is logged in the
-   score output. Rationale: WANDS max is 67; nothing beyond 512 is a query, and char
-   n-gram extraction on megabytes is a DoS surface.
+   truncates to 512 code points as its last step, silently (section 5). Rationale:
+   WANDS max is 67; nothing beyond 512 is a query, and char n-gram extraction on
+   megabytes is a DoS surface. No data source in v1 can exceed 512 (WANDS, the
+   generators by rule 7, and the sanity set by its loader test), so truncation only
+   ever applies to ad-hoc input, and there is nothing to report.
 3. **Out-of-vocabulary-only query** (e.g. an unseen brand, `minnestrista`). With char
    n-grams some n-grams will be known; with `min_df=2` a fully unknown string yields
    a zero row and gets the same score as the empty string. The test asserts a zero row
@@ -539,10 +674,14 @@ Each item names the component and the designed behaviour.
     with `delimiter="\t"` and **default quoting** is correct and `QUOTE_NONE` would be
     wrong (13.8). The loader test uses a fixture with such a row.
 15. **Empty `query_class`.** Ignored; the loader does not require it.
-16. **Degenerate fold** (a family or group missing from a training fold). With 5
-    folds and 120 samples per family this cannot happen for whole families; LOFO
-    removes a family on purpose. The runner asserts both classes are present in every
-    training and test fold.
+16. **Degenerate fold** (a family or group missing from a training fold).
+    `StratifiedGroupKFold` stratifies on class, not family, so with few large
+    template groups a family *can* land entirely in one test fold (probe 13.10: it
+    happened in 7 of 75 inner folds with 3 templates per family, never with 5 or
+    more). Section 4 rule 6 fixes 6 templates per family, and the runner **asserts**
+    that both classes and every training family (A-D) are present in every outer
+    and inner training fold and raises otherwise. LOFO removes one family on purpose
+    and asserts the other three.
 17. **All-noise HDBSCAN result.** Reported as 0 clusters, 100% noise; the seed rule
     then labels everything legitimate (FPR 0, recall 0). Not an error.
 18. **Non-determinism.** Two runs with the same config and seed must produce
@@ -550,10 +689,10 @@ Each item names the component and the designed behaviour.
 19. **Scores exactly at the threshold.** Decision is `score >= t` is illegitimate;
     stated once in `evaluate.py` and tested.
 20. **Sanity set unlabelled, partially labelled, or with a bad label** (`2`, `yes`,
-    ` 1`). The sanity section is skipped with a message giving the count of rows
-    that are not exactly `0` or `1`; blanks are never a class; nothing else in the
-    run is affected (8.6.1). The loader strips surrounding whitespace from the
-    label before checking, and nothing else.
+    `1.0`). The loader strips surrounding whitespace from each label cell (so ` 1`
+    is a valid `1`) and nothing else, then the sanity section is skipped with a
+    message giving the count of rows that are not exactly `0` or `1`; blanks are
+    never a class; nothing else in the run is affected (8.6.1, OQ-2).
 21. **Sanity query duplicates a WANDS query** after `normalise()`. The loader fails
     with the offending `id`; the set must be outside the training data.
 22. **Off-domain shopping query** (`iphone 11 case`) at scoring time. No defined
@@ -609,6 +748,29 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     artefact section 4 works to avoid. If the user wants the policy, it becomes a
     separate family after v1 numbers exist, with its own LOFO row. This question
     does not block planning.
+
+### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
+
+`opus` raised eight questions while planning (`PLAN.md`, "Open questions for
+`fable`"). None alters a user decision in 12.1, changes scope, or adds cost, so they
+were resolved here and recorded in the body:
+
+| OQ | Resolved in | One line |
+|----|-------------|----------|
+| 1 | 5, 11.2, 11.4 | `normalise()` is five ordered steps; `Cc`/`Cf` removal spares whitespace; truncation last, silent. |
+| 2 | 8.6.1, 11.20 | Labels are whitespace-stripped, then must be exactly `0`/`1`; ` 1` is valid. |
+| 3 | 4 rule 6, 8.1, 11.16 | 6 templates per family, 20 samples each, at least 2 hard-positive; runner asserts family presence. Probed (13.10), so no plan probe task is needed. |
+| 4 | 8.2 | Inner folds: same splitter and groups, seeded `SEED + repeat_index`; positives not regenerated per inner fold. |
+| 5 | 8.5 | Pooled interval at `n = 480`, `k = total / 3`; never `n = 1440`. |
+| 6 | 7.1 | SMOTE `sampling_strategy` is a callable doubling each class in the fitted `y`. Probed (13.12). |
+| 7 | 7.1 | `--smote` runs both arms in one run and one JSON; `smote_comparison` section; `smote_justified` boolean with a stated rule. |
+| 8 | 9, 9.2 | `bqc/cluster.py`; ties resolve to legitimate; ARI/AMI/homogeneity/completeness on non-noise points, seed-rule metrics over all rows. |
+
+Readings `opus` took (plan, "Readings taken"): all six accepted and written into
+the body (LOFO in 8.6; SMOTE arms in 7.1; `generate` in 10; exact-match audit in
+4 rule 4; `bqc/sanity.py` and `SEED` home in 10; no results document: the v1
+numbers go into the M6 sign-off record in `PLAN.md`, and `results/` stays
+gitignored).
 
 ## 13. Probe findings and unverified assumptions
 
@@ -680,14 +842,74 @@ The three queries containing `"` are stored standard-CSV quoted:
 `"writing desk 48"""`. Default `csv` quoting reads them as `fawkes 36" blue vanity`
 etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 
-### 13.9 Unverified assumptions (to be probed by the plan's probe tasks)
+### 13.9 Unverified assumptions
 
-- `imblearn.pipeline.Pipeline` skips the SMOTE step at `predict`/`predict_proba`
-  time (documented behaviour; not yet probed here).
-- Wilson interval implementation: written in-house with the standard library
-  (`math`), tested against known values; no `statsmodels`.
 - The 480 WANDS queries contain no bot traffic (13.2); not provable, mitigated by
   reviewing the FP list by eye.
+- Wilson interval implementation: written in-house with the standard library
+  (`math`); its tests use the reference values in 13.13.
+
+The two items this section held before (imblearn `Pipeline` at predict time, Wilson
+reference values) were probed on 2026-11-05: 13.12 and 13.13.
+
+### 13.10 StratifiedGroupKFold with template-sized groups (2026-11-05, scikit-learn 1.9.1)
+
+480 singleton negatives plus 4 families x 120 positives split equally over `T`
+templates per family (groups of 120/T), `n_splits=5, shuffle=True`, 3 seeds (15
+outer folds); for each outer training fold an inner 5-fold split with the same
+splitter and groups (75 inner folds). No split raised.
+
+| T (group size) | outer test positive share | family absent from outer train | inner validation positive share | family absent from inner train |
+|---|---|---|---|---|
+| 3 (40) | 0.455-0.556 | 0/15 | 0.342-0.513 | **7/75** |
+| 5 (24) | 0.500-0.500 | 0/15 | 0.483-0.558 | 0/75 |
+| 6 (20) | 0.455-0.510 | 0/15 | 0.438-0.513 | 0/75 |
+| 8 (15) | 0.484-0.522 | 0/15 | 0.493-0.542 | 0/75 |
+
+Basis for section 4 rule 6 (6 templates), 8.1, 8.2 and 11.16.
+
+### 13.11 `normalise()` order, idempotence and cost (2026-11-05, Python 3.12.16)
+
+The five-step function of section 5: `a\tb` -> `a b`; `so​fa` -> `sofa`;
+full-width `ＳＯＦＡ` -> `sofa`; `café 🛋 é` kept (accents, emoji, combining mark).
+Applying it twice equals applying it once for **every Unicode code point** (all
+code points except surrogates, each alone and embedded as `x<c>y`): 0 exceptions.
+A 1,008,000-character input normalises to 512 code points in 73 ms. NFKC can
+lengthen input (`ﬁ` x10 -> 20 code points), which is why truncation is the last
+step.
+
+### 13.12 imblearn `Pipeline` with SMOTE at predict time (2026-11-05, imbalanced-learn 0.14.2, scikit-learn 1.9.1)
+
+`Pipeline([TfidfVectorizer(char), SMOTE(sampling_strategy=<callable doubling each
+class>), estimator])` on 300/200 sparse rows:
+
+- A callable `sampling_strategy` is accepted; the estimator's `fit` saw 1000 rows
+  (600/400), i.e. the callable ran against the fitted `y`.
+- The sampler's `fit_resample` was called once during `fit` and **zero times during
+  `predict_proba`**; `predict_proba` on 7 rows returned 7 rows. Same for
+  `LogisticRegression` and `MLPClassifier`.
+- `SMOTE(sampling_strategy={0: 100, 1: 100})` with class counts 300/200 raises
+  `ValueError` ("the number of samples in a class should be greater or equal to the
+  original number of samples"), so an absolute count must never be below any class
+  count it is used with; basis for the factor in 7.1.
+
+### 13.13 Wilson and Clopper-Pearson reference values (2026-11-05, scipy 1.18.1, `binomtest(k, n).proportion_ci`)
+
+95% intervals, `[low, high]`:
+
+| k/n | Wilson | exact (Clopper-Pearson) |
+|---|---|---|
+| 0/480 | [0, 0.00794] | [0, 0.00766] |
+| 5/480 | [0.00446, 0.02415] | [0.00339, 0.02414] |
+| 0/30 | [0, 0.11351] | [0, 0.11570] |
+| 1/96 | [0.00184, 0.05667] | [0.00026, 0.05667] |
+| 15/1440 | [0.00632, 0.01712] | [0.00584, 0.01712] |
+| 5/1440 | [0.00148, 0.00810] | [0.00113, 0.00808] |
+| 480/480 | [0.99206, 1] | [0.99234, 1] |
+
+The 0.77% quoted in the v1.1 draft of 8.4 was the exact bound; the design reports
+Wilson, so 8.4 now says 0.79%. These values are the test oracle for the in-house
+Wilson function (13.9).
 
 ## 14. Later (deferred, not in scope)
 

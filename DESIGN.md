@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.0, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.1, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -130,8 +130,10 @@ in every family, must contain **at least one token that is not benign**. A token
 is *benign* if, after `normalise()` and whitespace splitting, it is either
 
 - a **vocabulary word**: a member of `set(vocabulary)`, where the vocabulary
-  passed to the generator is the list of whitespace-token occurrences of the fold's
-  normalised WANDS queries, with repeats (8.3); membership ignores the repeats; or
+  passed to the generator is the list of whitespace-token occurrences of the
+  caller's negatives, with repeats (8.3: the product spans for training positives
+  in the primary arm, the training-side real queries in the comparison arm, the
+  test-side real queries for test positives); membership ignores the repeats; or
 - a **number-shaped token**: it contains a digit, matches
   `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, **and has at most three letter/digit
   blocks** (a block is a maximal run of letters or of digits; separators do not
@@ -328,8 +330,10 @@ templates of A-D: `n_neg / n_training_templates` renders per template (5,000 / 2
 side). The 20-per-template figure of rule 6 remains the **nominal group size used
 for fold assignment** (8.1), which is what probes 13.10 and 13.14 validated; the
 renders are then made per fold for the templates on each side. Family E stays
-evaluation-only, 120 per fold, `family="E"`. **Rationale:** balanced classes keep
-every metric interpretable; the probe shows the gain comes from the quantity of
+evaluation-only, 120 per fold, `family="E"`. **Rationale:** a balanced training
+side needs no class weights or re-balancing (the test side is not balanced, about
+five synthetic positives per real query; 8.5 says how precision and macro F1 are
+read); the probe shows the gain comes from the quantity of
 negatives, and 384 positives against 20,000 negatives already reach most of it
 (P2LP arm, 13.19), so matching counts costs nothing and avoids re-weighting.
 
@@ -340,9 +344,10 @@ helper in `bqc/synth/registry.py`; the templates themselves do not change). Exac
 duplicates within a template are dropped and the shortfall reported per template;
 rule 5's floor of 50 distinct strings is far below 209, so the report also lists
 each template's distinct count at the required size (a template under 50% distinct
-is a finding, not a failure). Training positives equal, after `normalise()`, to a
-training negative, a real query, a P string or a sanity query are dropped by the
-audit (rule 4), counted, never shown. Test-side templates render 100 each (8.3).
+is a finding, not a failure). Training and test positives equal, after
+`normalise()`, to a training negative, a real query or a P string are dropped by
+the audit (rule 4), counted, never shown; one equal to a sanity query fails the
+generation (rule 4). Test-side templates render 100 each (8.3).
 
 **Every synthetic sample carries metadata:** `family`, `template_id` (the
 sub-generator or template that produced it), `seed`. This is what makes the
@@ -356,23 +361,31 @@ anti-inflation measures in section 8 possible.
    *not* forced to match (payloads are legitimately longer) but the length-only
    baseline in 6.3 quantifies how much of the result is explained by length alone.
 3. Every family has a hard-positive sub-generator that embeds real product words
-   (section 2). Product words are sampled only from the *training fold's* WANDS
-   queries (8.3) so test-fold vocabulary never leaks into training positives, and
-   they are sampled **from token occurrences, with repeats**, so common words
-   appear in hard positives as often as in real queries (8.3, 13.17).
-4. Near-duplicate audit after generation: character-3-gram Jaccard similarity between
-   every positive and every negative; any pair above 0.6 is reported, and the
-   generation fails if any positive is identical, after `normalise()` (section 5),
-   to a negative **or to a sanity-set query** (8.6.1). The exact-match check runs
-   on every generation without exception: `generate`, the per-fold ones (8.3), the
-   final-model fit (8.7) and the clustering experiment (9), against both lists. The
-   Jaccard report runs only in `bqc generate` (section 10): pairs above 0.6 against
-   negatives, and, **report-only, pairs above 0.5 against sanity queries** (added
-   2026-11-05, 8.6.1); neither threshold fails a run. The sanity half of the
-   exact-match check is what keeps the sanity set outside the generators by
-   construction: if a template can emit a sanity query, the template changes,
-   never the sanity file. The example strings in section 2 are illustrations, not
-   a list templates may copy.
+   (section 2). Product words are sampled only from the **training negatives of
+   the arm** (the product spans in the primary arm, the training-side real queries
+   in the comparison arm; 8.3) so test-side vocabulary never leaks into training
+   positives, and they are sampled **from token occurrences, with repeats**, so
+   common words appear in hard positives as often as in the negatives (8.3, 13.17).
+4. Exact-match audit and near-duplicate report (clarified 2026-11-05, PQ-1). The
+   exact-match check compares every generated positive, after `normalise()`
+   (section 5), with four lists, on every generation without exception
+   (`generate`, the per-fold ones (8.3), the final-model fit (8.7), the clustering
+   experiment (9)). The outcome depends on the list:
+   - equal to a **sanity query**: the generation **fails** (`check_exact` raises);
+     the template changes, never the sanity file. This is a template defect: the
+     sanity set must stay outside the generators (8.6.1).
+   - equal to a **training negative, a real query or a P string**: the positive is
+     **dropped and counted** in the run JSON, never shown. These collisions are
+     data-dependent (a hard positive borrowing catalogue words can coincide with a
+     span; a scratch run saw 0 of 5,016), not a template defect, so they are not a
+     failure.
+   Product spans (3.2) follow the second rule for all four lists, sanity included:
+   a span equal to a sanity query is dropped and counted, because spans are cut from
+   real catalogue text, not written by a template.
+   The character-3-gram Jaccard report runs only in `bqc generate` (section 10):
+   pairs above 0.6 against negatives, and, **report-only, pairs above 0.5 against
+   sanity queries** (8.6.1); neither threshold fails a run. The example strings in
+   section 2 are illustrations, not a list templates may copy.
 8. **Template authors do not open `data/sanity.csv`** (ruled 2026-11-05). The
    delegation that writes or corrects a generator may contain **exactly**: the
    family's row in section 2 (and, for the part-number task, 8.6 item 4), sections
@@ -655,10 +668,18 @@ over the outer training rows with the 8.1 groups, producing out-of-fold scores f
 the training queries; the model is then refitted on the whole training fold. Positives
 are not regenerated per inner fold (accepted: the inner loop only chooses `t`, and
 any bias shows in the achieved outer FPR). Probe 13.10 shows this inner split keeps
-every family present and the class share within 0.44-0.51. Both arms use the same
-outer folds, the same test-side strings and the same seeds, so their results are
-paired fold by fold; the full run (M6) reports both, with the primary arm as the
-headline and the paired differences.
+every family present and the class share within 0.44-0.51.
+
+**Arms in one run (PQ-3):** `--negatives` takes a comma list, default `product`;
+`--negatives product,real` runs both arms **in the same run**, on the same outer
+folds, the same test-side strings and the same seeds, and writes **one JSON** with
+each arm under its own key plus an `arm_comparison` section: per-fold paired
+differences (primary minus comparison) in headline recall, achieved FPR and
+ROC-AUC, with mean, sample sd and the count of folds where the primary arm wins,
+exactly as `smote_comparison` does within an arm (7.1). The LR-vs-MLP difference
+lives inside a run under `model_comparison` with the same shape. There is no
+command that compares two run files; the full run (M6) is one invocation with both
+arms, and reports the primary arm as the headline with the paired differences.
 
 Nothing is fitted on data outside the training side in either arm.
 
@@ -703,7 +724,8 @@ vocabulary still comes from training negatives only.
 ### 8.4 Operating point: "minimise false positives"
 
 **Decision:** the operating point is a **target FPR of 1%** (confirmed by the user,
-Q4), chosen on inner validation data (8.2). Headline number: **recall of
+Q4), chosen on the threshold queries of 8.2 (cross-fit in the primary arm, inner
+out-of-fold in the comparison arm). Headline number: **recall of
 illegitimate queries at FPR <= 1%**, pooled over outer test folds, with the
 **achieved pooled FPR and its 95% Wilson interval**.
 
@@ -728,8 +750,9 @@ For each model x SMOTE setting, per repeat and pooled:
   `k`). The 1440 observations are three re-scorings of the same 480 queries, not
   independent, and an interval at `n = 1440` (0 FPs: upper bound 0.27%) would claim
   a precision the data does not have; at `n = 480` it is 0.79% (13.13), which is
-  the figure 8.4's argument rests on. The same rule applies to the recall interval
-  if one is reported: `n = 480` positives.
+  the figure 8.4's argument rests on. No confidence interval is reported on recall:
+  the positives are synthetic and 2,400 per repeat in v2.0, and an interval there
+  would claim a precision about *our generators*, not about bots.
 - Confusion matrix at the chosen thresholds (pooled out-of-fold).
 - Macro F1, precision, recall (positive class) at the chosen thresholds.
 - ROC-AUC, mean +/- sd over folds and pooled (threshold-free sanity number).
@@ -760,24 +783,42 @@ For each model x SMOTE setting, per repeat and pooled:
   2026-11-05).
 
 Macro F1 and ROC-AUC are reported because the user asked for them; they are not used
-for any selection. Selection (threshold) uses only FPR on inner validation data.
+for any selection. Selection (threshold) uses only FPR on the threshold queries
+(8.2). Since v2.0 the test side is unbalanced, about 500 synthetic positives to 96
+real queries per fold, so precision and macro F1 depend on that ratio; the run JSON
+states the ratio next to them, and they are read as comparisons between models on
+the same data, not as absolute numbers.
 
 ### 8.6 Anti-inflation: how would we know the model generalises?
 
 No real bot data exists, so the standard CV above measures "can the model separate
-WANDS from *these generators*". Four additional checks make that limitation visible:
+WANDS from *these generators*". Five additional checks make that limitation visible:
 
-1. **Leave-one-family-out (LOFO).** For each training family F in A-D (E is never
-   trained on, so it has no LOFO row; its evaluation-only recall in 8.5 already is
-   the "unseen family" number for E): reuse the outer folds of 8.1, drop F's groups
-   from the training side, train on the remaining three families plus
-   training-fold negatives with the same nested protocol (threshold chosen without
-   F), and test on all of F generated from test-fold vocabulary plus the test-fold
-   negatives. The training side is then 3:4 positive to negative; no re-balancing
-   is applied, because the point is the threshold's transfer, not the class ratio.
-   Report recall on F at that threshold, and the achieved FPR. This is the closest
-   proxy for "a kind of bot we did not anticipate". Expect it to be much lower than
-   in-distribution recall; that gap is the honest generalisation number. Off by
+1. **Leave-one-family-out (LOFO)** (restated for v2.0, PQ-2). For each training
+   family F in A-D (E is never trained on, so it has no LOFO row; its
+   evaluation-only recall in 8.5 already is the "unseen family" number for E), per
+   outer fold of 8.1 and per arm:
+   - **Training:** the arm's training negatives unchanged (spans in the primary
+     arm; training-side real queries in the comparison arm) and positives from the
+     training-side templates of the other three families only, rendered at
+     `n / n_remaining_training_templates` each so the training side stays 1:1
+     (there is no "3:4": the class ratio is held fixed and only the family mix
+     changes).
+   - **Threshold:** the arm's own rule of 8.2 (cross-fit on the 384 training-side
+     queries in the primary arm; the nested inner loop in the comparison arm),
+     chosen without F.
+   - **Test:** the **same test strings as the main run** for that fold: the 96
+     test-side queries, and F's test-side templates at their 100 renders each from
+     the test-side queries' vocabulary. Not all six of F's templates: using the
+     identical strings makes LOFO recall on F directly comparable, fold by fold,
+     with the main run's per-family recall on F (600 per repeat, 8.5).
+   - **Report:** recall on F at that threshold, the achieved FPR, and the paired
+     difference to the main run's recall on F. This is the closest proxy for "a
+     kind of bot we did not anticipate"; expect it to be much lower, and that gap
+     is the honest generalisation number.
+   Runs in **every arm that runs**, for logistic regression and the trivial
+   baseline always; for the MLP in the primary arm under the runtime budget (10;
+   the comparison arm's nested LOFO is 360 fits of 384 / 384, seconds each). Off by
    default; `--lofo` adds it to the run JSON as its own section.
 2. **Trivial baseline gap** (6.3). If length + punctuation ratio alone reaches the
    MLP's recall, the generators are too easy.
@@ -812,20 +853,27 @@ WANDS from *these generators*". Four additional checks make that limitation visi
    the span pool before building the training negatives, and **remove the
    training-side real queries of those classes** from the threshold set; fit and
    threshold as in 8.2; test on the test-side queries. Report pooled FPR with
-   Wilson CI, recall, and the flagged queries. **Failure rule:** the check fails
+   Wilson CI, recall, and the flagged queries. **Failure rule (confirmed by the
+   user 2026-11-05, 12.1 item 14, knowing it is lenient):** the check fails only
    when the Wilson **lower** bound of the pooled FPR exceeds the 1% target, i.e.
    when we are confident the gap pushes FPR past target. The probe's result (FPR
    1.67% [0.85, 3.25], recall 86.3%; comparison arm under the same removal 0.90%
    [0.36, 2.22], recall 66.2%) passes the rule and is reported as "point estimate
    above target". What to do on failure (category-aware thresholds, real-query
    negatives for uncovered categories) is a user decision, not a design default.
-   Runs for logistic regression always; for the MLP under the runtime budget (10).
+   **Applies to every arm that runs** (PQ-4): in the comparison arm the removal
+   is of the training-side real queries of those classes from both its training
+   negatives and its threshold set (the probe's BASEX arm, which is where the 0.90%
+   above comes from), so the two arms' gap results are paired like everything
+   else. `--catalogue-gap` therefore never is a usage error with either arm. Runs
+   for logistic regression and the trivial baseline always; for the MLP under the
+   runtime budget (10).
 
 All five are reported, not optimised. A run that looks great on 8.5 and poor on
 8.6 is reported as exactly that. If the diagnostic shows part numbers flagged at a
-high rate, the remedy (synthetic part-number negatives) changes the decision that
-negatives are real WANDS queries, so it is a question for the user (12.2, Q12),
-not something this design does on its own.
+high rate, the remedy (synthetic part-number negatives) would add a third negative
+source with no real counterpart, so it is a question for the user (12.2, Q12), not
+something this design does on its own.
 
 #### 8.6.1 Sanity set mechanics
 
@@ -1049,7 +1097,8 @@ with their metadata, the per-family and per-template length statistics and
 distinct counts next to WANDS', the near-duplicate pairs (positives vs negatives
 above 0.6; positives vs sanity above 0.5, report-only), the **span audit counts**
 (removed as equal to a real query, a sanity query, a P string; expected share of
-real queries with a span above Jaccard 0.6, about 27%, which is desired, 13.19),
+real queries with a span above Jaccard 0.6: 27% at 20,000 spans in the probe, about
+12% at the default 5,000 in `opus`'s scratch build, both desired, 13.19),
 the 100 part-number diagnostic strings (8.6 item 4) under their own key, and the
 two occurrence-rule numbers of 13.17 computed against the spans' tokens. It exists
 so the data can be inspected by eye; fold runs rebuild their own negatives and
@@ -1070,7 +1119,7 @@ must not import the command layer.
   run; never overwritten (file name includes config hash and timestamp).
 - **Commands** (for CLAUDE.md "Commands" once the user fills it):
   `python -m bqc fetch`, `python -m bqc generate [--negatives-size N]`,
-  `python -m bqc evaluate [--negatives product|real] [--negatives-size 5000]
+  `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
   [--models lr,mlp,trivial] [--smote] [--target-fpr 0.01] [--lofo]
   [--catalogue-gap]`, `python -m bqc cluster`,
   `python -m unittest discover -s tests`.
@@ -1123,19 +1172,22 @@ Each item names the component and the designed behaviour.
    positives. Not solvable with WANDS as the only negative source; accepted as a
    known v1 limitation (Q6). No fix is planned: the user rejected mixing in another
    query source (Q7).
-7. **Synthetic positive identical or near-identical to a WANDS query, or identical
-   to a sanity query.** Generation fails on exact matches against either list and
-   reports near-duplicates against WANDS (section 4, rule 4; 8.6.1).
+7. **Synthetic positive identical to a sanity query:** generation fails (section 4
+   rule 4; 8.6.1). **Identical to a training negative, a real query or a P
+   string:** dropped and counted. **Near-identical to a WANDS query:** reported
+   (Jaccard above 0.6), never a failure.
 8. **Synthetic near-duplicates straddling folds.** Prevented by grouping on
    `(family, template_id)` (8.1); the fold test asserts no group appears in both sides.
 9. **Leakage of vectoriser / SMOTE / threshold.** All fitted inside the training
    fold (8.2). Test: fit on a training fold, assert vocabulary contains no n-gram
    that exists only in the test fold; assert test-fold row count is unchanged after
    the pipeline.
-10. **Threshold not achievable.** If no threshold reaches the target FPR on inner
-    validation (every positive overlaps with some negative), choose the threshold
-    with the smallest FPR and flag `target_unmet=true` in the report.
-11. **Target FPR below resolution.** If `target_fpr < 1/n_inner_negatives`, warn in
+10. **Threshold not achievable.** If no threshold reaches the target FPR on the
+    threshold queries of 8.2 (the top-scoring negatives tie above every
+    candidate), choose the threshold with the smallest FPR and flag
+    `target_unmet=true` in the report.
+11. **Target FPR below resolution.** If `target_fpr < 1/n_threshold_negatives`
+    (384 in the primary arm), warn in
     the report; do not silently round to zero FPs.
 12. **MLP fails to converge** (`ConvergenceWarning`). Captured and recorded in the
     run JSON per fold; not an error.
@@ -1258,6 +1310,14 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     7.1 rule, and the M6 report carries a recommendation for the user to decide
     on. Q12 (part numbers) remains open: the product data does not fix the bare
     part-number shapes (13.19).
+14. **Catalogue-gap failure rule (2026-11-05).** The user confirmed the lenient
+    rule of 8.6 item 5, having been told it is lenient: the check fails only when
+    the Wilson lower bound of the pooled FPR exceeds the 1% target, so the probe's
+    1.67% [0.85, 3.25] passes and is reported as "point estimate above target".
+15. **Embedding probe (2026-11-05).** The user approved a read-only probe of a
+    1024-dimension embedding model as a possible replacement for the TF-IDF
+    features of section 5. Nothing is decided; section 5 stays as it is until the
+    probe reports (12.2, Q16).
 
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
@@ -1277,6 +1337,13 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     number, ~50-100 rows) added to the negatives with their own group tag so folds
     and the FP list can tell them apart; if the share is small, do nothing. Does
     not block any task before M6.
+16. **Embedding features instead of TF-IDF?** A read-only probe of a
+    1024-dimension embedding model is running (user approval, 12.1 item 15).
+    Section 5 is unchanged until it reports. What the probe must show to change
+    the design: a paired gain in recall at FPR <= 1% on the same folds and test
+    strings as 13.19 that clears the 7.1 rule, the catalogue-gap check not worse,
+    and a stated cost (model size, dependency, fit and scoring time) that fits an
+    experiment-sized project. Blocks nothing before M4.
 
 ### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
 
@@ -1318,6 +1385,19 @@ read the file, authors no longer open the file, quoting tests and comments go,
 and a report-only Jaccard against sanity queries is added (section 4 rules 4 and
 8, 8.6.1); spam contact details become invented rather than reserved (rule 9);
 one-word false positives are reported (8.5). None alters a user decision.
+
+Rulings on `opus`'s v2.0 plan questions, 2026-11-05 (`PLAN.md` at `530de4f`):
+PQ-1, a positive equal to a sanity query fails the generation, one equal to a
+negative, a real query or a P string is dropped and counted, spans always dropped
+and counted (4 rule 4, 11.7); PQ-2, LOFO restated for both arms with a 1:1
+training side and the main run's test strings (8.6 item 1); PQ-3, both arms in one
+run and one JSON with `arm_comparison` (8.2, 10); PQ-4, the catalogue-gap check
+runs in every arm (8.6 item 5). Nits: "inner validation" wording (8.4, 8.5, 11.10,
+11.11), no recall interval (8.5), five checks (8.6), vocabulary definition (2.2,
+rule 3), 13.19 deviation list, the near-duplicate share at 5,000 (10), balance
+wording (4). The user then confirmed the catalogue-gap failure rule (12.1 item 14)
+and approved the embedding probe (12.1 item 15; section 5 unchanged until it
+reports, 12.2 Q16).
 
 ## 13. Probe findings and unverified assumptions
 
@@ -1598,10 +1678,10 @@ by the catalogue). Sanity gate: P2 removed 1 span equal to a sanity query at
 
 Not covered by the probe: real bot traffic, legitimate queries outside the
 catalogue beyond the simulated gap, the sanity set (not scored), the trivial
-baseline, SMOTE, final-model fits. Deviations from the design: threshold on
-negative scores only; vocabulary capped at 10,000; P3's typo rate and P2's word
-counts taken from all 480 queries (a small leak, replaced in 3.2 by the published
-constant); 100 renders per test template.
+baseline, SMOTE, final-model fits. Deviations from the design: vocabulary capped
+at 10,000; P3's typo rate and P2's word counts taken from all 480 queries (a small
+leak, replaced in 3.2 by the published constant); 100 renders per test template.
+(The threshold on negative scores only is the 8.4 rule itself, not a deviation.)
 
 ## 14. Later (deferred, not in scope)
 

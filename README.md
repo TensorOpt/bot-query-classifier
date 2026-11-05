@@ -34,12 +34,10 @@ flowchart TD
         direction TB
         CV["Group-aware stratified 5-fold CV, repeated 3 times<br/>each fold splits the generator templates and the real queries"]
         TFIDF["Normalise text, character TF-IDF, 1 to 4 characters"]
-        SMOTE["SMOTE: measured experiment, off by default"]
         MODEL["Small neural net: one hidden layer of 64 units<br/>compared with logistic regression and a trivial baseline"]
         THRESH["Choose the threshold on 384 real queries<br/>target: false positive rate of at most 1%"]
         METRICS["Test on the other 96 real queries and unseen templates:<br/>recall at target FPR, macro F1,<br/>precision, confusion matrix, ROC-AUC"]
         CV --> TFIDF
-        TFIDF -.-> SMOTE -.-> MODEL
         TFIDF --> MODEL
         MODEL --> THRESH --> METRICS
     end

@@ -1,11 +1,11 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.11 (commit `d7f95e3`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.0 (commit `5ba7cee`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
-`signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
-settles the design point stated in the task. A task whose dependency is blocked stays
-`todo`.
+`signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
+answers that question (see "Open questions for `fable`"). A task whose dependency is blocked
+stays `todo`.
 
 Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 
@@ -13,18 +13,23 @@ Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 
 | Milestone | Content | Tasks |
 |-----------|---------|-------|
-| M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening | 7 |
-| M2 | Synthetic generators, audit, part-number set, `generate` | 9 |
-| M3 | Features and evaluation harness against a fake `Scorer` | 11 |
-| M4 | Real models, `evaluate` command, SMOTE experiment | 6 |
-| M5 | HDBSCAN experiment | 3 |
+| M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening, product file | 8 |
+| M2 | Synthetic generators, audit, part-number set, render helper, product-name spans, `generate` | 12 |
+| M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check | 13 |
+| M4 | Real models, `evaluate` command, SMOTE experiment, paired comparisons | 7 |
+| M5 | HDBSCAN experiment (unchanged by v2.0) | 3 |
 | M6 | Full run on real data | 1 |
 
 Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, are retired, and aren't reused.
 `M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
 appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
-order: M2.T9 was added later and comes before M2.T8. M1.T7 may run in parallel with M2. In M2, the
-corrections run first, in this order, each validated before the next: M2.T2, M2.T3, M2.T5. Then M2.T6.
+order: M2.T9, M2.T10, M2.T11 and M2.T12 come before M2.T8, M3.T13 comes after M3.T5, and M3.T14
+comes after M3.T9.
+
+v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
+M2.T11), and earlier entries keep their statuses and the design version they were validated against.
+
+**Next tasks, in order:** M1.T8, M2.T10, M2.T11, M2.T12. Then M2.T8, once PQ-1 is answered.
 
 ### Order constraints
 
@@ -46,10 +51,13 @@ No probe task is scheduled: section 13 already answers every question a task dep
 | `imblearn` `Pipeline` skips SMOTE at `predict_proba` time; callable `sampling_strategy` | 13.12 | M4.T6 |
 | Wilson reference values | 13.13 | M3.T7 |
 | Part-number shapes in WANDS | 13.15 | M2.T9, M3.T12 |
+| `product.csv` format and coverage | 13.18 | M1.T8, M2.T12 |
+| Product-name spans as training negatives | 13.19 | M2.T12, M3.T5, M3.T14 |
 
-13.9 keeps one item. "No bot traffic in the 480 queries" can't be probed; its
+13.9 keeps three items. "No bot traffic in the 480 queries" can't be probed; its
 mitigation, reviewing the false-positive list by eye, is an acceptance criterion of
-M6.T1.
+M6.T1. The MLP fit time at 5,000 / 5,000 is measured and recorded by M4.T4. The coverage
+numbers of 13.18 were read, not re-run; no task depends on their exact values.
 
 ### File ownership
 
@@ -68,6 +76,7 @@ changes it.
 | `bqc/synth/gibberish.py`, `payloads.py`, `enumeration.py`, `spam.py`, `offtopic.py` | M2.T2 to M2.T6 |
 | `bqc/synth/audit.py` | M2.T7 |
 | `bqc/synth/partnumbers.py` | M2.T9 |
+| `bqc/negatives.py` | M2.T12 |
 | `bqc/report.py` | M2.T8 |
 | `bqc/features.py` | M3.T1 |
 | `bqc/models.py` | M3.T2 |
@@ -82,15 +91,39 @@ changes it.
 - **Q12: after M6.T1.** M6.T1 reports the part-number diagnostic so the user can decide
   whether to add synthetic part-number negatives (12.2). No task waits for the answer, and
   this plan schedules no work for it.
+- **LR or MLP: after M6.T1.** M6.T1 carries a recommendation; the user decides (12.1, item 13).
+- **Catalogue gap: only if the check fails in M6.T1.** What to do then is a user decision
+  (8.6 item 5).
 
-Q1 to Q11 are closed (12.1). Off-domain queries stay outside both classes, so no task exists
-for them. SKUs and part numbers are legitimate (Q11, 2.2).
+Q1 to Q11 and Q13 are closed (12.1). Off-domain queries stay outside both classes, so no task
+exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 
-### Fact checked while planning
+### Open questions for `fable`
+
+| Id | Blocks | Question |
+|----|--------|----------|
+| PQ-1 | M2.T8, M3.T3 | **Does a positive that equals a negative fail the generation, or get dropped?** Section 4's v2.0 paragraph and 8.5 say training and test positives equal to a training negative, a real query, a P string or a sanity query are dropped and counted. Section 4 rule 4 and 11.7 still say the generation fails, and rule 4 adds that a template that can emit a sanity query changes. `check_exact` raises. Which applies to each list? In a scratch run, 0 of 5,016 positives equalled a span or a real query, so either answer is cheap. |
+| PQ-2 | M3.T9 | **What is LOFO under v2.0?** 8.6 item 1 still reads as v1: "same nested protocol", "training-fold negatives", "test-fold negatives". In the primary arm: (a) is the threshold the cross-fit of 8.2? (b) "3:4 positive to negative" means `n / 24` renders per remaining template, but 8.2 says `n / n_training_templates`, which would rebalance to 1:1; which? (c) is "all of F" 100 renders for each of F's 6 templates, from the test-side queries' vocabulary? (d) does LOFO run in both arms? Section 10's 60 fits count only one arm. |
+| PQ-3 | M4.T8 | **Where do the paired differences between arms live?** 8.2 says both arms are paired fold by fold and M6 reports the differences, but `--negatives product|real` selects one arm per run, one JSON file per run, and no command compares two files. Should `evaluate` be able to run both arms in one run, as `--smote` does, or should a named step compare two run files? The LR-vs-MLP difference (12.1 item 13) fits inside one run; M4.T8 plans it there under the key `model_comparison`. |
+| PQ-4 | M3.T14 | **Does the catalogue-gap check apply to the comparison arm?** 8.6 item 5 describes removing products from the span pool, and quotes a probe result for the comparison arm "under the same removal", but doesn't say whether the run does this. M3.T14 is written for the primary arm only. Is `--catalogue-gap --negatives real` a usage error, or a second report that removes the training-side queries of those classes? |
+
+### Facts checked while planning
 
 All 480 WANDS queries remain distinct after the six `normalise()` steps of section 5
 (2026-11-05, Python 3.12, `query.csv` SHA-256 `63b61660...68e95`), so 8.1's singleton
 groups hold.
+
+A scratch build of 5,000 spans per 3.2 (2026-11-05, the probe's `product.csv`, the committed
+generators):
+
+- 0 of 14,400 renders of A-D were all benign against the spans' vocabulary (17,393 occurrences,
+  3,763 types). Against the whole catalogue's vocabulary, some `C.walk` and `D.promo` outputs were,
+  so the check belongs on the vocabulary a template was given (M2.T8 criterion 8).
+- `B.script` reaches only about 60 distinct strings and `B.template` about 146 in 600 renders, so
+  their shortfall at `n / 24` renders is real and goes in the report (section 4).
+- `near_duplicates` costs about 23 s at 5,000 x 5,000.
+- 11.9% of real queries have a span above Jaccard 0.6 at 5,000 spans. Section 10's "about 27%" was
+  measured at 20,000, so no test asserts that figure.
 
 ---
 
@@ -338,6 +371,38 @@ Follow-ups:
   this commit. `fable` needs only to read that diff, run the suite, and set this task to
   `signed off`; M1's verdict doesn't need redoing, and M2 doesn't wait for it.
 
+### M1.T8: Download and load `product.csv`
+
+- **Goal:** fetch the product file next to `query.csv`, hash-pinned, and load the three columns the
+  project reads.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3, 3.1, 11.13, 11.24, 13.18.
+- **Files:** `bqc/wands.py`, `bqc/cli.py`, `data/CHECKSUMS`, `tests/test_products.py`,
+  `tests/test_fetch.py`, `tests/fixtures/product.tsv`, `tests/fixtures/CHECKSUMS`.
+- **Acceptance criteria:**
+  1. `python -m bqc fetch` downloads both files through the existing `fetch`, each atomically and
+     checked against its own line. If either fails, it exits non-zero, and any file already in place
+     stays.
+  2. `data/CHECKSUMS` gains the line `d993926254572e6eba96c8fd87cc549a17fb91ad3748308036eee4cf92b10ac6  product.csv`.
+  3. `load_products(path, checksums)` returns `(product_id, name, classes)` for every row, raw and in
+     file order. `classes` is the `|`-separated `product_class` as a tuple, empty for an empty field.
+     No other column is kept.
+  4. Hash refused, missing file and wrong header raise `WandsError` naming the path. Columns are
+     matched by name, including `category hierarchy` with its space. A row with the wrong column
+     count raises `WandsError` naming the row number (11.24).
+  5. The loader raises `csv.field_size_limit` before parsing (3.1, 11.24).
+  6. The real run gives 42,994 rows, 42,577 distinct names and no error (13.18). The report gives
+     the time and peak memory of one load.
+- **Tests:** fixture with the real header, tab delimiter, and:
+  - a description field longer than the default `csv` limit, which loads;
+  - a quoted field and a non-ASCII name, returned raw;
+  - an empty `product_class`, and a multi-class one split into a tuple.
+  Failure paths: wrong hash; missing file; wrong header; wrong column count names the row number.
+  In `tests/test_fetch.py`: the command fetches both files; a failure on the second returns non-zero
+  and leaves the first; nothing downloads.
+- **Depends on:** M1.T7.
+- **Status:** todo
+- **Status note:** M1's sign-off doesn't cover this task. `fable` reviews it as for M1.T7.
+
 ---
 
 ## M2: Synthetic generators
@@ -577,56 +642,144 @@ Sign-off: pending.
 - **Status:** validated
 - **Status note:** implemented in `7b0678a`, corrected in `e3f2229`. `opus`'s correction list is in `3ef106b`.
 
+### M2.T10: Render any number of positives per template
+
+- **Goal:** render `per_template` distinct strings for chosen templates, without changing them.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 2.2, 4, 8.3, 11.18.
+- **Files:** `bqc/synth/registry.py`, `tests/test_synth_registry.py`.
+- **Acceptance criteria:**
+  1. `render(vocabulary, seed, templates, per_template)` calls the registry's `generate()` with
+     `seed + i` for `i = 0, 1, ...` and keeps, per wanted template, the first `per_template` distinct
+     outputs. `templates` holds `(family, template_id)` pairs; an unknown pair raises `ValueError`.
+  2. It stops after a fixed number of rounds in proportion to `per_template / QUOTA`, and returns
+     the samples and each template's shortfall. A shortfall never pads and never raises.
+  3. Output order follows `templates`. The templates themselves and `generate()` don't change.
+- **Tests:**
+  - 209 per template over several templates; every sample has its metadata.
+  - A stub with fewer distinct strings than asked gives its shortfall and stops.
+  - Same seed gives identical output, across `PYTHONHASHSEED` values too; a different seed differs.
+  - `per_template` of 20 or fewer works; an empty vocabulary raises `ValueError`.
+  - `assert_template_rules` runs on every real template with a fold-sized vocabulary that also holds
+    product-span tokens: repeats, `''`, `.`, `-`, `&`, `w/`, `all-clad`, `qt`, `24''`.
+- **Depends on:** M2.T1, M2.T6.
+- **Status:** todo
+
+### M2.T11: Drop exact matches without showing them
+
+- **Goal:** a filter that removes strings equal to a list and returns only counts, for spans and
+  any audited drop (3.2, 11.25).
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 4 (rule 4), 8.6.1, 11.25.
+- **Files:** `bqc/synth/audit.py`, `tests/test_synth_audit.py`.
+- **Brief:** this task isn't template authoring, and it doesn't read the sanity file.
+- **Acceptance criteria:**
+  1. `drop_exact(strings, others)` returns the strings that aren't equal to any of `others` after
+     `normalise()`, in order, and the number removed. It returns no removed text and raises nothing
+     that contains any.
+  2. `check_exact` and `near_duplicates` don't change.
+- **Tests:** identical; differing only in case and whitespace; `others` normalised too; order kept;
+  empty inputs; input not mutated; removed text absent from the return value.
+- **Depends on:** M2.T7.
+- **Status:** todo
+
+### M2.T12: Product-name spans
+
+- **Goal:** build the training negatives of 3.2 in one home.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.3, 11.25, 11.26, 11.27, 13.17, 13.19.
+- **Files:** `bqc/negatives.py`, `tests/test_negatives.py`.
+- **Brief:** this task isn't template authoring. The builder takes the sanity queries as a list of
+  strings and never reads the file; tests use invented strings.
+- **Acceptance criteria:**
+  1. Each product name is `normalise()`d, then folded to ASCII (NFKD, drop non-ASCII, re-collapse
+     whitespace). A name empty after folding is skipped (11.26).
+  2. `build_spans(products, n, seed, real_queries, part_numbers, sanity)`, using
+     `random.Random(seed)`, draws `k` from the constant word-count distribution of 3.2, a product
+     uniformly among those with at least `k` words, and a start uniformly. So a short product redraws
+     the product, not the length (11.27).
+  3. A span is dropped if, after `normalise()`, it is empty, already drawn, or equal to a real query,
+     a P string or a sanity query, the last three through `drop_exact`. It returns the spans and a
+     count per kind of removal, with no removed text.
+  4. Each span carries `product_id`, `k` and `seed`. It stops at `n` (default 5,000, one home here).
+  5. If `n` can't be reached, it raises an error with the count reached, and never pads (11.25).
+  6. `token_occurrences(strings)` returns every whitespace token of the normalised strings, with
+     repeats and in order: the one vocabulary helper for M2.T8, M3.T3, M3.T10 and M5.T3. A constant
+     caps the product-side list at the probe's 10,000 occurrences, and callers record it in the run
+     config (8.3).
+  7. `bqc/negatives.py` doesn't import `bqc/sanity.py` or open any file.
+- **Tests:**
+  - **Length draw:** the constant sums to 480 and matches 3.2; over a large draw, the share of each
+    `k` is close to it.
+  - **ASCII fold:** a non-ASCII name folds, an all-non-ASCII name is skipped, and every span is ASCII
+    with `normalise(s) == s`.
+  - **Removals:** one test per kind, each counted, with no removed text anywhere in the return value.
+  - **Exhaustion:** `n` above the distinct spans available raises with the count; so does a pool with
+    no product long enough for a drawn `k`.
+  - **Determinism:** same seed gives identical spans, across `PYTHONHASHSEED` values too; a different
+    seed differs.
+  - Spans are contiguous words of their product, and `product_id` and `k` match.
+  - `token_occurrences` keeps repeats and order; the cap keeps the first 10,000.
+- **Depends on:** M1.T8, M2.T11.
+- **Status:** todo
+
 ### M2.T8: `bqc generate`
 
-- **Goal:** generate the full-vocabulary positives from the command line and write the
-  report for inspection by eye.
-- **Design refs:** `DESIGN.md` `7482987`: 4, 8.3, 8.6.1, 10, 13.17.
+- **Goal:** build the default training set from the command line and write the report for
+  inspection by eye.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 4, 8.3, 8.6 (item 4), 8.6.1, 10, 13.17, 13.19.
 - **Files:** `bqc/report.py`, `bqc/cli.py`, `tests/test_report.py`,
   `tests/test_cli_generate.py`.
 - **Brief:** this task isn't template authoring. Code reads the sanity queries through the M1.T6
   loader; the delegate has no need to view them, and reports give ids and counts, not query text.
 - **Acceptance criteria:**
-  1. `python -m bqc generate` passes the vocabulary as token occurrences with repeats, in file
-     order, from all 480 negatives (8.3), through one helper that M3.T3, M3.T10 and M5.T3 reuse,
-     to generate the 480 training positives of A-D and the 120 of family E, each tagged with its family, and runs
-     the audit over all 600. It writes one JSON report to `results/` holding the samples with
-     their metadata, the per-family length statistics next to WANDS', the near-duplicate pairs,
-     and the one-off share of hard-positive word slots next to the one-off share of WANDS token
-     occurrences (section 10, 13.17).
-  2. The report holds the 100 part-number strings of M2.T9 under their own key,
-     `part_numbers`. They aren't counted among the 600, aren't in the positives' samples or
-     length statistics, and aren't in the near-duplicate report.
-  3. `write_report()` in `bqc/report.py` is the one home for writing results: it adds the
+  1. `python -m bqc generate [--negatives-size 5000]` builds, in this order: the 100 part-number
+     strings of M2.T9 (vocabulary from the real queries); the spans with seed `SEED` (M2.T12); the
+     positives of A-D rendered from the spans' token occurrences at `n // 24` per template
+     (M2.T10); and the 120 of family E from the real queries' occurrences. Each sample is tagged with
+     its family, so E is never confused with the training set.
+  2. It runs the audit over all of them and writes one JSON report to `results/` holding: spans and
+     positives with their metadata; per-family and per-template length statistics and distinct
+     counts next to WANDS', with any template under 50% distinct marked as a finding (section 4);
+     each template's shortfall; the span audit counts; the share of real queries with a span above
+     Jaccard 0.6; near-duplicate pairs of positives against spans above 0.6; and the one-off share of
+     hard-positive word slots next to the one-off share of the spans' token occurrences (section 10,
+     13.17). The report also records the vocabulary cap.
+  3. The report holds the 100 part-number strings under their own key, `part_numbers`. They aren't
+     counted among the positives, aren't in the positives' samples or length statistics, and aren't
+     in the near-duplicate report.
+  4. `write_report()` in `bqc/report.py` is the one home for writing results: it adds the
      config fields of section 10, names the file by config hash and timestamp, and refuses to
      overwrite. M3.T8 and M5.T3 import it from there.
-  4. An audit failure exits non-zero, and a missing `data/raw/query.csv` exits non-zero
-     with a message pointing at `fetch`.
-  5. `main` dispatches on `args.command`, replacing the M1.T5 shortcut that runs `fetch` for any
+  5. A positive equal to a negative, a real query, a P string or a sanity query is handled per PQ-1.
+  6. A missing `data/raw/query.csv` or `data/raw/product.csv`, and a span pool that runs out, exit
+     non-zero with a message; the missing-file one points at `fetch`.
+  7. `main` dispatches on `args.command`, replacing the M1.T5 shortcut that runs `fetch` for any
      parsed command, with each command's error handling kept to that command.
-  6. In the real run, every one of the 600 outputs has a non-benign token against the vocabulary of
-     all 480 negatives, which the contract's synthetic vocabulary can't show (2.2). A fold's
-     vocabulary is a subset of it, so a fixed marker that passes here passes in every fold.
-  7. The report lists, report-only, every sanity query with character-3-gram Jaccard above 0.5 to any
+  8. In the real run, every output has a non-benign token against the vocabulary it was rendered
+     from (2.2), which the contract's synthetic vocabulary can't show.
+  9. The report lists, report-only, every sanity query with character-3-gram Jaccard above 0.5 to any
      generated positive, as its id and its maximum Jaccard, computed with the M2.T7 function. It holds
      no query text, and it never fails a run (rule 4, 8.6.1).
-  8. The real run passes the audit, with the real sanity queries, loaded through `load_sanity`
-     with the real WANDS queries and passed as `[q.query for q in sanity.queries]`, among the checked lists, and its near-duplicate count goes in the task report.
+  10. The real run takes the sanity queries through `load_sanity` with the real WANDS queries, passed
+     as `[q.query for q in sanity.queries]`. Its near-duplicate and span audit counts and its runtime
+     go in the task report.
 - **Tests:** on fixture paths:
-  - Success writes a report with samples and `family`, `template_id`, `seed` on each.
-  - Length statistics, near-duplicate pairs and both one-off shares are present.
+  - Success writes a report with spans and positives, with their metadata.
+  - Length statistics, distinct counts, shortfalls, span audit counts, near-duplicate pairs and both
+    one-off shares are present.
+  - `--negatives-size` sets the span count and the renders per template; a non-positive value is a
+    usage error.
   - A vocabulary with `chair` x10 and `zen` x1 yields `chair` far more often than `zen` across
     outputs.
-  - `part_numbers` holds 100 entries, and no `P` sample is among the 600.
+  - E's hard positives use only the real queries' words, and A-D's only the spans' words.
+  - `part_numbers` holds 100 entries, and no `P` sample is among the positives.
   - `write_report`: config fields present; a name collision doesn't overwrite.
-  - Collision with a negative, or with a sanity fixture query, exits non-zero, for a family E
+  - A collision with a negative or a sanity fixture query behaves as PQ-1 rules, for a family E
     sample too.
-  - Missing raw file exits non-zero.
+  - Either raw file missing exits non-zero; an exhausted span pool exits non-zero.
   - With a sanity fixture: a query just above 0.5 is listed with its id and maximum Jaccard, one at 0.5
     isn't, and the run still exits zero.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
-- **Depends on:** M1.T4, M1.T5, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9.
-- **Status:** todo
+- **Depends on:** M1.T4, M1.T5, M1.T8, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9, M2.T10, M2.T12.
+- **Status:** blocked (PQ-1)
 
 ---
 
@@ -664,34 +817,47 @@ Sign-off: pending.
 - **Depends on:** M1.T2.
 - **Status:** todo
 
-### M3.T3: Outer folds and per-fold positives
+### M3.T3: Outer folds and per-fold data
 
-- **Goal:** build repeated grouped folds, and regenerate positives from each side's
-  vocabulary.
-- **Design refs:** `DESIGN.md` `0a29571`: 4 (rules 3 and 4), 8.1, 8.3, 10 (seeds), 11.8, 11.16,
-  13.10, 13.14, 13.17.
+- **Goal:** build repeated grouped folds, and each fold's training, threshold and test data for
+  either arm.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 4 (rules 3 and 4), 8.1, 8.2, 8.3, 10 (seeds), 11.8,
+  11.16, 13.10, 13.14, 13.17, 13.19.
 - **Files:** `bqc/evaluate.py`, `tests/test_folds.py`.
 - **Acceptance criteria:**
   1. `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`,
      3 repeats, with both parameters overridable for tiny test configs.
-  2. Groups: each query is its own group; each positive's group is `(family, template_id)`.
-  3. Training hard positives draw only on training-fold negatives, and test hard positives
-     only on test-fold negatives. Each side's vocabulary is the list of token occurrences, with
-     repeats, of that side's negatives after `normalise()`, from the M2.T8 helper (section 5, 8.3).
-  4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
-     training set.
-  5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4), against all 480
-     negatives, not only the fold's, and the sanity queries (8.6.1), which the runner takes from the
-     M1.T6 loader as `[q.query for q in sanity.queries]`.
-  6. A single fold-check function raises if either class or any training family (A-D) is
+  2. Fold units: each real query is its own group, and each template of A-D is a group of nominal
+     size 20 from `group_sizes()`. Spans are never fold units and never on the test side (8.1).
+  3. **Primary arm:** training negatives are the spans built once per repeat with seed
+     `SEED + repeat_index`, shared by that repeat's folds. Training positives are rendered for the
+     training-side templates from the spans' occurrences (capped, M2.T12), `n // n_training_templates`
+     each. The threshold set is the training-side real queries.
+  4. **Comparison arm:** training negatives are the training-side real queries, with positives 20 per
+     training-side template from those queries' occurrences.
+  5. **Both arms:** the test side is the test-side real queries, 100 renders per test-side template,
+     and 120 of family E, all from the test-side queries' occurrences. The test-side strings are
+     identical across arms for a given repeat and fold. E never appears in a training set.
+  6. Vocabulary: no real query's token reaches a training positive in the primary arm (8.3). Every
+     list comes from `token_occurrences` (M2.T12).
+  7. Collisions between positives and the training negatives, all 480 real queries, the P strings and
+     the sanity queries are handled per PQ-1. The sanity queries come from the M1.T6 loader as
+     `[q.query for q in sanity.queries]`. Per-fold counts are returned.
+  8. A single fold-check function raises if either class or any training family (A-D) is
      missing from a training fold, or if either class is missing from a test fold. Families
-     are never asserted on the test side (8.1, 11.16). M3.T5 and M3.T9 use it too.
-  7. Each fold's class and per-family counts are returned for the run JSON (8.1). The positive
-     share isn't assumed to be 0.50: about 0.45-0.51 is expected (13.10).
-- **Tests:**
+     are never asserted on the test side (8.1, 11.16). M3.T5, M3.T13 and M3.T9 use it too.
+  9. Each fold's class and per-family counts, span removal counts and render shortfalls are returned
+     for the run JSON (8.1). The assignment's nominal positive share is about 0.45-0.51 (13.10); the
+     test side's actual share is far higher, with 100 renders per template.
+- **Tests** (stub templates, invented strings):
   - No group on both sides of a fold (11.8).
-  - A sentinel word present only in a test-fold negative never appears in a training
-    positive, and the reverse (8.3).
+  - Primary: a sentinel word only in a real query never reaches a training positive; a sentinel word
+    only in a span never reaches a test positive or E.
+  - Comparison: a sentinel word only in a test-side query never reaches a training positive, and the
+    reverse (8.3).
+  - No real query in the primary arm's training negatives; the spans are identical across a repeat's
+    folds and differ across repeats.
+  - Test-side strings are identical across arms.
   - A stub template given a side whose negatives hold `chair` x10 and `zen` x1 yields `chair` far
     more often than `zen`.
   - No E sample is in a training set.
@@ -700,90 +866,111 @@ Sign-off: pending.
   - A training fold missing a family raises (11.16).
   - A family present in training but absent from a test fold doesn't raise, and its test count
     is returned as 0 (8.1, 13.14).
-  - A per-fold collision raises for a negative in the same fold, for a negative in the other
-    side of the fold, and for a sanity fixture query (rule 4, 8.6.1).
-- **Depends on:** M2.T1, M2.T7, M2.T8. Real families aren't required by the tests, which use stub
-  templates; M2.T8 provides the vocabulary helper.
-- **Status:** todo
+  - A collision with a negative, a real query on either side, a P string and a sanity fixture query
+    behaves as PQ-1 rules.
+- **Depends on:** M2.T1, M2.T7, M2.T10, M2.T12. Real families aren't required by the tests, which use
+  stub templates.
+- **Status:** blocked (PQ-1)
 
 ### M3.T4: Threshold selection
 
-- **Goal:** pick the threshold from out-of-fold scores, as a pure function.
-- **Design refs:** 8.2, 8.4, 11.10, 11.11, 11.19.
+- **Goal:** pick the threshold from the real queries' scores, as a pure function.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.4, 11.10, 11.11, 11.19.
 - **Files:** `bqc/evaluate.py`, `tests/test_threshold.py`.
 - **Acceptance criteria:**
-  1. Returns the smallest score `t` with inner FPR at or below the target.
+  1. Takes the real queries' scores only, in both arms (8.2), and returns the smallest of those
+     scores with FPR at or below the target.
   2. The decision rule `score >= t` is illegitimate lives in one place.
-  3. If no threshold reaches the target, returns the one with the smallest FPR and sets
+  3. If no score reaches the target, returns the one with the smallest FPR and sets
      `target_unmet=true` (11.10).
   4. `target_fpr < 1/n_negatives` sets a warning field, with no silent rounding (11.11).
 - **Tests:** hand-computed cases:
-  - clean separation;
-  - full overlap and tied scores, including ties straddling the target;
+  - 384 scores at a 1% target give the third-highest score;
+  - tied scores, including ties straddling the target;
   - a score exactly at `t` counted illegitimate (11.19);
   - a target below resolution;
   - `target_unmet`;
-  - no negatives or no positives raises `ValueError`.
+  - no scores raises `ValueError`.
 - **Depends on:** M1.T2.
 - **Status:** todo
 
-### M3.T5: Nested outer-fold runner
+### M3.T5: Cross-fit outer-fold runner (primary arm)
 
-- **Goal:** for each outer fold, select a threshold on inner out-of-fold scores, refit on
-  the training fold, and score the test fold and family E.
-- **Design refs:** 8.2, 8.5 (family E), 11.9, 11.12, 11.16, 13.10.
+- **Goal:** for each outer fold, fit on spans and positives, set the threshold on the training-side
+  real queries, and score the test side and family E.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.5 (family E), 11.9, 11.12, 11.16, 13.19.
 - **Files:** `bqc/evaluate.py`, `tests/test_runner.py`.
 - **Acceptance criteria:**
   1. Depends only on the `Scorer` port, via a factory; imports no sklearn estimator.
-  2. Inner folds are `StratifiedGroupKFold(n_splits=5, shuffle=True,
-     random_state=SEED + repeat_index)` over the outer training rows, with the same groups.
-     Positives aren't regenerated per inner fold (8.2).
-  3. Scorer fits see only outer-training rows, and the threshold comes only from inner
-     scores.
-  4. Family E is scored by each fold's model at that fold's threshold.
+  2. One fit per outer fold, with no inner loop. No real query is ever in a fit (8.2).
+  3. The threshold is the M3.T4 rule over the training-side real queries, scored by that fit.
+  4. The same `t` applies to the test-side queries, the test-side positives and family E.
   5. Warnings raised during `fit` (11.12) are captured per fold and returned, and don't
      raise.
-  6. Every inner training fold passes the M3.T3 fold check (both classes and all training
-     families, 11.16).
 - **Tests** (with the fake):
-  - No test-fold or E text in any recorded fit input (11.9).
-  - No group on both sides of an inner fold.
-  - Inner fits see only the outer fold's positives, unchanged: generation runs once per
-    outer fold (8.2).
-  - An inner training fold missing a family raises (11.16).
-  - Number of fits: outer folds x (inner folds + 1).
-  - Changing test-fold scores doesn't change the threshold.
-  - The test-fold row count is unchanged at scoring.
+  - No real query, test-side text or E text in any recorded fit input (11.9).
+  - Number of fits equals the number of outer folds.
+  - Changing test-side scores doesn't change the threshold; changing training-side query scores does.
+  - Test-side row counts are unchanged at scoring.
+  - Across a repeat, each real query is a test item exactly once.
   - A fake emitting `ConvergenceWarning` is captured, not raised (11.12).
 - **Depends on:** M3.T2, M3.T3, M3.T4.
+- **Status:** todo
+
+### M3.T13: Nested runner (comparison arm)
+
+- **Goal:** run the v1 protocol on the same outer folds, so that results pair fold by fold with the
+  primary arm.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 11.9, 11.16, 13.10.
+- **Files:** `bqc/evaluate.py`, `tests/test_runner_comparison.py`.
+- **Acceptance criteria:**
+  1. Inner folds are `StratifiedGroupKFold(n_splits=5, shuffle=True,
+     random_state=SEED + repeat_index)` over the outer training rows, with the same groups.
+     Positives aren't regenerated per inner fold (8.2).
+  2. Out-of-fold scores for the training-side queries give `t` by the M3.T4 rule; the model is then
+     refitted on the whole training side.
+  3. Every inner training fold passes the M3.T3 fold check (both classes and all training
+     families, 11.16).
+  4. It returns the same result shape as M3.T5, under its own arm name, with the same test-side
+     strings.
+- **Tests** (with the fake):
+  - No test-side or E text in any recorded fit input (11.9).
+  - No group on both sides of an inner fold.
+  - Generation runs once per outer fold.
+  - An inner training fold missing a family raises (11.16).
+  - Number of fits: outer folds x (inner folds + 1).
+  - Changing test-side scores doesn't change the threshold.
+  - Test-side strings equal the primary arm's for each repeat and fold.
+- **Depends on:** M3.T5.
 - **Status:** todo
 
 ### M3.T7: Metrics and aggregation
 
 - **Goal:** compute every number in 8.5 from fold results.
-- **Design refs:** `DESIGN.md` `7482987`: 8.1, 8.4, 8.5, 13.13, 13.14.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.1, 8.4, 8.5, 13.13, 13.14, 13.19.
 - **Files:** `bqc/evaluate.py`, `tests/test_metrics.py`.
 - **Acceptance criteria:**
   1. Per repeat and pooled: headline recall and achieved FPR, Wilson 95% CI (standard
      library `math` only), confusion matrix, macro F1, precision, recall, ROC-AUC as mean and
      sd over folds and pooled.
-  2. **Intervals (8.5):** a repeat's interval uses `k_r` at `n = 480`. The pooled point
+  2. **FPR intervals (8.5):** a repeat's interval uses `k_r` at `n = 480`. The pooled point
      estimate is the total over all repeats divided by 1440, and the pooled interval uses
-     `k = total / 3` at `n = 480`; `k` need not be an integer. Never `n = 1440`. The same
-     rule applies to a recall interval, if one is reported. (`n` and the repeat count come
-     from the run, so tiny configs work.)
+     `k = total / 3` at `n = 480`; `k` need not be an integer. Never `n = 1440`. No recall interval
+     is reported. (`n` and the repeat count come from the run, so tiny configs work.)
   3. Per-family recall is caught / total, pooled over all test folds of a repeat and over all
-     repeats, never a mean of per-fold values (8.5). For A-D that is 120 per repeat and 360
-     overall. E is scored in every fold, so its total is 120 per fold. E is in its own row,
-     marked evaluation-only, and never pooled into headline recall.
-  4. The per-fold breakdown records each family's test count and caught count, with recall
+     repeats, never a mean of per-fold values (8.5). For A-D that is 6 templates x 100 renders, 600
+     per repeat and 1,800 overall, counting what survives. E is scored in every fold, so its total
+     is 120 per fold, 600 per repeat and 1,800 overall. E is in its own row, marked evaluation-only,
+     and never pooled into headline recall.
+  4. Per-template recall is reported the same way, in 24 rows (8.5).
+  5. The per-fold breakdown records each family's test count and caught count, with recall
      `null` where the count is 0. A family with zero test samples in a fold is normal (13.14)
      and doesn't raise or divide by zero.
-  5. One-word false positives: per model, the count flagged out of the one-word negatives, and the words
+  6. One-word false positives: per model, the count flagged out of the one-word negatives, and the words
      (23 in real WANDS; 8.5).
-  6. The full list of false positives, each with the raw WANDS query string as stored in
+  7. The full list of false positives, each with the raw WANDS query string as stored in
      `query.csv` (8.5).
-  7. No metric feeds any selection.
+  8. No metric feeds any selection.
 - **Tests:**
   - Wilson against the 13.13 values, to 5 decimals: `0/480`, `5/480`, `1/96`, `0/30`,
     `480/480`, including `k = 0` and `k = n`.
@@ -791,7 +978,8 @@ Sign-off: pending.
     not the `15/1440` row. Pooled total 0 gives upper bound 0.00794.
   - Non-integer `k` (total 16) gives bounds between those of `5/480` and `6/480`.
   - Hand-computed one-word count and words, with a one-word query counted once after `normalise()`.
-  - Hand-computed confusion matrix and pooled per-family recall.
+  - Hand-computed confusion matrix and pooled per-family and per-template recall.
+  - A template with fewer than 100 surviving renders counts what survives.
   - A fold where a family has zero test samples: count 0, caught 0, recall `null`, and the
     pooled recall is unaffected by it.
   - Folds of unequal family counts give caught / total, which differs from the mean of the
@@ -809,59 +997,95 @@ Sign-off: pending.
 - **Design refs:** 8.1, 10, 11.12, 11.18.
 - **Files:** `bqc/evaluate.py`, `tests/test_run_report.py`.
 - **Acceptance criteria:**
-  1. Contains config (all parameters, seed, git commit hash, library versions), per-fold
-     and pooled metrics, each fold's class and per-family counts, FP list, per-family recall,
-     `target_unmet` and warning fields, and per-fold convergence warnings.
+  1. Contains config (all parameters, seed, git commit hash, library versions, arm, negatives size,
+     vocabulary cap), per-fold and pooled metrics, each fold's class and per-family counts, span
+     removal counts with no removed text, render shortfalls, FP list, per-family and per-template
+     recall, `target_unmet` and warning fields, and per-fold convergence warnings.
   2. Written by `write_report` imported from `bqc/report.py`; there is no second writer, and
      `bqc/evaluate.py` doesn't import `bqc/cli.py` (section 10).
 - **Tests:**
   - Two tiny-config runs give identical JSON apart from the timestamp (11.18).
   - Output round-trips through `json` (no numpy types left).
-  - Fold class and per-family counts are present.
-- **Depends on:** M2.T8, M3.T7.
+  - Fold class and per-family counts, span removal counts and shortfalls are present.
+  - Removed span text appears nowhere in the report.
+- **Depends on:** M2.T8, M3.T7, M3.T13.
 - **Status:** todo
 
 ### M3.T9: Leave-one-family-out
 
 - **Goal:** report recall and achieved FPR on each family at a threshold chosen without it.
-- **Design refs:** 8.6 (item 1), 11.16.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.6 (item 1), 11.16.
 - **Files:** `bqc/evaluate.py`, `tests/test_lofo.py`.
 - **Acceptance criteria:**
   1. For each F in A-D (E has no LOFO row): reuse the outer folds of 8.1, drop F's groups from
-     the training side, and apply the same nested protocol, so F is absent from every fit and
-     from threshold selection. Test on all of F, generated from test-fold vocabulary, plus
-     the test-fold negatives. No re-balancing.
+     the training side, and apply the arm's protocol as PQ-2 rules, with spans as the primary arm's
+     negatives, so F is absent from every fit and from threshold selection. Test on all of F,
+     generated from the test-side queries' vocabulary, plus the test-side queries.
   2. Each row reports recall on F and the achieved FPR at that threshold.
   3. Results go in the run JSON as their own section, separate from the headline.
   4. Off by default, enabled by a parameter (`--lofo` is wired in M4.T4).
   5. The fold check asserts the other three families and both classes (11.16).
 - **Tests** (with the fake):
   - No F text in any fit input.
-  - The test side holds all of F plus test-fold negatives only.
+  - The test side holds all of F plus test-side queries only.
   - One row per family A-D, none for E, each with recall and achieved FPR.
   - A hand-computed achieved FPR.
   - A training side missing one of the other three families raises.
 - **Depends on:** M3.T8.
-- **Status:** todo
+- **Status:** blocked (PQ-2)
+
+### M3.T14: Catalogue-gap check
+
+- **Goal:** measure what happens when a shopper searches for something the catalogue doesn't
+  describe (8.6 item 5).
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.1, 3.2, 8.2, 8.6 (item 5), 11.25, 11.28, 13.19.
+- **Files:** `bqc/evaluate.py`, `tests/test_catalogue_gap.py`.
+- **Acceptance criteria:**
+  1. Per outer fold of the primary arm: take the `query_class` values of the test-side real queries;
+     remove every product whose `classes` contains any of them before building that fold's spans;
+     remove the training-side real queries of those classes from the threshold set; fit and set the
+     threshold as in M3.T5; test on the test-side queries and positives.
+  2. Queries with an empty class define no removal and stay in folds and thresholds (11.28).
+  3. Too few products left raises the M2.T12 error; it never pads (11.25).
+  4. A `catalogue_gap` section in the run JSON gives pooled FPR with the Wilson CI of M3.T7, recall,
+     the flagged queries and `gap_failed`, which is true when the CI's lower bound exceeds the target.
+     A pass with its point estimate above target is reported as `point_estimate_above_target`.
+  5. It never stops a run, and nothing acts on the result: failure is a user decision.
+  6. Off by default, enabled by a parameter (`--catalogue-gap` is wired in M4.T4). The comparison arm
+     follows PQ-4.
+- **Tests** (with the fake):
+  - No product of a test-side class contributes a span in that fold, including a multi-class product
+    with one matching class.
+  - The threshold set excludes those classes' training-side queries; empty-class queries stay.
+  - The removal differs per fold, and the normal run's spans are unaffected.
+  - `gap_failed` at lower bound just above, exactly at, and just below the target.
+  - Hand-computed pooled FPR uses `k = total / 3` at `n = 480`.
+  - An exhausted pool raises.
+- **Depends on:** M2.T12, M3.T8.
+- **Status:** blocked (PQ-4)
 
 ### M3.T10: Final models
 
-- **Goal:** fit one model per configuration on all 960 samples, and pickle it.
-- **Design refs:** 8.2, 8.7, 10.
+- **Goal:** fit one model per configuration of each arm, and pickle it with its threshold.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.2, 8.3, 8.7, 10.
 - **Files:** `bqc/evaluate.py`, `tests/test_final_model.py`.
 - **Acceptance criteria:**
-  1. The threshold comes from the M3.T5 inner procedure applied to all 960 rows, as 8.7 names
-     it: `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups of
-     8.1, out-of-fold scores, then the threshold rule of 8.4. The model is then fitted on all
-     960.
-  2. Positives are generated once from the token occurrences, with repeats, of all 480 negatives
-     (8.3) and pass the exact-match check against all negatives and the sanity queries (rule 4), and
-     family E is excluded.
-  3. The pickle goes to `results/` and holds the scorer and threshold, and loading it
+  1. **Primary arm:** `n` spans with seed `SEED`, and positives from all 24 templates rendered from the
+     spans' occurrences at `n // 24` each. The threshold is the M3.T4 rule over all 480 real queries,
+     scored by that model, with no out-of-fold pass. No real query is in the fit.
+  2. **Comparison arm:** all 960 nominal samples, with positives from the occurrences of all 480 real
+     queries. The threshold comes from the M3.T13 inner procedure on all 960 rows, as 8.7 names it:
+     `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups of 8.1,
+     out-of-fold scores, then the M3.T4 rule. The model is then fitted on all 960.
+  3. Family E is excluded from both. Positive collisions are handled per PQ-1.
+  4. The pickle goes to `results/` and holds the scorer and threshold, and loading it
      reproduces the same scores.
-- **Tests** (with the fake): 960-equivalent fit input with no E; pickle round trip gives
-  identical scores; the threshold is produced by the M3.T4 function.
-- **Depends on:** M3.T5.
+- **Tests** (with the fake):
+  - Primary: no real query or E in the fit input; one fit; the threshold is the M3.T4 function over all
+    480 scores.
+  - Comparison: 960-equivalent fit input with no E; the threshold comes from out-of-fold scores.
+  - Pickle round trip gives identical scores for both arms.
+- **Depends on:** M3.T5, M3.T13.
 - **Status:** todo
 
 ### M3.T11: Sanity section of the run
@@ -969,21 +1193,27 @@ Sign-off: pending.
 
 ### M4.T4: `bqc evaluate` command
 
-- **Goal:** run the harness with the three real models from the command line.
-- **Design refs:** 8.4, 8.5, 8.6, 10.
-- **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`.
+- **Goal:** run the harness with the real models from the command line, in either arm.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 8.2, 8.4, 8.5, 8.6, 10, 13.9.
+- **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`, `DESIGN.md` (section 13.9, the measurement only).
 - **Acceptance criteria:**
-  1. `python -m bqc evaluate [--target-fpr 0.01] [--lofo]` runs the three models and writes
-     the run JSON, including the sanity section or its skip record, and
-     `part_number_diagnostic` for each model.
-  2. `--target-fpr` outside `(0, 1)` is a usage error; a missing raw file exits non-zero
-     with a message pointing at `fetch`.
+  1. `python -m bqc evaluate [--negatives product|real] [--negatives-size 5000]
+     [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo] [--catalogue-gap]` runs the chosen models
+     and writes the run JSON, including the sanity section or its skip record, and
+     `part_number_diagnostic` for each model. The defaults are `product`, 5,000 and all three models.
+  2. `--target-fpr` outside `(0, 1)`, a non-positive `--negatives-size` and an unknown model or arm
+     are usage errors. A missing raw file exits non-zero with a message pointing at `fetch`. An
+     exhausted span pool exits non-zero with its count.
   3. The real run scores the committed sanity labels. The skip path stays covered by fixtures
      (M3.T11).
-- **Tests:** on a tiny config and fixtures: end-to-end with each flag; JSON has one entry
-  per model, including the diagnostic; the trivial baseline's report row is present; bad `--target-fpr`; missing
-  raw file; **real model and fold determinism end to end** (11.18).
-- **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M4.T1, M4.T2, M4.T3.
+  4. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records the
+     result with date and versions in 13.9. If it exceeds 5 minutes, LOFO and the catalogue gap run for
+     the MLP only on request; the report says which applied.
+- **Tests:** on a tiny config and fixtures: end-to-end with each flag and both arms; JSON has one entry
+  per model, including the diagnostic; `--models` limits the entries; the trivial baseline's report row
+  is present; `--catalogue-gap` adds its section; each usage error; each missing raw file;
+  **real model and fold determinism end to end** (11.18).
+- **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
 - **Status:** todo
 
 ### M4.T6: SMOTE option in the adapters
@@ -1019,7 +1249,7 @@ Sign-off: pending.
      without SMOTE plus the MLP and LR with SMOTE. The trivial baseline has no SMOTE arm.
      Every arm's metrics sit under its own configuration key.
   2. Both arms come from one fold construction, so folds, seeds and generated positives are
-     identical.
+     identical. It works with either `--negatives` setting, at the chosen size (section 7).
   3. A `smote_comparison` section gives, for MLP and LR separately: the per-fold paired
      differences in headline recall (SMOTE minus no-SMOTE, 15 values), their mean and sample
      standard deviation (`ddof=1`, `statistics.stdev`), the number of folds where SMOTE wins, and the paired difference in achieved
@@ -1041,6 +1271,26 @@ Sign-off: pending.
   - A default run has no SMOTE arm and no `smote_comparison` key.
 - **Depends on:** M4.T4, M4.T6.
 - **Status:** todo
+
+### M4.T8: LR-vs-MLP and between-arm paired comparisons
+
+- **Goal:** compute the paired differences M6 reports: LR against MLP, and primary against comparison
+  arm.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 6.2, 7.1, 8.2, 12.1 (item 13).
+- **Files:** `bqc/evaluate.py`, `tests/test_paired_comparison.py`, others per PQ-3.
+- **Acceptance criteria:**
+  1. One function computes paired differences as in `smote_comparison`: per-fold headline recall
+     differences, mean, sample sd, win count, and the paired difference in achieved FPR, with the
+     verdict rule of 7.1. M4.T7 uses it too.
+  2. A run with both LR and MLP has a `model_comparison` section applying it to the two models.
+  3. Between-arm differences are produced as PQ-3 rules, with folds matched by repeat and fold index,
+     and an error if the two sets of test-side strings or folds differ.
+- **Tests** (with fakes):
+  - Hand-computed differences, shared with M4.T7's cases.
+  - No `model_comparison` unless both models ran.
+  - Mismatched folds raise.
+- **Depends on:** M4.T7.
+- **Status:** blocked (PQ-3)
 
 ---
 
@@ -1123,15 +1373,18 @@ Sign-off: pending.
 
 - **Goal:** produce the v1 numbers and hand them to `fable`, who records them in the M6
   sign-off (12.3).
-- **Design refs:** `DESIGN.md` `7482987`: 6.2, 6.3, 7, 8.5, 8.6, 9, 12.2 (Q12), 13.2, 13.9, 13.15.
+- **Design refs:** `DESIGN.md` `5ba7cee`: 6.2, 6.3, 7, 8.2, 8.5, 8.6, 9, 10, 12.1 (item 13), 12.2 (Q12),
+  13.2, 13.9, 13.15, 13.19.
 - **Files:** none committed (`results/` is gitignored), apart from this task's status.
 - **Acceptance criteria:**
-  1. `fetch`, `generate`, `evaluate` (with `--lofo` and the SMOTE comparison) and `cluster`
-     all complete on the real data from a clean clone with a fresh `.venv`.
-  2. The report to `fable` gives, for each model and SMOTE setting: headline recall with
-     achieved FPR and CI; per-family recall including E; LOFO recall and achieved FPR; the
-     trivial baseline gap; `smote_comparison` and `smote_justified`; cluster results for both
-     rules, including noise fraction.
+  1. `fetch`, `generate`, `evaluate` in both arms (with `--lofo`, `--catalogue-gap` and the SMOTE
+     comparison, within the runtime budget of section 10) and `cluster` all complete on the real data
+     from a clean clone with a fresh `.venv`. The primary arm is the headline.
+  2. The report to `fable` gives, for each arm, model and SMOTE setting: headline recall with
+     achieved FPR and CI; per-family recall including E; per-template recall; LOFO recall and achieved
+     FPR; the trivial baseline gap; `smote_comparison` and `smote_justified`; and cluster results for
+     both rules, including noise fraction. It also gives the paired differences between arms
+     (M4.T8).
   3. The false-positive list is included, and reviewed by eye for queries that look
      machine-generated (13.2, 13.9).
   4. The sanity section is reported per configuration, twice: over all 50 rows, and over the rows at or
@@ -1142,9 +1395,13 @@ Sign-off: pending.
      sanity set (ids 16, 39, 43). It states these so the user can answer Q12. The answer isn't
      needed for `done`.
   6. **One-word false positives:** per model, the count flagged out of 23, and the words (8.5).
-  7. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
+  7. **Catalogue-gap check:** pooled FPR with CI, recall, the flagged queries, and whether it failed
+     the rule of 8.6 item 5. A failure is reported for the user to decide; this task doesn't act on it.
+  8. **LR or MLP:** the paired difference in headline recall under the 7.1 rule, and a recommendation
+     for the user to decide on (12.1 item 13).
+  9. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
      this is reported as a finding. The rework is `fable`'s decision (6.3, 8.6), and this
      task doesn't change generators.
 - **Tests:** none (no code). The determinism test of M4.T4 covers reproducibility.
-- **Depends on:** M2.T8, M4.T7, M5.T3.
+- **Depends on:** M2.T8, M4.T7, M4.T8, M5.T3.
 - **Status:** todo

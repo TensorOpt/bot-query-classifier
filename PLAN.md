@@ -187,6 +187,17 @@ Sign-off: pending.
   - Idempotence over all the above.
 - **Depends on:** M1.T2.
 - **Status:** done
+- **Changes requested (`opus`, 2026-11-05, on `1bcb0e3`):** `bqc/preprocess.py` matches section
+  5. The tests don't pin everything criterion 1 and the test list require:
+  1. `tests/test_preprocess.py:24`: no combining mark is tested. The file contains no U+0301,
+     and its `é` characters are precomposed. Assert that `x́` is kept unchanged.
+  2. `tests/test_preprocess.py:16`: moving the collapse before the removal survives the suite.
+     Assert that `a ​ b` gives `a b`.
+  3. `tests/test_preprocess.py:28`: lowercasing before NFKC survives the suite. Assert that
+     `℃` gives `°c`.
+  4. `tests/test_preprocess.py:46`: an extra truncation before NFKC survives the suite. Assert
+     that `" " * 1000 + "sofa"` and `"​" * 1000 + "sofa"` give `sofa`.
+  5. `tests/test_preprocess.py:52`: add the inputs of items 1 to 4 to the idempotence samples.
 
 ### M1.T4: WANDS loader with hash check
 

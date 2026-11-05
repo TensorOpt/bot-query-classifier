@@ -239,6 +239,11 @@ class TokenOccurrencesTest(unittest.TestCase):
         self.assertEqual(len(full), 12000)
         self.assertEqual(capped, full[:10_000])
 
+    def test_cap_below_the_token_count_returns_exactly_the_cap(self):
+        # The cap is reached inside the first string, so the early return is taken (F6).
+        self.assertEqual(token_occurrences(["a b c d", "e f"], cap=2), ["a", "b"])
+        self.assertEqual(token_occurrences(["a b", "c d", "e f"], cap=3), ["a", "b", "c"])
+
     def test_empty_input(self):
         self.assertEqual(token_occurrences([]), [])
 

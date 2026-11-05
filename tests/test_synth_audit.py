@@ -81,7 +81,6 @@ class CheckExactTest(unittest.TestCase):
         check_exact([""], NEGATIVES, SANITY)
 
 
-# Sets of 3-grams: "abcd" has 2, "abcde" 3, "abcdef" 4, "abcdefg" 5, "abcdefgh" 6.
 class DropExactTest(unittest.TestCase):
     def test_identical_dropped(self):
         kept, counts = drop_exact(["alpha one", "beta two"], {"a": ["alpha one"]})
@@ -139,6 +138,7 @@ class DropExactTest(unittest.TestCase):
         self.assertEqual(drop_exact(["x"], {"a": ["x"]}), ([], {"a": 1}))
 
 
+# Sets of 3-grams: "abcd" has 2, "abcde" 3, "abcdef" 4, "abcdefg" 5, "abcdefgh" 6.
 class NearDuplicatesTest(unittest.TestCase):
     def test_constants(self):
         self.assertEqual(NEGATIVES_THRESHOLD, 0.6)

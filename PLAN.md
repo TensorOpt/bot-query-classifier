@@ -964,7 +964,7 @@ Sign-off: pending.
     `tests/test_synth_audit.py:84` moves back above `NearDuplicatesTest`.
 - **Depends on:** M2.T1, M2.T7, M2.T10, M2.T11, M2.T12. Real families aren't required by the tests,
   which use stub templates.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T4: Threshold selection
 

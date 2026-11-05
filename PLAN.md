@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.4 (commit `a8b8600`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.6 (commit `0386ca8`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -16,21 +16,22 @@ fails on import because tests import each other as top-level modules; only the `
 |-----------|---------|-------|
 | M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening, product file | 8 |
 | M2 | Synthetic generators, audit, part-number set, render helper, product-name spans, `generate` | 13 |
-| M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check | 13 |
-| M4 | Real models, `evaluate` command, SMOTE experiment, paired comparisons | 7 |
+| M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check, SMOTE dependency removal | 14 |
+| M4 | Real models, `evaluate` command, paired comparisons | 5 |
 | M5 | HDBSCAN experiment (unchanged by v2.0) | 3 |
 | M6 | Full run on real data | 1 |
 
-Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, are retired, and aren't reused.
+Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, and `M4.T6` and `M4.T7` were the SMOTE tasks
+(dropped by the user, 12.1 item 17). All four are retired and aren't reused.
 `M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
 appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
-order: M2.T9, M2.T10, M2.T11 and M2.T12 come before M2.T8, M3.T13 comes after M3.T5, and M3.T14
-comes after M3.T9.
+order: M2.T9, M2.T10, M2.T11 and M2.T12 come before M2.T8, M3.T13 comes after M3.T5, M3.T15 comes
+after M3.T13, and M3.T14 comes after M3.T9.
 
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T7.
+**Next task:** M3.T15.
 
 ### Order constraints
 
@@ -49,15 +50,15 @@ No probe task is scheduled: section 13 already answers every question a task dep
 | `StratifiedGroupKFold` with 6 templates x 20 per family, outer and inner | 13.10 | M2.T1, M3.T3, M3.T5 |
 | Family presence per fold side, with the real seeds | 13.14 | M3.T3, M3.T5, M3.T7, M3.T9 |
 | `normalise()` order, idempotence and cost | 13.11 | M1.T3 |
-| `imblearn` `Pipeline` skips SMOTE at `predict_proba` time; callable `sampling_strategy` | 13.12 | M4.T6 |
 | Wilson reference values | 13.13 | M3.T7 |
 | Part-number shapes in WANDS | 13.15 | M2.T9, M3.T12 |
 | `product.csv` format and coverage | 13.18 | M1.T8, M2.T12 |
 | Product-name spans as training negatives | 13.19 | M2.T12, M3.T5, M3.T14 |
 
-13.9 keeps three items. "No bot traffic in the 480 queries" can't be probed; its
+13.9 keeps two open items. "No bot traffic in the 480 queries" can't be probed; its
 mitigation, reviewing the false-positive list by eye, is an acceptance criterion of
-M6.T1. The MLP fit time at 5,000 / 5,000 is measured and recorded by M4.T4. The coverage
+M6.T1. The MLP fit time at 5,000 / 5,000 is closed by 13.22 (9-29 s, median 17 s), and M4.T4
+still measures and records it (section 10). The coverage
 numbers of 13.18 were read, not re-run; no task depends on their exact values.
 
 ### File ownership
@@ -95,16 +96,22 @@ changes it.
 - **LR or MLP: after M6.T1.** M6.T1 carries a recommendation; the user decides (12.1, item 13).
 - **Catalogue gap: only if the check fails in M6.T1.** What to do then is a user decision
   (8.6 item 5).
-- **Q17, truncated SVD: a separate read-only probe (12.2).** No milestone waits for it, section 5 stays
-  as it is, and this plan schedules no work for it.
 
-12.1 items 1 to 11 and 13 to 15 are closed; embeddings were abandoned for latency (item 15). Off-domain queries stay outside both classes, so no task
+12.1 items 1 to 11 and 13 to 17 are closed; embeddings were abandoned for latency (item 15), truncated SVD
+on the section 5 features was rejected (item 16), and SMOTE was dropped (item 17). Off-domain queries stay outside both classes, so no task
 exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 
 ### Open questions for `fable`
 
-None open. PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and PQ-5 in section 10, and all are applied
-below; their text is in `530de4f` and `a3cf42e`.
+PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and PQ-5 in section 10, and all are applied below; their
+text is in `530de4f` and `a3cf42e`.
+
+- **PQ-6 (blocks M4.T8): direction of `justified` (8.2, section 7).** Section 7 says the mean "exceeds"
+  twice its standard error, 8.2 says "beyond", and the removed 7.1 also required a positive mean. Taken
+  per metric, as 8.2 asks, this doesn't settle three things: whether a negative mean on recall or ROC-AUC
+  can be `justified`; what `justified` means on achieved FPR, where a gain is a negative mean and
+  "exceeds" with "FPR difference not positive" can never be true; and which way `model_comparison`
+  subtracts (LR minus MLP, or MLP minus LR), which decides what "wins" means.
 
 ### Facts checked while planning
 
@@ -232,6 +239,8 @@ Follow-ups:
   6. The report states the installed versions of numpy, scikit-learn and imbalanced-learn
      and flags any that differ from those used by the section 13 probes (scikit-learn
      1.9.1, numpy 2.5.4, imbalanced-learn 0.14.2).
+- **Annotation (v2.6):** criteria 2 and 6 stand as validated and signed off. `imbalanced-learn` leaves the
+  dependencies in M3.T15, since SMOTE was dropped (12.1 item 17).
 - **Tests:** `SEED == 20261105`; an unknown command exits non-zero.
 - **Depends on:** M1.T1 (schedule order only).
 - **Status:** signed off
@@ -1090,6 +1099,27 @@ Sign-off: pending.
   `AssertionError`; the coordinator re-ran the per-test command on the final state instead of returning it. The
   failing stage of that commit therefore rests on the mutation run, not the report.
 
+### M3.T15: Remove the SMOTE dependency
+
+- **Goal:** remove what SMOTE left in the code, before later reports record library versions.
+- **Design refs:** `DESIGN.md` `0386ca8`: 6, 6.4, 7, 12.1 (item 17).
+- **Files:** `pyproject.toml`, `bqc/report.py`, `bqc/models.py`, `tests/test_report.py`.
+- **Acceptance criteria:**
+  1. The dependencies in `pyproject.toml` are exactly `numpy` and `scikit-learn>=1.3`.
+  2. `bqc/report.py`'s `LIBRARIES` is `numpy` and `scikit-learn`.
+  3. The `Scorer` docstring in `bqc/models.py` says `vectoriser -> estimator`.
+  4. `.venv` is rebuilt with `python3 -m venv --clear .venv && .venv/bin/pip install -e .`,
+     `imbalanced-learn` is no longer installed, and the full suite passes on it.
+  5. The report states the installed numpy and scikit-learn versions and flags any that differ from those
+     of the section 13 probes (scikit-learn 1.9.1, numpy 2.5.4): nothing pinned them, and removing a
+     dependency can change what `pip` resolves.
+  6. A search for `smote`, `imblearn` and `imbalanced` in `bqc/`, `tests/` and `pyproject.toml`, ignoring
+     case, finds nothing.
+- **Tests:** in `tests/test_report.py`, `config["libraries"]` has exactly the keys `python`, `numpy` and
+  `scikit-learn`. No other new tests.
+- **Depends on:** M2.T8, M3.T2.
+- **Status:** todo
+
 ### M3.T7: Metrics and aggregation
 
 - **Goal:** compute every number in 8.5 from fold results.
@@ -1139,7 +1169,7 @@ Sign-off: pending.
   - The FP list holds exactly the expected queries, and a double-space query keeps its double
     space.
   - A single-class input to ROC-AUC raises rather than reporting a number.
-- **Depends on:** M3.T5.
+- **Depends on:** M3.T5, M3.T15 (schedule order only).
 - **Status:** todo
 
 ### M3.T8: Run report JSON
@@ -1245,7 +1275,7 @@ Sign-off: pending.
 
 ### M3.T10: Final models
 
-- **Goal:** fit one model per configuration of each arm, and pickle it with its threshold.
+- **Goal:** fit one final model per model type in each arm, and pickle it with its threshold.
 - **Design refs:** `DESIGN.md` `5ba7cee`: 3.2, 8.2, 8.3, 8.7, 10; `a8b8600`: 11.30.
 - **Files:** `bqc/evaluate.py`, `tests/test_final_model.py`.
 - **Acceptance criteria:**
@@ -1281,7 +1311,7 @@ Sign-off: pending.
   1. **Blank or partial file:** the message is printed, the run JSON records
      `"sanity": {"status": "skipped", "unlabelled": n}`, and everything else proceeds.
   2. **Fully labelled file:** reports the raw-count confusion matrix and the full list of
-     disagreements (id, query, user's label, model's score), per configuration, using the
+     disagreements (id, query, user's label, model's score), per model and arm, using the
      threshold of M3.T10. There is no macro F1, ROC-AUC, confidence interval or decimal
      rate.
   3. A duplicate of a WANDS query fails the run with the offending `id` (11.21) and without the query
@@ -1328,7 +1358,7 @@ Sign-off: pending.
 
 ---
 
-## M4: Real models and the SMOTE experiment
+## M4: Real models and paired comparisons
 
 Sign-off: pending.
 
@@ -1382,7 +1412,7 @@ Sign-off: pending.
 ### M4.T4: `bqc evaluate` command
 
 - **Goal:** run the harness with the real models from the command line, in either arm.
-- **Design refs:** `DESIGN.md` `99037a5`: 8.2, 8.4, 8.5, 8.6, 10, 13.9.
+- **Design refs:** `DESIGN.md` `0386ca8`: 8.2, 8.4, 8.5, 8.6, 10, 13.9, 13.22.
 - **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`, `DESIGN.md` (section 13.9, the measurement only).
 - **Acceptance criteria:**
   1. `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
@@ -1396,12 +1426,14 @@ Sign-off: pending.
   3. The real run scores the committed sanity labels. The skip path stays covered by fixtures
      (M3.T11).
   4. `--lofo` and `--catalogue-gap` take an optional comma list of models, default all of `--models`;
-     naming or omitting `mlp` there is the request (section 10). The main fits, SMOTE and the final
+     naming or omitting `mlp` there is the request (section 10). The main fits and the final
      model always cover every model in `--models`. A model left out has its rows reported as not run,
      with the reason. `--lofo` never runs the MLP in the comparison arm (8.6 item 1). `--catalogue-gap`
      is valid with either arm.
   5. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records it in the
-     run JSON and, with date and versions, in 13.9. The task report says if it exceeds 5 minutes.
+     run JSON and, with date and versions, in 13.9. The task report says if it exceeds 5 minutes. For
+     scale, 13.22 measured a median of 17 s, about 25 minutes for the primary arm's 91 MLP fits, so the
+     5-minute rule is a safeguard that isn't expected to trigger.
 - **Tests:** on a tiny config and fixtures: end-to-end with each flag and each arm setting; `product,real`
   writes one file with both arms; JSON has one entry per model, including the diagnostic; `--models`
   limits the entries; `--lofo` has no MLP rows in the comparison arm; `--lofo lr,trivial` and
@@ -1413,83 +1445,30 @@ Sign-off: pending.
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
 - **Status:** todo
 
-### M4.T6: SMOTE option in the adapters
-
-- **Goal:** let the LR and MLP adapters run `vectoriser -> SMOTE -> estimator`.
-- **Design refs:** 6.4, 7, 7.1, 13.4, 13.12, 11.9.
-- **Files:** `bqc/models.py`, `tests/test_models_smote.py`.
-- **Acceptance criteria:**
-  1. Off by default. When on, it uses `imblearn.pipeline.Pipeline` with `random_state` from
-     the seed and default `k_neighbors`.
-  2. `sampling_strategy` is a callable returning `{c: 2 * count_c}` for each class in the `y`
-     passed to `fit` (7.1). It is a module-level function, so the scorer can be pickled
-     (M3.T10).
-  3. Applied to training data only.
-  4. `imblearn` is imported only in this code path; stages don't import it.
-- **Tests:**
-  - The test-fold row count is unchanged after the pipeline (7, 11.9).
-  - The estimator saw exactly twice the training rows, at two different input sizes, and
-    with unequal class counts (7.1).
-  - Same seed gives identical scores.
-  - A fitted SMOTE scorer survives a pickle round trip with identical scores.
-  - With SMOTE off, scores equal those of the adapter before this task.
-- **Depends on:** M4.T1, M4.T2.
-- **Status:** todo
-
-### M4.T7: SMOTE comparison and `--smote`
-
-- **Goal:** run both arms in one run, and report the paired comparison and verdict.
-- **Design refs:** 7.1, 8.5, 8.7, 10.
-- **Files:** `bqc/evaluate.py`, `bqc/cli.py`, `tests/test_smote_comparison.py`.
-- **Acceptance criteria:**
-  1. `python -m bqc evaluate --smote` runs, in one run and one JSON file, the three models
-     without SMOTE plus the MLP and LR with SMOTE. The trivial baseline has no SMOTE arm.
-     Every arm's metrics sit under its own configuration key.
-  2. Both arms come from one fold construction, so folds, seeds and generated positives are
-     identical. It runs within each arm of the run, at the chosen size (section 7).
-  3. A `smote_comparison` section gives, for MLP and LR separately: the per-fold paired
-     differences in headline recall (SMOTE minus no-SMOTE, 15 values), their mean and sample
-     standard deviation (`ddof=1`, `statistics.stdev`), the number of folds where SMOTE wins, and the paired difference in achieved
-     FPR.
-  4. `smote_justified` per model is true only if the mean paired recall difference is positive
-     and exceeds twice `sd / sqrt(15)`, and the mean paired FPR difference isn't positive.
-  5. Without `--smote` there is no SMOTE arm and no comparison section.
-  6. Final models, sanity scoring and the part-number diagnostic cover the SMOTE configurations
-     too (8.6, 8.7). They pickle
-     because the `sampling_strategy` callable of M4.T6 is a module-level function (7.1).
-- **Tests** (with fakes):
-  - Identical folds and texts across arms.
-  - Hand-computed paired differences, mean, sample sd and win count; a case where `ddof=0`
-    would flip `smote_justified`.
-  - `smote_justified`: true case; mean exactly at the 2-standard-error bound (false); positive
-    mean with positive FPR difference (false); zero FPR difference (allowed); negative mean
-    (false).
-  - No trivial-baseline SMOTE arm.
-  - A default run has no SMOTE arm and no `smote_comparison` key.
-- **Depends on:** M4.T4, M4.T6.
-- **Status:** todo
-
 ### M4.T8: LR-vs-MLP and between-arm paired comparisons
 
 - **Goal:** compute the paired differences M6 reports: LR against MLP, and primary against comparison
   arm.
-- **Design refs:** `DESIGN.md` `6cec6c6`: 6.2, 7.1, 8.2, 12.1 (item 13).
+- **Design refs:** `DESIGN.md` `0386ca8`: 6.2, 7, 8.2, 12.1 (items 13, 17).
 - **Files:** `bqc/evaluate.py`, `tests/test_paired_comparison.py`.
 - **Acceptance criteria:**
-  1. One function computes per-fold paired differences of named metrics, with their mean, sample sd and
-     the count of folds won. M4.T7's `smote_comparison` uses it too.
+  1. One function computes, for each named metric: the list of per-fold paired differences (15 in a real
+     run), their mean, sample standard deviation (`ddof=1`, `statistics.stdev`), standard error
+     (`sd / sqrt(folds)`), the count of folds won, and a boolean `justified` under the rule of section 7.
   2. A run with both arms has an `arm_comparison` section: primary minus comparison, per model, in
      headline recall, achieved FPR and ROC-AUC (8.2).
-  3. A run with both LR and MLP has a `model_comparison` section under each arm, in the same shape, plus
-     the verdict of the 7.1 rule (12.1 item 13).
-  4. No command compares two run files (8.2).
+  3. A run with both LR and MLP has a `model_comparison` section under each arm, in the same shape
+     (8.2, 12.1 item 13).
+  4. No command compares two run files (8.2). There is no `smote_comparison` or `smote_justified`.
 - **Tests** (with fakes):
-  - Hand-computed differences, means, sample sd and win counts, shared with M4.T7's cases.
+  - Hand-computed differences, means, sample sd, standard error and win counts; a case where `ddof=0` would
+    flip `justified`.
   - The sign is primary minus comparison.
-  - The 7.1 verdict in `model_comparison`, including the case at the 2-standard-error bound.
+  - `justified`: true case; mean exactly at the 2-standard-error bound (false); a recall gain with a positive
+    FPR difference (false); zero FPR difference (allowed); and the other signs and metrics as PQ-6 rules.
   - No `arm_comparison` with one arm; no `model_comparison` unless both models ran.
-- **Depends on:** M4.T7.
-- **Status:** todo
+- **Depends on:** M4.T4.
+- **Status:** blocked (PQ-6)
 
 ---
 
@@ -1573,23 +1552,24 @@ Sign-off: pending.
 
 - **Goal:** produce the v1 numbers and hand them to `fable`, who records them in the M6
   sign-off (12.3).
-- **Design refs:** `DESIGN.md` `99037a5`: 6.2, 6.3, 7, 8.2, 8.5, 8.6, 9, 10, 12.1 (items 13, 14), 12.2
-  (Q12), 13.2, 13.9, 13.15, 13.19.
+- **Design refs:** `DESIGN.md` `0386ca8`: 6.2, 6.3, 7, 8.2, 8.5, 8.6, 9, 10, 12.1 (items 13, 14), 12.2
+  (Q12), 13.2, 13.9, 13.15, 13.19, 13.22, 14.
 - **Files:** none committed (`results/` is gitignored), apart from this task's status.
 - **Acceptance criteria:**
-  1. `fetch`, `generate`, one `evaluate --negatives product,real` invocation (with `--smote`, `--lofo`
+  1. `fetch`, `generate`, one `evaluate --negatives product,real` invocation (with `--lofo`
      and `--catalogue-gap`) and `cluster` all complete on the real data from a clean clone with a fresh
      `.venv`. This is the first real `product.csv` download by `fetch`. If M4.T4's measured MLP fit
      exceeds 5 minutes, the invocation is `--lofo lr,trivial --catalogue-gap lr,trivial`, and the report
-     says the MLP's rows weren't run and why (section 10). The primary arm is the headline.
-  2. The report to `fable` gives, for each arm, model and SMOTE setting: headline recall with
+     says the MLP's rows weren't run and why (section 10). The primary arm is the headline. The primary arm's
+     MLP runs 91 fits (15 outer, 60 LOFO, 15 catalogue gap, 1 final); the report states the count and
+     the wall time.
+  2. The report to `fable` gives, for each arm and model: headline recall with
      achieved FPR and CI; per-family recall including E; per-template recall; LOFO recall, achieved
-     FPR and the paired difference to the main run; the trivial baseline gap; `smote_comparison` and
-     `smote_justified`; and cluster results for both rules, including noise fraction. It also gives
-     `arm_comparison` (M4.T8).
+     FPR and the paired difference to the main run; the trivial baseline gap; and cluster results for
+     both rules, including noise fraction. It also gives `arm_comparison` (M4.T8).
   3. The false-positive list is included, and reviewed by eye for queries that look
      machine-generated (13.2, 13.9).
-  4. The sanity section is reported per configuration, twice: over all 50 rows, and over the rows at or
+  4. The sanity section is reported per model and arm, twice: over all 50 rows, and over the rows at or
      below Jaccard 0.5 in the `generate` report, naming the excluded ids (8.6.1). Each gives the
      raw-count confusion matrix and full list of disagreements.
   5. **Part-number diagnostic:** the report gives, per model, the fraction flagged, overall and per
@@ -1600,11 +1580,15 @@ Sign-off: pending.
   7. **Catalogue-gap check:** for each arm, pooled FPR with CI, recall, the flagged queries, and whether
      it failed the rule of 8.6 item 5. A failure is reported for the user to decide; this task doesn't
      act on it.
-  8. **LR or MLP:** `model_comparison` under the 7.1 rule, and a recommendation for the user to decide
-     on (12.1 item 13).
+  8. **LR or MLP:** `model_comparison` under the rule of section 7, and a recommendation for the user to
+     decide on (12.1 item 13).
   9. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
      this is reported as a finding. The rework is `fable`'s decision (6.3, 8.6), and this
      task doesn't change generators.
+  10. **The 13.22 recall drop:** the primary arm's logistic regression recall overall, on family B and on
+     `B.template`, next to the probes' figures (81.7 to 79.7%, 74.4 to 67.3%, 92 to 60%), with a statement
+     that the full run confirms or dismisses the drop. Isolating its cause is a follow-up in section 14, not
+     this task.
 - **Tests:** none (no code). The determinism test of M4.T4 covers reproducibility.
-- **Depends on:** M2.T8, M2.T13, M4.T7, M4.T8, M5.T3.
+- **Depends on:** M2.T8, M2.T13, M4.T4, M4.T8, M5.T3.
 - **Status:** todo

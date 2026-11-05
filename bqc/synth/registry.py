@@ -5,7 +5,7 @@ Also the one home of the part-number regex and the letter/digit block count
 """
 import random
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -18,6 +18,8 @@ QUOTA = 20
 
 PART_NUMBER_RE = re.compile(r"^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$")
 MIN_GIBBERISH_BLOCKS = 4
+MAX_NUMBER_BLOCKS = 3
+NUMBER_SHAPED_RE = re.compile(r'^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$')
 _BLOCK_RE = re.compile(r"[a-z]+|\d+")
 
 
@@ -46,13 +48,16 @@ def block_count(token: str) -> int:
     return len(_BLOCK_RE.findall(token))
 
 
-def is_part_number_query(text: str) -> bool:
-    """True if the whole query is one part-number-shaped token or a bare number."""
-    tokens = text.split()
-    if len(tokens) != 1:
-        return False
-    token = tokens[0]
-    return bool(PART_NUMBER_RE.match(token)) or (token.isascii() and token.isdigit())
+def is_benign_token(token: str, vocabulary: Collection[str]) -> bool:
+    """True if `token` is a vocabulary word or number-shaped with at most 3 blocks (2.2)."""
+    return token in vocabulary or (
+        bool(NUMBER_SHAPED_RE.match(token)) and block_count(token) <= MAX_NUMBER_BLOCKS)
+
+
+def has_non_benign_token(text: str, vocabulary: Collection[str]) -> bool:
+    """True if at least one whitespace token of `text` is not benign (2.2)."""
+    words = vocabulary if isinstance(vocabulary, (set, frozenset)) else set(vocabulary)
+    return any(not is_benign_token(t, words) for t in text.split())
 
 
 def digit_tokens_below_block_rule(text: str) -> list[str]:

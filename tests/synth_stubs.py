@@ -24,20 +24,26 @@ def gibberish(rng: random.Random, blocks: int = 5) -> str:
     return "".join(parts)
 
 
+def letters(rng: random.Random) -> str:
+    """4-8 random letters: never a fold vocabulary word (those have at most 3)."""
+    return "".join(rng.choice(LETTERS) for _ in range(rng.randint(4, 8)))
+
+
 def pattern_render(family: str, k: int):
     def render(rng: random.Random, vocabulary: Sequence[str]) -> str:
-        word = "".join(rng.choice(LETTERS) for _ in range(rng.randint(3, 8)))
         if family == "A":
-            return f"{gibberish(rng)} {word}"
-        return f"{family.lower()}{k} {word} {rng.randint(0, 99)}"
+            return f"{gibberish(rng)} {letters(rng)}"
+        return f"{family.lower()}{k} {letters(rng)} {rng.randint(0, 99)}"
     return render
 
 
 def hard_render(family: str, k: int):
     def render(rng: random.Random, vocabulary: Sequence[str]) -> str:
-        word = rng.choice(vocabulary)
-        suffix = "".join(rng.choice(LETTERS) for _ in range(rng.randint(3, 8)))
-        return f"{word} {suffix}{k}x" if family != "A" else f"{word} {suffix}"
+        if family == "A":
+            # Family A hard positives never carry a digit (2.2).
+            words = [w for w in vocabulary if not any(c.isdigit() for c in w)]
+            return f"{rng.choice(words)} {letters(rng)}"
+        return f"{rng.choice(vocabulary)} {gibberish(rng)}"
     return render
 
 

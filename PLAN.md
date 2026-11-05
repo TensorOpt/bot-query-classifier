@@ -1,13 +1,14 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `5654502`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `b385eb3`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
 answers that question (see "Open questions for `fable`"). A task whose dependency is blocked
 stays `todo`.
 
-Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
+Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`. `python -m unittest -v tests.test_x`
+fails on import because tests import each other as top-level modules; only the `discover -s tests` form works.
 
 ## Overview
 
@@ -153,7 +154,7 @@ generators):
 
 Follow-ups:
 
-- **F1 (process, wording from the M2 sign-off):** Every sonnet report pastes, unedited, the `python -m unittest -v` per-test lines and summary of the failing run (step 3 of TDD) and of the final passing run; tracebacks are included only for errors other than `NotImplementedError`. A report without them is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
+- **F1 (process, revised at the M2.T13 review):** Every sonnet report pastes, unedited, (a) the failing run: `python -m unittest discover -s tests -v -k <task's tests>`, its per-test lines and summary; and (b) the final run: the summary line of the full `python -m unittest discover -s tests` plus the `-v -k <task's tests>` per-test lines for the task's own tests. Tracebacks are included only for errors other than `NotImplementedError`. Nothing in these blocks is retyped or edited; a report without them, or with an edited block, is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
 - **F2 (new task M1.T7, `fix(M1.T7)`, `bqc/wands.py`, for `opus` to add; may run in
   parallel with M2):** in `fetch`, (a) catch `http.client.HTTPException` alongside
   `OSError` so a truncated download (`IncompleteRead`) becomes `WandsError` as the
@@ -418,7 +419,7 @@ Follow-ups:
 
 Follow-ups:
 
-- **F1 (process):** Every sonnet report pastes, unedited, the `python -m unittest -v` per-test lines and summary of the failing run (step 3 of TDD) and of the final passing run; tracebacks are included only for errors other than `NotImplementedError`. A report without them is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
+- **F1 (process, revised at the M2.T13 review):** Every sonnet report pastes, unedited, (a) the failing run: `python -m unittest discover -s tests -v -k <task's tests>`, its per-test lines and summary; and (b) the final run: the summary line of the full `python -m unittest discover -s tests` plus the `-v -k <task's tests>` per-test lines for the task's own tests. Tracebacks are included only for errors other than `NotImplementedError`. Nothing in these blocks is retyped or edited; a report without them, or with an edited block, is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
   Deviations at M1.T8, M2.T10, M2.T11, M2.T12 and M2.T8's `sed -i` are recorded without penalty.
 - **F5:** widen `B.script` and `B.traversal`; task M2.T13, before M6.T1, not a condition of M2.
 - **F6:** fix the misplaced comment at `tests/test_synth_audit.py:84`, and add a `token_occurrences` test
@@ -850,8 +851,9 @@ Follow-ups:
   - Each new form appears in the output.
   - Registry tests pass for this family.
 - **Depends on:** M2.T3, M2.T8, M2.T10.
-- **Status:** validated
-- **Status note:** implemented in `e60416d`. Real `generate` re-run by `opus`: 4,992 positives of A-D
+- **Status:** signed off
+- **Status note:** implemented in `e60416d`. `fable`'s review: `DESIGN.md` `b385eb3`, suite 339 OK, own
+  `generate` run matched. Real `generate` re-run by `opus`: 4,992 positives of A-D
   (`n // 24` x 24, 8 short of 5,000 by rounding only) plus 120 of E. The summary's "positives: 5112"
   includes E, as "positives: 4924" did before this task. No template is short; 0 dropped; 0 all-benign;
   3 sanity queries above 0.5. Longest output 141 characters, all ASCII and normalised. The rule 4 gate

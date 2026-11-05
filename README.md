@@ -3,7 +3,7 @@ Tell apart real search queries from one coming from bot traffic
 
 The classifier decides from the query text alone whether to serve a search query or discard it. The use case is a furniture and home-goods shop. The costly mistake is discarding a real shopper's query, because that can lose a sale, so the false positive rate is capped first and bot detection is maximised within that cap.
 
-> **Status:** this diagram shows the planned design. The project is at an early stage: 3 of 36 tasks are validated, no model has been trained, and there are no results yet. Numbers below are design parameters and targets, not measurements.
+> **Status:** this diagram shows the planned design. The project is at an early stage: the first of six milestones (data loading and the hand-labelled query set) is complete, no model has been trained, and there are no results yet. Numbers below are design parameters and targets, not measurements.
 
 ## How it works
 
@@ -42,8 +42,9 @@ flowchart TD
         MODEL --> THRESH --> METRICS
     end
 
-    CHECKS["Extra checks, never used for training<br/>50 hand-labelled queries, 100 part numbers,<br/>120 off-topic queries, held-out query families"]
+    CHECKS["Per-fold checks on unseen query types<br/>120 off-topic queries, held-out query families"]
     FINAL["Final model and threshold, fitted on all 960"]
+    FINALCHECKS["Final model checks, never used for training<br/>50 hand-labelled queries, 100 part numbers"]
 
     subgraph S4["4. Classification (illustrative, deployment is out of scope)"]
         direction TB
@@ -61,6 +62,7 @@ flowchart TD
     DATA --> CV
     METRICS --> FINAL
     CHECKS --> METRICS
+    FINAL --> FINALCHECKS
     FINAL --> SCORE
 ```
 

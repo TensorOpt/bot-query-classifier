@@ -15,11 +15,10 @@ FAMILY = "P"
 LABEL = 0
 PER_SHAPE = 25
 MAX_WORDS = 3
-_SUFFIX_CHARS = string.ascii_lowercase + string.digits
 
 
 def _digits(rng: random.Random) -> str:
-    """3-9 digits, often zero-padded as shop part numbers are."""
+    """3-9 digits, uniformly random (a leading zero is as likely as any digit)."""
     n = rng.randint(3, 9)
     return "".join(rng.choice(string.digits) for _ in range(n))
 
@@ -39,8 +38,11 @@ def _bare_digits(rng: random.Random, vocabulary: Sequence[str]) -> str:
 
 
 def _part_number(rng: random.Random) -> str:
-    """`bf-7731x`: prefix, optional separator, digits, a 1-2 character suffix."""
-    suffix = "".join(rng.choice(_SUFFIX_CHARS) for _ in range(rng.randint(1, 2)))
+    """`bf-7731x`: prefix, optional separator, digits, a 1-2 letter suffix.
+
+    Letters only: a digit after a letter would make a fourth block (2.2).
+    """
+    suffix = "".join(rng.choice(string.ascii_lowercase) for _ in range(rng.randint(1, 2)))
     return _prefix(rng) + rng.choice(("", "-", "/")) + _digits(rng) + suffix
 
 

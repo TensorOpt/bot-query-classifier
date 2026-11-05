@@ -13,7 +13,13 @@ from bqc.synth.partnumbers import (
     SHAPE_IDS,
     generate_part_numbers,
 )
-from bqc.synth.registry import ALL_FAMILIES, PART_NUMBER_RE, REGISTRY, Sample
+from bqc.synth.registry import (
+    ALL_FAMILIES,
+    PART_NUMBER_RE,
+    REGISTRY,
+    Sample,
+    is_benign_token,
+)
 from bqc.synth.registry import generate as generate_positives
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -66,6 +72,13 @@ class PartNumbersTest(unittest.TestCase):
             *words, last = s.text.split(" ")
             self.assertTrue(words, s.text)
             self.assertRegex(last, PART_NUMBER_RE, s.text)
+
+    def test_every_token_is_benign_against_the_vocabulary(self):
+        # Three blocks at most per token (2.2), over several seeds.
+        for seed in range(20):
+            for s in gen(seed=seed):
+                for token in s.text.split(" "):
+                    self.assertTrue(is_benign_token(token, set(VOCAB)), s.text)
 
     def test_ascii_lowercase_normalised(self):
         for s in gen():

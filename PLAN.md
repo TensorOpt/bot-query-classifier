@@ -272,7 +272,7 @@ Sign-off: pending.
     every query at most 512 code points after `normalise()` (11.2). This test must pass both blank and fully labelled, so it asserts nothing about label
     values.
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** todo
+- **Status:** done
 
 ---
 

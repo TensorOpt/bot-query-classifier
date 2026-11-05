@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.7 (commit `3a8103e`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.8 (commit `3dbe549`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -346,7 +346,7 @@ Sign-off: pending.
 ### M2.T1: Sample type, registry and quotas
 
 - **Goal:** a seeded, vocabulary-parameterised entry point for generating positives.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2, 2.2, 4, 5, 8.3, 10, 11.18, 11.23.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2, 2.2, 4, 5, 8.3, 10, 11.18, 11.23.
 - **Files:** `bqc/synth/__init__.py`, `bqc/synth/registry.py`, `tests/test_synth_registry.py`,
   `tests/synth_stubs.py`.
 - **Acceptance criteria:**
@@ -390,48 +390,15 @@ Sign-off: pending.
   - A family with 5 templates, with a quota other than 20, or with one hard-positive
     template raises (rule 6).
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** done
-- **Changes requested (`opus`, 2026-11-05, on `2bbfe9e`; merged with `DESIGN.md` `3a8103e`):**
-  Code first.
-  1. `bqc/synth/registry.py`: add the number-shaped regex of 2.2, a benign-token predicate
-     (`token`, `vocabulary`) and a check for at least one non-benign token. A token is number-shaped
-     if it matches the regex **and has fewer than 4 blocks**. The regex alone also matches
-     `xk9qz7vplm` and UUID or hash tokens, which the 2.2 table says pass; every digit token in real
-     WANDS has at most 3 blocks. (`fable` to correct the regex wording in 2.2.)
-  2. `bqc/synth/registry.py:49`: remove `is_part_number_query` and its test, because the new rule
-     replaces it. Keep `PART_NUMBER_RE`, which M2.T4 and M2.T9 use.
-  3. `tests/test_synth_registry.py:41`: in `assert_template_rules`, replace the whole-query check
-     with the non-benign check on every output. Use a fold-sized vocabulary that includes `a`, `x`,
-     `or`, `36"` and `3-3/4`.
-  4. `tests/test_synth_registry.py:91`: replace `test_stub_emitting_part_number_shape_fails`, whose
-     constant output fails the 50-distinct check at `:40` and never reaches the part-number check.
-     Add the stubs of the task's test list, varied so that they reach the rule. Test `a` and `aa`,
-     and every row of the 2.2 table, directly on the check.
-  5. `tests/test_synth_registry.py:91-131`: each negative test asserts which rule failed, by message,
-     so that none can pass for the wrong reason.
-  6. `tests/synth_stubs.py`: make the stubs satisfy the new contract. Today `{word} {suffix}{k}x` can
-     be all benign, and family A's hard stub can take a digit word from the new vocabulary.
-  7. `tests/test_synth_registry.py:43`: the family A rules see only digit-free vocabulary, so they
-     can't catch a hard template that lets `18x18` through. Run the block rule, and a new "no digit in
-     family A's hard output" assertion, over `["plainword", "w003096809", "18x18"]`.
-  8. `tests/test_synth_registry.py:46`: removing the sentinel check fails no test. Add a negative
-     stub: a hard template that ignores its vocabulary.
-  9. `tests/test_synth_registry.py:49`: `outsideword` can never appear, so that check tests nothing.
-     Render with `["otherword"]`, then with `["sentinelword"]`, and assert the second output has no
-     `otherword`. Add a negative stub that caches its first vocabulary.
-  10. `tests/test_synth_registry.py:39`: `len(normalise(s))` can't exceed 512, because `normalise`
-     truncates. Assert on `len(s)`.
-  11. `tests/test_synth_registry.py:137`: `RealTemplatesTest` passes on an empty registry. Add
-     `IMPLEMENTED_FAMILIES = ()` and assert that the registered families equal it (criterion 8), then
-     validate those families.
-  12. `tests/test_synth_registry.py:198`: the hash-seed test covers only stubs. Also generate from
-     `REGISTRY` for `IMPLEMENTED_FAMILIES` in the subprocess, so real templates inherit it.
+- **Status:** validated
+- **Status note:** implemented in `2bbfe9e`, corrected in `bf8a6f5`. `opus`'s review lists are in
+  `99ff23d` and `8878e13`.
 
 ### M2.T2: Family A, gibberish
 
 - **Goal:** generate keyboard mashing, random IDs and hash-like strings, plus hard
   positives, without producing part-number shapes.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2 (family A, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family A, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/gibberish.py`, `tests/test_synth_gibberish.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:**
@@ -452,13 +419,15 @@ Sign-off: pending.
   - A vocabulary containing `18x18` and `w003096809` never brings those words into the output.
   - Template-specific shape checks (for example, a UUID template has UUID shape).
   - Output isn't a perturbed product word.
+  Also remove `test_is_part_number_query_is_gone` from `tests/test_synth_registry.py`: asserting
+  that a function is absent has no future value.
 - **Depends on:** M2.T1.
 - **Status:** todo
 
 ### M2.T3: Family B, injection and probing payloads
 
 - **Goal:** generate scanner payloads, plus hard positives.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2 (family B, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family B, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers SQL, script, template, path-traversal and
@@ -473,7 +442,7 @@ Sign-off: pending.
 
 - **Goal:** generate dictionary walks, URL paths and query-string forms that walk the search
   engine, plus hard positives, and no SKUs or part numbers.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
 - **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** registered with family `C`, with exactly the six templates of 2.2:
@@ -499,7 +468,7 @@ Sign-off: pending.
 
 - **Goal:** generate URLs, emails, phone numbers and promotional phrases, plus hard
   positives.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2 (family D, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family D, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers each
@@ -513,7 +482,7 @@ Sign-off: pending.
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.
-- **Design refs:** `DESIGN.md` `3a8103e`: 2 (family E, 2.1), 2.2, 4.
+- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family E, 2.1), 2.2, 4.
 - **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:**

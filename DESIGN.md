@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.4, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.5, 2026-11-05 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -320,8 +320,8 @@ distribution (P2) transfer (0.2%).
 spans gives recall 73.6 / 79.2 / 81.2 / 83.4 / 84.9% at FPR <= 1% and AUC .958 /
 .967 / .973 / .980 / .983; FPR stays within noise (0.4-1.1%). Five thousand
 captures three quarters of the gain of 40,000 at an eighth of the data, keeps the
-MLP at about 1-2 minutes per fit instead of 16, and keeps the Jaccard audit (5,000 x
-5,000 pairs) in seconds. The size is a parameter so the 20,000 point can be re-run
+MLP at about 17 s per fit (measured, 13.22) instead of 16 minutes, and keeps the
+Jaccard audit (5,000 x 5,000 pairs) in seconds. The size is a parameter so the 20,000 point can be re-run
 for logistic regression as a reported sensitivity.
 
 **What the real queries are for now:** per outer fold, the 384 training-side real
@@ -1160,10 +1160,11 @@ must not import the command layer.
 - **Runtime budget (estimate, to be measured and recorded in 13 by the first full
   run):** logistic regression and the trivial baseline are seconds per fit at any
   size. The MLP took 987 s per fit at 20,000 / 20,000 with 67k features (13.19);
-  at 5,000 / 5,000 with ~28k features the cost should be about a tenth, call it 1-2
-  minutes. The full primary run is 15 outer fits per model (no inner loop, 8.2),
-  plus 15 for SMOTE, 60 for LOFO and 15 for the catalogue gap: about 105 MLP fits,
-  roughly 2-4 hours, acceptable. The comparison arm's nested loop is 90 fits at
+  **measured at 5,000 / 5,000 by the SVD probe: 9-29 s per fit, median 17 s**
+  (13.22; early stopping ends most fits in 19-43 epochs). The full primary run is
+  15 outer fits per model (no inner loop, 8.2), plus 15 for SMOTE, 60 for LOFO and
+  15 for the catalogue gap: about 105 MLP fits, **roughly half an hour** on the
+  probe's machine, plus the comparison arm's small nested fits. The comparison arm's nested loop is 90 fits at
   384 / 384, seconds each. `--models lr` gives a complete run in minutes for
   iteration; the MLP is run last. **"On request" (PQ-5):** `--lofo` and
   `--catalogue-gap` take an optional comma list of models, default all of
@@ -1171,7 +1172,9 @@ must not import the command layer.
   and the final model always cover every model in `--models`. M4.T4 records the
   measured MLP fit time in the run JSON and in 13.9; if it exceeds 5 minutes per
   fit, the M6 invocation is `--lofo lr,trivial --catalogue-gap lr,trivial` and the
-  MLP's LOFO and gap rows are reported as not run, with the reason.
+  MLP's LOFO and gap rows are reported as not run, with the reason. The rule
+  stands as the safeguard; on the measured 17 s it will not trigger, so the M6
+  run covers the MLP everywhere by default.
 - **Environment:** Python 3.12, `python3 -m venv .venv`, `pyproject.toml` with the
   dependencies from section 6. The user's pyenv 3.12.16 has no `pip` on the shim
   path but `python3 -m venv` works and gives a venv with pip (verified 2026-11-05).
@@ -1371,10 +1374,15 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     TF-IDF, as reported to the user), although the probe showed a real accuracy
     gain (13.21). Work continues with TF-IDF; section 5 is unchanged; section 6's
     no-PyTorch decision stands.
-16. **SVD (2026-11-05).** The user wants truncated SVD on the TF-IDF features
-    tried. A read-only probe is running in the scratch directory; it is an
-    experiment, section 5 stays as it is, and no milestone waits for it (12.2,
-    Q17).
+16. **SVD (2026-11-05).** The user asked for truncated SVD on the TF-IDF features
+    to be tried; a read-only probe ran (13.22). **Resolved the same day: SVD is
+    rejected by the user.** It lost accuracy at every dimension tried (recall
+    75-80% against 79.7% for plain TF-IDF, AUC down, FPR at 90% recall worse) and
+    its scoring latency (1.8-18 ms per query against 0.22 ms) misses the bound
+    Q17 set. **Not to be re-proposed**: dimensionality reduction of the section 5
+    features is closed for this project unless the user reopens it. Section 5 is
+    unchanged. The M6 recommendation between logistic regression and the MLP is
+    unaffected (12.1 item 13).
 
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
@@ -1394,18 +1402,9 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     number, ~50-100 rows) added to the negatives with their own group tag so folds
     and the FP list can tell them apart; if the share is small, do nothing. Does
     not block any task before M6.
-17. **Truncated SVD on the TF-IDF features?** (Q16, embeddings, was resolved by
-    the user: abandoned for latency, 12.1 item 15.) A read-only probe of
-    `TruncatedSVD` applied to the section 5 features before the estimator is
-    running (12.1 item 16). What it must show to change section 5: a paired gain
-    in recall at FPR <= 1% on the same folds and test strings as 13.21 (logistic
-    regression, 5,000 spans) that clears the 7.1 rule, or an equal result with a
-    stated benefit (fewer features, faster MLP fits) that matters to the runtime
-    budget of 10; the catalogue-gap check and the one-word false positives not
-    worse; the achieved FPR within noise of the TF-IDF arm; and a per-query
-    scoring cost that stays within a millisecond, since latency is what ruled out
-    embeddings. Dimensions tried and the fit time of the SVD itself are part of
-    the cost. Blocks nothing; M3 proceeds on section 5 as written.
+(Q16, embeddings, and Q17, SVD, were both resolved by the user on 2026-11-05:
+abandoned and rejected respectively; 12.1 items 15 and 16. Q12 is the only open
+question.)
 
 ### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
 
@@ -1459,7 +1458,8 @@ runs in every arm (8.6 item 5). Nits: "inner validation" wording (8.4, 8.5, 11.1
 rule 3), 13.19 deviation list, the near-duplicate share at 5,000 (10), balance
 wording (4). The user then confirmed the catalogue-gap failure rule (12.1 item 14)
 and approved the embedding probe (12.1 item 15; since resolved: embeddings
-abandoned for latency, section 5 unchanged, the SVD probe open as 12.2 Q17).
+abandoned for latency, section 5 unchanged; SVD then probed and rejected by the
+user, 12.1 item 16, 13.22).
 
 ## 13. Probe findings and unverified assumptions
 
@@ -1535,9 +1535,9 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 
 - The 480 WANDS queries contain no bot traffic (13.2); not provable, mitigated by
   reviewing the FP list by eye.
-- The MLP fit at 5,000 / 5,000 takes 1-2 minutes (section 10 budget), extrapolated
-  from 987 s at 20,000 / 20,000 (13.19); to be measured by the first full run and
-  recorded here.
+- (Closed 2026-11-05.) The MLP fit at 5,000 / 5,000 was estimated at 1-2 minutes
+  from 987 s at 20,000 / 20,000; the SVD probe measured 9-29 s, median 17 s (13.22).
+  The first full run re-records it in the run JSON.
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
 
 These are the unverified assumptions left. Of the three items this section held
@@ -1799,6 +1799,41 @@ output files carry per-fold feature times, 0.21-0.24 s for T against 0.06-0.93 s
 for E on cached vectors, not the per-query figure). **Decision: abandoned by the
 user for latency** (12.1 item 15), the accuracy gain notwithstanding.
 
+### 13.22 SVD probe (2026-11-05, probe agent, read-only; numbers checked by `fable` against its `analysis.txt`, `rare.txt`, `extras.txt`, `latency.json`)
+
+Same protocol as 13.21 on the templates at commit `28cabaa` (after M2.T13 and
+distinct positives); `T` = section 5 TF-IDF, `S<k>` = `TruncatedSVD(k)` after the
+vectoriser, then L2; `-MLP` = the 6.1 network instead of logistic regression.
+
+| arm | FPR % [Wilson] | recall % at FPR <= 1% | AUC | FPR at 90% recall | fit s per fold | p50 scoring ms per query |
+|---|---|---|---|---|---|---|
+| T | 0.69 [0.25, 1.92] | 79.7 | .9723 | 7.64 | 0.27-0.43 | 0.22 |
+| S100 | 1.04 [0.45, 2.42] | 75.2 | .9492 | 13.89 | 0.8-1.7 | 1.8 |
+| S300 | 0.97 [0.40, 2.32] | 78.8 | .9611 | 8.19 | 2.2-3.8 | 4.9 |
+| S1000 | 0.83 [0.32, 2.12] | 80.2 | .9625 | 9.17 | 9.9-12.5 | 17.9 |
+| T-MLP | 0.83 [0.32, 2.12] | 79.2 | .9754 | 6.39 | **9.0-28.7, median 16.8** | 0.23 |
+| S300-MLP | 1.04 [0.45, 2.42] | 77.4 | .9523 | 11.04 | 2.7-4.5 | 4.8 |
+
+Explained variance of the SVD: 27% at 100, 44-46% at 300, 66-67% at 1,000. The
+SVD keeps the least of the TF-IDF length for exactly the strings the model must
+catch (repeats, mashes, part-number shapes, walks: 21-31% at 100), which is why
+recall on those falls. Catalogue gap (logistic regression): T 1.81% [0.94, 3.43],
+recall 82.2 (passes the 8.6 item 5 rule, lower bound close to the line); S300
+1.11% [0.49, 2.51]. One-word false positives: within noise for every SVD arm;
+T-MLP 2.3 fewer than T. Part numbers: `words + part number` flagged 5-10 pp less
+under SVD, bare shapes unchanged. Pickles: SVD matrix 20 MB (100), 60 MB (300),
+199 MB (1,000) against 0.4 MB for the vectoriser. T's features on these
+templates: **24,916-30,461 per fold** (13.21 measured 24,056-29,728 on the
+earlier templates). **Decision: SVD rejected by the user** (12.1 item 16).
+
+**Finding, cause not isolated:** on these templates T's recall is 79.7% against
+81.7% in 13.21, and `B.template` fell from 92% to 60% (`B` overall 74.4 -> 67.3).
+Between the two probes the templates changed (M2.T13 widened `B.script` and
+`B.traversal`) and positives became distinct per template. Whether the drop is
+the wider B positives diluting the family, the distinct rendering, or seed noise
+is not known; the full run's per-template table (8.5) and LOFO are where it will
+show, and 14 lists the isolation as a follow-up.
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives
@@ -1831,6 +1866,11 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Per-length quotas for spans** (draw and deduplicate within each word-count
   bucket so the realised mix equals the target), if the one-word false-positive
   count differs between the 5,000 and 20,000 runs (3.2, 13.20).
+- **Isolate the 13.22 recall drop** (T 81.7 -> 79.7%, `B.template` 92 -> 60%)
+  by re-running the 13.21 protocol with the M2.T13 templates and with distinct
+  rendering switched separately, if the full run's per-template table confirms it.
+- **Dimensionality reduction of the TF-IDF features**: closed by the user (SVD
+  rejected, 12.1 item 16); not to be re-proposed.
 - **More variety in `B.script`** beyond its 396 distinct strings, only if the
   20,000 sensitivity run's per-template recall for it looks off (section 4; done
   for 5,000 by M2.T13).

@@ -218,7 +218,7 @@ Sign-off: pending.
   - a double-space query kept as is.
   Failure paths: wrong hash; missing file; wrong header.
 - **Depends on:** M1.T2.
-- **Status:** done
+- **Status:** validated
 
 ### M1.T5: `bqc fetch` and the real checksum
 
@@ -230,10 +230,12 @@ Sign-off: pending.
      writing to a temp file and renaming only after the hash check passes.
   2. A network error or hash mismatch exits non-zero and leaves no file at the target or
      temp path.
-  3. `data/CHECKSUMS` holds the real SHA-256 from one manual run (the planning check saw
-     `63b61660560fecc33ec490804c7e2b81402ee3e7c31a9cbb5e03736639f68e95`; report any
-     difference rather than overwriting it silently).
-  4. The real file loads as 480 rows with `query_id` `0..479`.
+  3. `data/CHECKSUMS` holds the real SHA-256 from one manual run, as the line
+     `<hex>  query.csv` that `load_queries` looks up by file name (M1.T4). The planning check
+     saw `63b61660560fecc33ec490804c7e2b81402ee3e7c31a9cbb5e03736639f68e95`; report any
+     difference rather than overwriting it silently.
+  4. The real file loads as 480 rows with 480 distinct `query_id` values. The ids run from 0 to
+     487 with 8 gaps, not `0..479` as section 3 says (checked 2026-11-05).
 - **Tests:** with the URL opener replaced by a local stub, so nothing downloads:
   success; network error; wrong bytes; an existing good file isn't destroyed by a failed
   fetch (11.13); a non-zero return from `main` becomes the exit status of `python -m bqc`

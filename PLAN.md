@@ -665,7 +665,7 @@ Sign-off: pending.
   - `assert_template_rules` runs on every real template with a fold-sized vocabulary that also holds
     product-span tokens: repeats, `''`, `.`, `-`, `&`, `w/`, `all-clad`, `qt`, `24''`.
 - **Depends on:** M2.T1, M2.T6.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T11: Drop exact matches without showing them
 

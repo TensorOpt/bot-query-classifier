@@ -3,6 +3,7 @@
 Also the one home of the part-number regex and the letter/digit block count
 (DESIGN.md 2.2).
 """
+import math
 import random
 import re
 from collections.abc import Callable, Collection, Sequence
@@ -15,6 +16,7 @@ ALL_FAMILIES = TRAINING_FAMILIES + (EVAL_FAMILY,)
 TEMPLATES_PER_FAMILY = 6
 MIN_HARD_TEMPLATES = 2
 QUOTA = 20
+ROUND_FACTOR = 2  # render() allows ROUND_FACTOR * ceil(per_template / QUOTA) rounds
 
 PART_NUMBER_RE = re.compile(r"^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$")
 MIN_GIBBERISH_BLOCKS = 4
@@ -133,6 +135,47 @@ class Registry:
                 )
         return samples
 
+    def render(
+        self,
+        vocabulary: Sequence[str],
+        seed: int,
+        templates: Sequence[tuple[str, str]],
+        per_template: int,
+    ) -> tuple[list[Sample], dict[tuple[str, str], int]]:
+        """Up to `per_template` distinct strings for each wanted template (4, 8.3).
+
+        Calls `generate()` with `seed + i` for i = 0, 1, ... and keeps, per
+        (family, template_id) pair, the first distinct outputs. Stops once every
+        template has enough or after ROUND_FACTOR * ceil(per_template / QUOTA)
+        rounds. Returns the samples, ordered as `templates` (then by round), and
+        each template's shortfall (0 when satisfied). Never pads, never raises
+        for a shortfall; an unknown or repeated pair, a per_template below 1 or
+        an empty vocabulary raises ValueError.
+        """
+        if not vocabulary:
+            raise ValueError("vocabulary is empty")
+        if per_template < 1:
+            raise ValueError(f"per_template must be >= 1, got {per_template}")
+        wanted = list(templates)
+        if len(set(wanted)) != len(wanted):
+            raise ValueError("templates holds a repeated (family, template_id) pair")
+        known = {(f, t.template_id) for f, ts in self._templates.items() for t in ts}
+        unknown = [p for p in wanted if p not in known]
+        if unknown:
+            raise ValueError(f"unknown templates {unknown}")
+        families = [f for f in ALL_FAMILIES if any(p[0] == f for p in wanted)]
+        kept: dict[tuple[str, str], dict[str, Sample]] = {p: {} for p in wanted}
+        rounds = ROUND_FACTOR * math.ceil(per_template / QUOTA)
+        for i in range(rounds if wanted else 0):
+            for sample in self.generate(vocabulary, seed + i, families):
+                bucket = kept.get((sample.family, sample.template_id))
+                if bucket is not None and len(bucket) < per_template:
+                    bucket.setdefault(sample.text, sample)
+            if all(len(b) >= per_template for b in kept.values()):
+                break
+        samples = [s for p in wanted for s in kept[p].values()]
+        return samples, {p: per_template - len(kept[p]) for p in wanted}
+
 
 REGISTRY = Registry()
 
@@ -154,3 +197,12 @@ def generate(
 ) -> list[Sample]:
     """Default output is the 480 training positives; E only when requested."""
     return REGISTRY.generate(vocabulary, seed, families)
+
+
+def render(
+    vocabulary: Sequence[str],
+    seed: int,
+    templates: Sequence[tuple[str, str]],
+    per_template: int,
+) -> tuple[list[Sample], dict[tuple[str, str], int]]:
+    return REGISTRY.render(vocabulary, seed, templates, per_template)

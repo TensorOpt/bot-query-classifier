@@ -25,6 +25,9 @@ IMPLEMENTED_FAMILIES = ("A", "B", "C", "D", "E")
 FOLD_VOCAB = [
     "".join(chr(97 + (i // 26 ** p) % 26) for p in range(3)) for i in range(384)
 ] + ["a", "x", "or", '36"', "3-3/4"]
+# Product-span tokens (3.2) as they occur in a negatives vocabulary, with repeats.
+SPAN_TOKENS = ["''", ".", "-", "&", "w/", "all-clad", "qt", "24''"]
+SPAN_VOCAB = SPAN_TOKENS * 3 + ["sofa"] * 50 + FOLD_VOCAB + SPAN_TOKENS
 A_DIGIT_VOCAB = ["plainword", "w003096809", "18x18"]
 SAMPLES_PER_TEMPLATE_CHECK = 300
 
@@ -236,6 +239,16 @@ class RealTemplatesTest(unittest.TestCase):
                     assert_template_rules(self, t)
 
 
+class SpanVocabularyTest(unittest.TestCase):
+    """The contract holds with product-span tokens in the vocabulary (M2.T10)."""
+
+    def test_real_templates_pass_with_span_tokens(self):
+        for family in IMPLEMENTED_FAMILIES:
+            for t in REGISTRY.templates(family):
+                with self.subTest(template=(t.family, t.template_id)):
+                    assert_template_rules(self, t, SPAN_VOCAB)
+
+
 class RepeatedVocabularyTest(unittest.TestCase):
     """The vocabulary is a list of token occurrences with repeats (2.2, 8.3)."""
 
@@ -429,3 +442,160 @@ class ValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def pairs(registry, families=TRAINING_FAMILIES):
+    return [(f, t.template_id) for f in families for t in registry.templates(f)]
+
+
+class RenderTest(unittest.TestCase):
+    def setUp(self):
+        self.registry = build_registry()
+        self.wanted = [("B", "b3"), ("A", "a0"), ("D", "d5")]
+
+    def test_209_per_template_over_several_templates(self):
+        samples, short = self.registry.render(FOLD_VOCAB, 1, self.wanted, 209)
+        self.assertEqual(len(samples), 3 * 209)
+        self.assertEqual(short, {p: 0 for p in self.wanted})
+        for s in samples:
+            self.assertIsInstance(s, Sample)
+            self.assertTrue(s.text)
+            self.assertIn((s.family, s.template_id), self.wanted)
+            self.assertTrue(1 <= s.seed < 1 + 30)
+        for p in self.wanted:
+            texts = [s.text for s in samples if (s.family, s.template_id) == p]
+            self.assertEqual(len(texts), 209)
+            self.assertEqual(len(set(texts)), 209)
+
+    def test_output_follows_templates_order(self):
+        samples, _ = self.registry.render(FOLD_VOCAB, 1, self.wanted, 30)
+        order = []
+        for s in samples:
+            p = (s.family, s.template_id)
+            if not order or order[-1] != p:
+                order.append(p)
+        self.assertEqual(order, self.wanted)
+
+    def test_first_round_matches_generate(self):
+        samples, _ = self.registry.render(FOLD_VOCAB, 4, [("B", "b3")], 20)
+        gen = [s for s in self.registry.generate(FOLD_VOCAB, 4)
+               if (s.family, s.template_id) == ("B", "b3")]
+        self.assertEqual(samples, gen)
+
+    def test_uses_seed_plus_i(self):
+        samples, _ = self.registry.render(FOLD_VOCAB, 4, [("B", "b3")], 40)
+        expected = []
+        for i in range(2):
+            expected += [s for s in self.registry.generate(FOLD_VOCAB, 4 + i)
+                         if (s.family, s.template_id) == ("B", "b3")]
+        self.assertEqual(samples, expected)
+
+    def test_stub_with_few_distinct_strings_reports_shortfall_and_stops(self):
+        registry = build_registry(families="BCDE")
+        calls = []
+        for k in range(6):
+            registry.register(Template(
+                "A", f"a{k}", k < 2,
+                lambda rng, v: calls.append(1) or f"x{rng.randint(0, 29)}"))
+        samples, short = registry.render(FOLD_VOCAB, 1, [("A", "a0"), ("A", "a1")], 100)
+        got = {p: sum((s.family, s.template_id) == p for s in samples)
+               for p in [("A", "a0"), ("A", "a1")]}
+        for p, n in got.items():
+            self.assertLessEqual(n, 30)
+            self.assertEqual(n, len({s.text for s in samples
+                                     if (s.family, s.template_id) == p}))
+            self.assertEqual(short[p], 100 - n)
+            self.assertGreater(short[p], 0)
+        rounds = len(calls) // (6 * 20)
+        self.assertEqual(rounds, reg.ROUND_FACTOR * 5)
+
+    def test_constant_stub_shortfall_is_all_but_one(self):
+        registry = build_registry(families="BCDE")
+        for k in range(6):
+            registry.register(Template("A", f"a{k}", k < 2, lambda rng, v: "same"))
+        samples, short = registry.render(FOLD_VOCAB, 1, [("A", "a2")], 50)
+        self.assertEqual([s.text for s in samples], ["same"])
+        self.assertEqual(short, {("A", "a2"): 49})
+
+    def test_satisfied_templates_stop_extra_rounds(self):
+        calls = []
+        registry = build_registry(families="BCDE")
+        for k in range(6):
+            registry.register(Template(
+                "A", f"a{k}", k < 2,
+                lambda rng, v: calls.append(1) or f"w{rng.random()}"))
+        registry.render(FOLD_VOCAB, 1, [("A", "a0")], 45)
+        self.assertEqual(len(calls) // (6 * 20), 3)
+
+    def test_same_seed_same_output_different_seed_differs(self):
+        a = self.registry.render(FOLD_VOCAB, 5, self.wanted, 50)
+        b = self.registry.render(FOLD_VOCAB, 5, self.wanted, 50)
+        c = self.registry.render(FOLD_VOCAB, 6, self.wanted, 50)
+        self.assertEqual(a, b)
+        self.assertNotEqual([s.text for s in a[0]], [s.text for s in c[0]])
+
+    def test_same_output_across_hash_seeds(self):
+        tid = REGISTRY.templates("B")[0].template_id
+        script = (
+            "import json; import bqc.synth;"
+            "from bqc.synth.registry import render;"
+            "v = ['sofa', 'rug', 'lamp', 'chair', 'desk'];"
+            f"s, short = render(v, 9, [('B', {tid!r})], 45);"
+            "print(json.dumps([tuple(x) for x in s]), sorted(short.items()))"
+        )
+        outs = []
+        for hs in ("1", "2", "12345"):
+            env = dict(os.environ, PYTHONHASHSEED=hs, PYTHONPATH=str(ROOT))
+            p = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env,
+                               capture_output=True, text=True, check=True)
+            outs.append(p.stdout)
+        self.assertTrue(outs[0])
+        self.assertEqual(outs[0], outs[1])
+        self.assertEqual(outs[0], outs[2])
+
+    def test_per_template_of_20_or_fewer(self):
+        for n in (1, 7, 20):
+            samples, short = self.registry.render(FOLD_VOCAB, 1, self.wanted, n)
+            self.assertEqual(len(samples), 3 * n)
+            self.assertEqual(set(short.values()), {0})
+
+    def test_empty_vocabulary_raises(self):
+        with self.assertRaises(ValueError):
+            self.registry.render([], 1, self.wanted, 20)
+
+    def test_unknown_pair_raises(self):
+        for bad in [("B", "nope"), ("Z", "b3")]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.registry.render(FOLD_VOCAB, 1, [("B", "b3"), bad], 20)
+
+    def test_repeated_pair_and_nonpositive_per_template_raise(self):
+        with self.assertRaises(ValueError):
+            self.registry.render(FOLD_VOCAB, 1, [("B", "b3"), ("B", "b3")], 20)
+        with self.assertRaises(ValueError):
+            self.registry.render(FOLD_VOCAB, 1, self.wanted, 0)
+
+    def test_empty_templates_gives_nothing(self):
+        self.assertEqual(self.registry.render(FOLD_VOCAB, 1, [], 20), ([], {}))
+
+    def test_invalid_registry_raises(self):
+        with self.assertRaises(ValueError):
+            Registry().render(FOLD_VOCAB, 1, [("B", "b3")], 20)
+
+    def test_vocabulary_and_templates_not_mutated(self):
+        v, w = list(FOLD_VOCAB), list(self.wanted)
+        self.registry.render(v, 1, w, 25)
+        self.assertEqual(v, FOLD_VOCAB)
+        self.assertEqual(w, self.wanted)
+
+    def test_module_function_uses_the_real_registry(self):
+        t = REGISTRY.templates("B")[0]
+        samples, short = reg.render(FOLD_VOCAB, 1, [(t.family, t.template_id)], 25)
+        self.assertEqual(len(samples) + sum(short.values()), 25)
+        self.assertGreater(len(samples), 0)
+
+    def test_real_templates_render_209_distinct_or_report_shortfall(self):
+        wanted = [(t.family, t.template_id) for t in REGISTRY.templates("B")]
+        samples, short = reg.render(SPAN_VOCAB, 3, wanted, 209)
+        for p in wanted:
+            n = sum((s.family, s.template_id) == p for s in samples)
+            self.assertEqual(n + short[p], 209)

@@ -13,16 +13,17 @@ Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 
 | Milestone | Content | Tasks |
 |-----------|---------|-------|
-| M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader | 6 |
+| M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening | 7 |
 | M2 | Synthetic generators, audit, part-number set, `generate` | 9 |
 | M3 | Features and evaluation harness against a fake `Scorer` | 11 |
 | M4 | Real models, `evaluate` command, SMOTE experiment | 6 |
 | M5 | HDBSCAN experiment | 3 |
 | M6 | Full run on real data | 1 |
 
-Task ids stay stable: `M1.T7`, `M3.T6` and `M4.T5` were probe tasks, are retired, and
-aren't reused. Tasks run in file order, which isn't always id order: M2.T9 was added later
-and comes before M2.T8.
+Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, are retired, and aren't reused.
+`M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
+appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
+order: M2.T9 was added later and comes before M2.T8. M1.T7 may run in parallel with M2.
 
 ### Order constraints
 
@@ -314,6 +315,24 @@ Follow-ups:
     values.
 - **Depends on:** M1.T1, M1.T3.
 - **Status:** signed off
+
+### M1.T7: Harden `fetch` against truncated and stalled downloads
+
+- **Goal:** make every download failure a `WandsError`, and stop a stalled connection hanging
+  (M1 sign-off, follow-up F2). Commit scope: `fix(M1.T7)`.
+- **Design refs:** 11.13.
+- **Files:** `bqc/wands.py`, `tests/test_fetch.py`.
+- **Acceptance criteria:**
+  1. `fetch` catches `http.client.HTTPException` alongside `OSError`, so `IncompleteRead`
+     becomes `WandsError`, as its docstring promises.
+  2. `fetch` calls the opener with `timeout=60`.
+- **Tests:**
+  - An opener whose response raises `http.client.IncompleteRead` on read raises `WandsError`
+    and leaves nothing.
+  - The opener receives `timeout=60`.
+  The `finally` cleanup stays untested, as accepted at sign-off.
+- **Depends on:** M1.T5.
+- **Status:** todo
 
 ---
 

@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.4 (commit `a6b12ee`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.6 (commit `ba6aec5`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -165,13 +165,14 @@ Sign-off: pending.
 ### M1.T3: `normalise()`
 
 - **Goal:** one function holds all query preprocessing.
-- **Design refs:** `DESIGN.md` `c773215`: 5, 11.1, 11.2, 11.4, 11.5, 13.11, 13.16.
+- **Design refs:** `DESIGN.md` `ba6aec5`: 5, 11.1, 11.2, 11.4, 11.5, 13.11, 13.16.
 - **Files:** `bqc/preprocess.py`, `tests/test_preprocess.py`.
 - **Acceptance criteria:**
   1. `normalise(str) -> str` is pure and applies the six steps of section 5, in this order:
      remove `Cc` and `Cf` characters unless `str.isspace()` is true for them; NFKC;
      `str.lower()`; NFKC again; `" ".join(s.split())`; truncate to 512 code points, then
-     `rstrip()`.
+     `rstrip()`. Validation checks the order by reading the code, because behaviour tests can't
+     pin the position of the removal relative to the first NFKC (section 5).
   2. Truncation is silent: nothing logs or reports it (section 5, 11.2).
   3. `normalise(normalise(s)) == normalise(s)` for every case in the test list; the design
      states idempotence as a tested property (section 5, 13.16), not as a guarantee over all
@@ -182,7 +183,7 @@ Sign-off: pending.
   - U+200B, U+FEFF and a non-whitespace control character such as `\x00` are removed,
     joining their neighbours: `so\u200bfa` gives `sofa`.
   - Removal runs before collapsing: `a \u200b b` gives `a b`.
-  - Removal runs before NFKC: `e\u200b\u0301` gives U+00E9 on the first call.
+  - A format character between a base and a mark: `e\u200b\u0301` gives U+00E9 on the first call.
   - Hangul jamo split by a format character: `\u1100\u200b\u1161` gives U+AC00.
   - The second NFKC: `\u0391\u0342` gives U+1FB6.
   - Lowercasing runs after the first NFKC: `\u2103` gives `°c`.
@@ -194,24 +195,16 @@ Sign-off: pending.
   - Mixed case (11.5).
 - **Depends on:** M1.T2.
 - **Status:** done
-- **Status note:** `done` refers to `1bcb0e3` plus the correction commit that implements the
-  six-step order and the tests below.
-- **Changes requested (`opus`, 2026-11-05, on `1bcb0e3`; replaces the earlier list):** both code
-  and tests must change. Every expected value below was checked against the six steps.
-  1. `bqc/preprocess.py:14-21`: implement the six steps in the order of criterion 1. Update the
-     docstring at `bqc/preprocess.py:10-12`, which states the old order and an unqualified
-     "idempotent".
-  2. `tests/test_preprocess.py:16`: add `a \u200b b` -> `a b`, `e\u200b\u0301` -> U+00E9 and
-     `\u1100\u200b\u1161` -> U+AC00. Keep `so\u200bfa` -> `sofa`.
-  3. `tests/test_preprocess.py:24`: add `x\u0301` -> unchanged. The file has no combining mark
-     today, and its `é` characters are precomposed.
-  4. `tests/test_preprocess.py:28`: add `\u2103` -> `°c` and `\u0391\u0342` -> U+1FB6.
-  5. `tests/test_preprocess.py:46`: add `" " * 1000 + "sofa"` -> `sofa` and
-     `"\u200b" * 1000 + "sofa"` -> `sofa`.
-  6. `tests/test_preprocess.py:51`: assert idempotence for every case in the test list, including
-     items 2 to 5 and the existing single-code-point, full-width, tab/newline, 511/512/513 and
-     1 MB cases. Sharing one case table is fine.
-  Write the characters in tests as `\u` escapes, because they are invisible in a diff.
+- **Status note:** `done` refers to `1bcb0e3` plus `7789930`. `7789930` implements the six steps
+  and adds the listed behaviour cases, but leaves idempotence incomplete (below).
+- **Changes requested (`opus`, 2026-11-05, on `7789930`; replaces the earlier list):**
+  1. `tests/test_preprocess.py:75`: criterion 3 needs a second-call assertion for every case in
+     the test list, but these inputs aren't in the idempotence samples: `e\u200b\u0301`,
+     `\u1100\u200b\u1161` and `\u0391\u0342`, which are the cases the reorder exists for; also
+     `a \u200b b`, `\u2103`, `x\u0301`, `" " * 1000 + "sofa"`, `"\u200b" * 1000 + "sofa"`,
+     `so\ufefffa`, `a\u000ab` and `"a" * 512`. Add them.
+  Minor, not blocking: `test_removal_runs_before_collapse_and_nfkc` claims an order the tests
+  can't pin; rename it when making this change.
 
 ### M1.T4: WANDS loader with hash check
 
@@ -258,18 +251,18 @@ Sign-off: pending.
 ### M1.T6: Sanity set loader
 
 - **Goal:** read `data/sanity.csv`, and report whether it can be scored.
-- **Design refs:** 8.6.1, 10, 11.2, 11.20, 11.21.
+- **Design refs:** 5, 8.6.1, 10, 11.2, 11.20, 11.21.
 - **Files:** `bqc/sanity.py`, `tests/test_sanity_loader.py`, `tests/fixtures/sanity_*.csv`.
 - **Acceptance criteria:**
   1. Each `label` cell is stripped of leading and trailing whitespace and nothing else, then
      must be exactly `0` or `1`. So ` 1` is a valid `1`, and `2`, `yes`, `1.0` are not.
-  2. Returns the queries in every label state, because the generator audit needs them (8.6.1,
-     M2.T7). Alongside them, it returns either all integer labels, or a "not scorable" result
+  2. Returns the queries raw, in every label state, because the generator audit needs them
+     (section 5, 8.6.1, M2.T7). Alongside them, it returns either all integer labels, or a "not scorable" result
      carrying the count of invalid rows and the message
      `sanity set: N of M rows unlabelled, skipping`. Blank is never a class, and a partially
      labelled file is never scored.
   3. A query equal to a WANDS query after `normalise()` raises an error naming the `id`,
-     regardless of the labels' state.
+     regardless of the labels' state. The loader normalises both sides for this check only.
   4. A wrong header raises an error naming the file.
   5. The loader doesn't write to the file.
 - **Tests:**
@@ -277,6 +270,7 @@ Sign-off: pending.
     (11.20). The queries are returned in all of these.
   - ` 1` and `0 ` are valid; `2`, `yes` and `1.0` make the file not scorable (11.20).
   - A row equal to a WANDS fixture query after case and whitespace differences (11.21).
+  - A query with upper case and a double space comes back unchanged.
   - Quoted queries containing commas; CRLF line endings.
   - **The real `data/sanity.csv`**: header, 50 rows, ids `1..50`, no duplicate queries,
     every query at most 512 code points after `normalise()` (11.2). This test must pass both blank and fully labelled, so it asserts nothing about label
@@ -293,7 +287,7 @@ Sign-off: pending.
 ### M2.T1: Sample type, registry and quotas
 
 - **Goal:** a seeded, vocabulary-parameterised entry point for generating positives.
-- **Design refs:** 2, 2.2, 4, 8.3, 10, 11.18, 11.23.
+- **Design refs:** 2, 2.2, 4, 5, 8.3, 10, 11.18, 11.23.
 - **Files:** `bqc/synth/__init__.py`, `bqc/synth/registry.py`, `tests/test_synth_registry.py`.
 - **Acceptance criteria:**
   1. **History:** the commit of `data/sanity.csv` is an ancestor of the first commit
@@ -320,6 +314,7 @@ Sign-off: pending.
   - Each template reaches at least 50 distinct strings with a fold-sized vocabulary
     (rule 5).
   - Every string is at most 512 code points after `normalise()` (rule 7).
+  - `normalise(s) == s` for every template output (section 5).
   - **No template in any family emits a whole query that is a single token matching the
     part-number regex, or a bare number (2.2, 11.23).** This runs with a vocabulary that
     contains a part-number word such as `w003096809`.
@@ -556,7 +551,8 @@ Sign-off: pending.
      3 repeats, with both parameters overridable for tiny test configs.
   2. Groups: each query is its own group; each positive's group is `(family, template_id)`.
   3. Training hard positives draw only on training-fold negatives, and test hard positives
-     only on test-fold negatives.
+     only on test-fold negatives. The vocabulary comes from the negatives after `normalise()`
+     (section 5).
   4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
      training set.
   5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4), against all 480
@@ -655,7 +651,8 @@ Sign-off: pending.
   4. The per-fold breakdown records each family's test count and caught count, with recall
      `null` where the count is 0. A family with zero test samples in a fold is normal (13.14)
      and doesn't raise or divide by zero.
-  5. The full list of false positives, with their query text.
+  5. The full list of false positives, each with the raw WANDS query string as stored in
+     `query.csv` (8.5).
   6. No metric feeds any selection.
 - **Tests:**
   - Wilson against the 13.13 values, to 5 decimals: `0/480`, `5/480`, `1/96`, `0/30`,
@@ -669,7 +666,8 @@ Sign-off: pending.
   - Folds of unequal family counts give caught / total, which differs from the mean of the
     per-fold recalls.
   - Adding E samples leaves headline recall unchanged.
-  - The FP list holds exactly the expected queries.
+  - The FP list holds exactly the expected queries, and a double-space query keeps its double
+    space.
   - A single-class input to ROC-AUC raises rather than reporting a number.
 - **Depends on:** M3.T5.
 - **Status:** todo
@@ -793,11 +791,12 @@ Sign-off: pending.
 - **Design refs:** 5, 6.2, 6.4, 11.1, 11.3.
 - **Files:** `bqc/models.py`, `tests/test_models_lr.py`.
 - **Acceptance criteria:** `LogisticRegression(C=1.0, max_iter=1000)` on the M3.T1
-  vectoriser. Every text passes through `normalise()` exactly once. Scores are
-  P(illegitimate), the probability of label `1`, in `[0, 1]`.
+  vectoriser. The adapter calls `normalise()` on every text in `fit` and `score`, once, inside
+  the adapter (section 5). Scores are P(illegitimate), the probability of label `1`, in `[0, 1]`.
 - **Tests:**
   - On tiny inputs: `score` is aligned with the class-1 probability.
   - `"  SOFA "` and `sofa` score the same.
+  - Fitting on raw variants (`"  SOFA "`) gives the same scores as fitting on their normal forms.
   - Empty and all-unknown strings give the same score, and don't raise (11.1, 11.3).
   - Calling `score` before `fit` raises.
   - No metric values are asserted (section 10).

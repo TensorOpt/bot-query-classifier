@@ -198,7 +198,7 @@ Sign-off: pending.
 - **Status note:** `done` refers to `1bcb0e3` plus `7789930`. `7789930` implements the six steps
   and adds the listed behaviour cases, but leaves idempotence incomplete (below).
 - **Changes requested (`opus`, 2026-11-05, on `7789930`; replaces the earlier list):**
-  1. `tests/test_preprocess.py:75`: criterion 3 needs a second-call assertion for every case in
+  1. `tests/test_preprocess.py:67`: criterion 3 needs a second-call assertion for every case in
      the test list, but these inputs aren't in the idempotence samples: `e\u200b\u0301`,
      `\u1100\u200b\u1161` and `\u0391\u0342`, which are the cases the reorder exists for; also
      `a \u200b b`, `\u2103`, `x\u0301`, `" " * 1000 + "sofa"`, `"\u200b" * 1000 + "sofa"`,

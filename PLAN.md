@@ -194,9 +194,8 @@ Sign-off: pending.
   - Mixed case (11.5).
 - **Depends on:** M1.T2.
 - **Status:** done
-- **Status note:** `done` refers to `1bcb0e3`, which implements the superseded five-step order.
-  That code no longer meets criterion 1. The task needs the changes below before it can be
-  validated.
+- **Status note:** `done` refers to `1bcb0e3` plus the correction commit that implements the
+  six-step order and the tests below.
 - **Changes requested (`opus`, 2026-11-05, on `1bcb0e3`; replaces the earlier list):** both code
   and tests must change. Every expected value below was checked against the six steps.
   1. `bqc/preprocess.py:14-21`: implement the six steps in the order of criterion 1. Update the

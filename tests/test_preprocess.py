@@ -18,6 +18,22 @@ class NormaliseTest(unittest.TestCase):
         self.assertEqual(normalise("so﻿fa"), "sofa")
         self.assertEqual(normalise("so\x00fa"), "sofa")
 
+    def test_removal_runs_before_collapse_and_nfkc(self):
+        self.assertEqual(normalise("a \u200b b"), "a b")
+        self.assertEqual(normalise("e\u200b\u0301"), "\u00e9")
+        self.assertEqual(normalise("\u1100\u200b\u1161"), "\uac00")
+
+    def test_second_nfkc_and_lower_after_first_nfkc(self):
+        self.assertEqual(normalise("\u0391\u0342"), "\u1fb6")
+        self.assertEqual(normalise("\u2103"), "\u00b0c")
+
+    def test_combining_mark_kept(self):
+        self.assertEqual(normalise("x\u0301"), "x\u0301")
+
+    def test_truncation_runs_last(self):
+        self.assertEqual(normalise(" " * 1000 + "sofa"), "sofa")
+        self.assertEqual(normalise("\u200b" * 1000 + "sofa"), "sofa")
+
     def test_fullwidth_maps_to_ascii(self):
         self.assertEqual(normalise("ＳＯＦＡ"), "sofa")
 

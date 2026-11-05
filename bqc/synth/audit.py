@@ -37,13 +37,14 @@ class LengthStats(NamedTuple):
 
 def check_exact(
     positives: Iterable[str],
-    negatives: Iterable[str] = (),
-    sanity: Iterable[str] = (),
+    negatives: Iterable[str],
+    sanity: Iterable[str],
 ) -> None:
     """Raise AuditError if a positive equals a negative or a sanity query after normalise().
 
     The message names the positive, the string it hit and the list hit ("negatives" or
-    "sanity"). Negatives are checked before sanity queries.
+    "sanity"). Negatives are checked before sanity queries. Both lists are required so a
+    caller can't switch the gate off by omission; pass `[]` for nothing to compare.
     """
     positives_list = list(positives)
     for name, stored in (("negatives", negatives), ("sanity", sanity)):

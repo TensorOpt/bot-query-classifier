@@ -62,8 +62,16 @@ class CheckExactTest(unittest.TestCase):
         with self.assertRaises(AuditError):
             check_exact(["area rug"], ["Area   RUG"], [])
 
-    def test_callable_with_only_positives_and_accepts_iterators(self):
-        check_exact(iter(["a"]))
+    def test_both_lists_are_required(self):
+        with self.assertRaises(TypeError):
+            check_exact(["a"])
+        with self.assertRaises(TypeError):
+            check_exact(["a"], NEGATIVES)
+        with self.assertRaises(TypeError):
+            check_exact(["a"], sanity=SANITY)
+
+    def test_empty_lists_pass_and_iterators_accepted(self):
+        check_exact(iter(["a"]), [], [])
         with self.assertRaises(AuditError):
             check_exact(iter(["oak desk"]), iter([]), iter(SANITY))
 

@@ -226,3 +226,4 @@ scratch/
 # Project data and outputs (DESIGN.md section 10)
 data/raw/
 results/
+.env

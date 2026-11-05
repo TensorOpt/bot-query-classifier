@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.5, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.6, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -249,30 +249,49 @@ sublinear_tf=True, min_df=2)`, fitted inside each training fold only.
   `"char_wb"` so that cross-token patterns like `' or` are kept.
 - `min_df=2` removes n-grams that occur in one string only; these can only memorise.
 
-**Decision (`normalise()`, resolved 2026-11-05, OQ-1):** preprocessing before
-vectorisation is exactly these five steps, in this order, in one function with one
-home (`bqc/preprocess.py`):
+**Decision (`normalise()`, resolved 2026-11-05, OQ-1; order revised 2026-11-05
+after M1.T3 validation, see 13.16):** preprocessing before vectorisation is exactly
+these six steps, in this order, in one function with one home
+(`bqc/preprocess.py`):
 
-1. Unicode NFKC normalisation (`unicodedata.normalize("NFKC", s)`).
-2. Remove every character whose Unicode category is `Cc` (control) or `Cf` (format,
+1. Remove every character whose Unicode category is `Cc` (control) or `Cf` (format,
    which includes zero-width characters) **unless `str.isspace()` is true for it**.
-   So `\t` and `\n` survive this step and `a\tb` becomes `a b` in step 3, while
-   U+200B and U+FEFF are deleted.
-3. Collapse whitespace: `" ".join(s.split())`. This also strips both ends.
-4. Lowercase with `str.lower()` (the same operation `TfidfVectorizer(lowercase=True)`
+   So `\t` and `\n` survive this step and `a\tb` becomes `a b` in step 5, while
+   U+200B and U+FEFF are deleted. This runs **before** NFKC so that a sequence the
+   removal leaves adjacent (`e` + U+200B + U+0301 -> `e` + U+0301) is composed by
+   the next step instead of being left for a second call to compose (13.16).
+2. Unicode NFKC normalisation (`unicodedata.normalize("NFKC", s)`).
+3. Lowercase with `str.lower()` (the same operation `TfidfVectorizer(lowercase=True)`
    applies, so the two agree).
-5. Truncate to the first **512 code points**, then `rstrip()` so a cut inside a
+4. NFKC again. Lowercasing can produce a sequence that composes (`Α` + U+0342 has no
+   precomposed uppercase form; `α` + U+0342 composes to U+1FB6), so without this
+   step a second call would change the string (13.16). It is a second call to the
+   same function on an already-normalised string: microseconds.
+5. Collapse whitespace: `" ".join(s.split())`. This also strips both ends.
+6. Truncate to the first **512 code points**, then `rstrip()` so a cut inside a
    whitespace run leaves no trailing space.
 
 Truncation is **silent**: `normalise()` is a pure `str -> str` function and nothing
 in the pipeline reports whether it truncated (11.2). Truncation comes last because
-NFKC can lengthen a string (`ﬁ` x10 becomes 20 code points) and the three earlier
-steps are linear and cheap: a 1 MB input normalises in ~70 ms (13.11); the cost
+NFKC can lengthen a string (`ﬁ` x10 becomes 20 code points) and the earlier steps
+are linear and cheap: a 1 MB input normalises in ~70 ms (13.11); the cost
 truncation guards against is character n-gram extraction, which only ever sees 512
-code points. The function is idempotent for every Unicode code point (13.11), which
-is what lets every caller apply it without caring whether a string was already
-normalised. Applied identically to negatives, positives and the sanity set. An empty
-string after preprocessing is a valid input (11.1).
+code points. A prefix of an NFKC string is NFKC (nothing new can compose in a
+prefix, and canonical order is preserved), so truncating after the last NFKC does
+not reopen the problem.
+
+**Idempotence is a tested property, not a proof.** `normalise(normalise(s)) ==
+normalise(s)` held for every class probed in 13.16 (every single code point, every
+code point followed by a combining mark, base + format character + mark for every
+`Cf` character, 200,000 random mixed strings, strings straddling the truncation
+boundary) and failed for none. No exhaustive proof over all strings exists, so the
+rule for callers is: **every string is normalised exactly once, at the boundary
+where it enters the package** (the WANDS loader, the sanity loader, the generator
+registry on output, and the `Scorer` adapters on ad-hoc input), and later code
+passes normalised strings through. Idempotence is a safety net that makes a double
+call harmless, not a licence to normalise at every layer. Applied identically to
+negatives, positives and the sanity set. An empty string after preprocessing is a
+valid input (11.1).
 
 ## 6. Models
 
@@ -1019,13 +1038,16 @@ Basis for section 4 rule 6 (6 templates), 8.1, 8.2 and 11.16.
 
 ### 13.11 `normalise()` order, idempotence and cost (2026-11-05, Python 3.12.16)
 
-The five-step function of section 5: `a\tb` -> `a b`; `so​fa` -> `sofa`;
-full-width `ＳＯＦＡ` -> `sofa`; `café 🛋 é` kept (accents, emoji, combining mark).
-Applying it twice equals applying it once for **every Unicode code point** (all
-code points except surrogates, each alone and embedded as `x<c>y`): 0 exceptions.
-A 1,008,000-character input normalises to 512 code points in 73 ms. NFKC can
+The original five-step order of section 5 (NFKC, remove `Cc`/`Cf`, collapse,
+lower, truncate): `a\tb` -> `a b`; `so​fa` -> `sofa`; full-width `ＳＯＦＡ` ->
+`sofa`; `café 🛋 é` kept (accents, emoji, combining mark). Applying it twice
+equals applying it once for every Unicode code point taken **alone** (all code
+points except surrogates, each alone and embedded as `x<c>y`): 0 exceptions. A
+1,008,000-character input normalises to 512 code points in 73 ms. NFKC can
 lengthen input (`ﬁ` x10 -> 20 code points), which is why truncation is the last
-step.
+step. **This probe tested single code points only; it did not establish
+idempotence on multi-character input, and the five-step order is not idempotent
+there (13.16).** The order in section 5 was revised as a result.
 
 ### 13.12 imblearn `Pipeline` with SMOTE at predict time (2026-11-05, imbalanced-learn 0.14.2, scikit-learn 1.9.1)
 
@@ -1089,6 +1111,32 @@ queries). Excluding measurement and spec forms (`18x18`, `7qt`, `70s`, `5x6`),
 number in the sense of Q11. **Zero** queries are a bare SKU or part number, and
 zero are all digits. The negatives therefore contain almost no evidence that
 part-number shapes are legitimate; basis for 8.6 item 4, 11.23 and Q12.
+
+### 13.16 `normalise()` idempotence on multi-character input (2026-11-05, Python 3.12.16, Unicode data 15.0.0)
+
+Reproduces the M1.T3 validation finding by `opus` and tests the fix. Orders
+compared, each ending with collapse-whitespace and truncate-to-512:
+
+| order | opus cases (3) | base + `Cf` + mark, all 161 `Cf` x 60 marks x 8 bases | single code point | every code point + 5 marks | 200,000 random mixed strings | 20,000 straddling the 512 cut |
+|---|---|---|---|---|---|---|
+| v1.5: NFKC, remove, (collapse), lower | **fail** | 282 fail | 0 | not run | 13 fail | 1 fail |
+| remove, NFKC, lower | pass | **2 fail** (`Α`+`Cf`+U+0342) | 0 | not run | 0 | 0 |
+| remove, lower, NFKC | pass | 0 | **629 fail** | 3145 fail | 5467 fail | not run |
+| **remove, NFKC, lower, NFKC** (section 5 now) | pass | 0 | 0 | 0 | 0 | not run |
+
+Opus's cases: `e` + U+200B + U+0301 (first pass `0065 0301`, second `00E9` under
+v1.5), Hangul jamo split by U+200B, and a double-mark variant. Cause confirmed:
+removing a character after NFKC can leave a composable sequence that only the next
+call composes. The reordering alone leaves lowercase-induced compositions (`Α` +
+U+0342 lowercases to `α` + U+0342, which NFKC composes to U+1FB6), hence the
+second NFKC after lowercasing. Lowercasing before the first NFKC is wrong for
+compatibility characters that NFKC maps to uppercase letters. NFKC never emits a
+`Cc`/`Cf` character from a non-`Cc`/`Cf` code point (all code points checked), so
+removing before NFKC cannot leave a format character behind. The random strings
+drew from 4,000 random code points, 40 `Cf` characters, 200 marks, whitespace,
+uppercase, full-width and `İ`/`ẞ`. WANDS is ASCII and the generators are ASCII by
+rule, so no v1 data is affected either way; the change matters for ad-hoc input
+and for the honesty of the claim in section 5.
 
 ## 14. Later (deferred, not in scope)
 

@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.10 (commit `7482987`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.11 (commit `d7f95e3`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -402,8 +402,7 @@ Sign-off: pending.
 - **Design refs:** `DESIGN.md` `7482987`: 2 (family A, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/gibberish.py`, `tests/test_synth_gibberish.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
-  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
   `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Exactly 6 templates, at least 2 hard-positive (rule 6). Covers mashing, repeated
@@ -438,8 +437,7 @@ Sign-off: pending.
 - **Design refs:** `DESIGN.md` `7482987`: 2 (family B, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
-  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
   `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers SQL, script, template, path-traversal and
   NoSQL patterns, with hard positives such as `leather sofa' union select`.
@@ -458,8 +456,7 @@ Sign-off: pending.
 - **Design refs:** `DESIGN.md` `0a29571`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
 - **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
-  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
   `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** registered with family `C`, with exactly the six templates of 2.2:
   1. dictionary walks (1-2 letters), skipping vocabulary tokens (2.2);
@@ -486,11 +483,10 @@ Sign-off: pending.
 
 - **Goal:** generate URLs, emails, phone numbers and promotional phrases, plus hard
   positives.
-- **Design refs:** `DESIGN.md` `7482987`: 2 (family D, hard positives), 2.2, 4 (rules 8, 9).
+- **Design refs:** `DESIGN.md` `d7f95e3`: 2 (family D, hard positives), 2.2, 4 (rules 8, 9).
 - **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
-  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
   `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers each
   listed kind, with hard positives such as `cheap area rug http://x.co`. Registered with
@@ -515,11 +511,10 @@ Sign-off: pending.
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.
-- **Design refs:** `DESIGN.md` `7482987`: 2 (family E, 2.1), 2.2, 4 (rule 8).
+- **Design refs:** `DESIGN.md` `d7f95e3`: 2 (family E, 2.1), 2.2, 4 (rule 8).
 - **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2 and 4, and the
-  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
   `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Generated by the same machinery, with `family="E"`, exactly 6 templates of 20 and at
@@ -561,10 +556,9 @@ Sign-off: pending.
 ### M2.T9: Part-number strings
 
 - **Goal:** generate the 100 legitimate part-number strings for the diagnostic of 8.6 item 4.
-- **Design refs:** 2 (SKU row), 2.2, 8.6 (item 4), 11.23, 13.15.
+- **Design refs:** `DESIGN.md` `d7f95e3`: 2 (SKU row), 2.2, 8.6 (item 4).
 - **Files:** `bqc/synth/partnumbers.py`, `tests/test_synth_partnumbers.py`.
-- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.2, 4 and 8.6
-  item 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, 8.6 item 4, and the task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file
   or `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8).
 - **Acceptance criteria:**
   1. Generates 100 distinct strings, `family="P"`, label 0, seeded, with `template_id` and

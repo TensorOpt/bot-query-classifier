@@ -18,7 +18,7 @@ class NormaliseTest(unittest.TestCase):
         self.assertEqual(normalise("so﻿fa"), "sofa")
         self.assertEqual(normalise("so\x00fa"), "sofa")
 
-    def test_removal_runs_before_collapse_and_nfkc(self):
+    def test_removal_results_for_format_characters(self):
         self.assertEqual(normalise("a \u200b b"), "a b")
         self.assertEqual(normalise("e\u200b\u0301"), "\u00e9")
         self.assertEqual(normalise("\u1100\u200b\u1161"), "\uac00")

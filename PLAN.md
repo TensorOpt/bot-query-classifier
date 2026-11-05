@@ -447,17 +447,9 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each pattern kind appears in the
   output; payload characters survive lowercasing.
 - **Depends on:** M2.T1.
-- **Status:** done
-- **Changes requested (`opus`, 2026-11-05; rule 8; scope `fix(M2.T3)`):** two delegations, so that
-  the one writing new payloads hasn't seen the text being removed.
-  1. **Removal, first delegation:**
-     - `bqc/synth/payloads.py`: remove the JNDI form from `_template` and the `drop` kind from
-       `_sql_payload`, and every mention of the sanity set from the docstrings of `_sql_payload`,
-       `_script`, `_template` and `_traversal`.
-     - `tests/test_synth_payloads.py`: remove `SanityIsolationTest`, and the `drop table` and
-       `${jndi:` markers and the `drop table` alternative in `SQL_RE`.
-  2. **Replacement, second delegation, with a brief as above:** add one SQL kind to `_sql_payload` and
-     one form to `_template`, of the delegate's choosing, each with a test that it appears.
+- **Status:** validated
+- **Status note:** implemented in `b21290a`, corrected in `92dc5da`. `opus`'s correction list is in
+  `5915427`.
 
 ### M2.T4: Family C, enumeration and scraping
 

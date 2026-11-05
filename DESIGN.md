@@ -295,6 +295,18 @@ from one product name**. Construction, one home in `bqc/negatives.py`, seeded by
    file (rule 8). The counts go in the run JSON; the removed text does not.
 4. Stop at `n` spans (default **5,000**, CLI `--negatives-size`).
 
+**Known skew, accepted at M2 sign-off (13.20):** exact deduplication after drawing
+removes short spans more often than long ones (one-word spans collide most), so
+the realised mix is slightly longer than the target: at 5,000, one-word spans
+3.9-4.5% against 4.8%, two-word 20-21% against 22.7%, mean 3.46-3.49 words against
+3.38; at 20,000 the one-word share falls to 3.3%. Accepted because the deviation
+is under one percentage point per length at the default size, the threshold is
+set on the real queries (which carry the true mix), and the one-word false
+positives of 8.5 measure the consequence directly. Every run JSON records the
+realised span length mix next to the target; if the one-word false-positive count
+moves between 5,000 and the 20,000 sensitivity run, per-length quotas (14) are the
+fix.
+
 Every span carries metadata: `product_id`, `k`, `seed`. Spans from the same product
 are near-duplicates of each other; they do not need group-aware folds because
 **spans are never on the test side** (8.1): the test side is real queries.
@@ -347,7 +359,12 @@ helper in `bqc/synth/registry.py`; the templates themselves do not change). Exac
 duplicates within a template are dropped and the shortfall reported per template;
 rule 5's floor of 50 distinct strings is far below 209, so the report also lists
 each template's distinct count at the required size (a template under 50% distinct
-is a finding, not a failure). Training and test positives equal, after
+is a finding, not a failure). A shortfall is **not redistributed** to other
+templates or families: that would change the family mix to hide a template's lack
+of variety. So the training side is balanced *up to reported shortfalls*; at the
+default size it is 4,804 positives to 5,000 spans (13.20), with family B under
+its quarter because `B.script` yields 60 distinct strings and `B.traversal` 168 of
+208. Widening those two templates is a follow-up, not a condition of M2. Training and test positives equal, after
 `normalise()`, to a training negative, a real query or a P string are dropped by
 the audit (rule 4), counted, never shown; one equal to a sanity query fails the
 generation (rule 4). Test-side templates render 100 each (8.3).
@@ -1700,6 +1717,18 @@ at 10,000; P3's typo rate and P2's word counts taken from all 480 queries (a sma
 leak, replaced in 3.2 by the published constant); 100 renders per test template.
 (The threshold on negative scores only is the 8.4 rule itself, not a deviation.)
 
+### 13.20 `bqc generate` on the real data at M2 sign-off (2026-11-05, `fable`, commit `468a367`)
+
+`python -m bqc generate` with the defaults, 38 s: 5,000 spans built (removed:
+689 exact duplicates, 17 equal to a real query, 0 equal to a part-number string,
+0 equal to a sanity query); 4,804 training positives kept of 5,000 requested, 0
+dropped by the audit, the shortfall entirely from `B.script` (60 distinct of 208)
+and `B.traversal` (168 of 208); 120 E positives; 100 P strings; 2 positive-span
+pairs above Jaccard 0.6; 3 sanity queries above 0.5 to some positive (ids and
+scores in the report, no text). `opus` measured the span length mix across seeds:
+one-word 3.9-4.5% (target 4.8%), two-word 20.0-21.0% (22.7%), mean 3.46-3.49 words
+(3.38); at 20,000 spans one-word 3.3%. Basis for the acceptances in 3.2 and 4.
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives
@@ -1729,6 +1758,11 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
   (P4), both without a clear gain over plain spans, and real queries mixed into
   the training spans (BP, more false positives). Revisit P3 only if the FP list
   shows typo-bearing queries being flagged.
+- **Per-length quotas for spans** (draw and deduplicate within each word-count
+  bucket so the realised mix equals the target), if the one-word false-positive
+  count differs between the 5,000 and 20,000 runs (3.2, 13.20).
+- **More variety in `B.script` and `B.traversal`** (more argument and form
+  choices), so family B reaches its full quarter of the positives (section 4).
 - **Category-aware thresholds or real-query negatives for uncovered categories**,
   if the catalogue-gap check (8.6 item 5) fails in the full run; the user decides.
 - **Serving**: input contract (11.2) is the only serving decision taken; a model

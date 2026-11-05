@@ -144,7 +144,9 @@ repository `LICENSE`, the repository README, and Wayfair's release blog post:
   "Copyright (c) 2021 ecir2022"). Compatible with this repo's Apache-2.0.
 - `dataset/query.csv`: **tab-separated** despite the `.csv` extension, UTF-8, header
   `query_id\tquery\tquery_class`, **480 data rows**, all 480 queries unique (also
-  unique after strip+lower). `query_id` is `0..479`.
+  unique after strip+lower). `query_id` runs `0..487` in ascending order, 480
+  distinct values with 8 gaps (154, 187, 192, 217, 299, 350, 450, 477); it is an
+  identifier, not a row index (corrected 2026-11-05; the v1 draft said `0..479`).
 - `query_class` is a product category (`Wall Art`, `Accent Chairs`, ...); 6 rows have
   an empty class. It is not used by this project.
 - The queries are **real customer queries**: Wayfair's blog states they were obtained

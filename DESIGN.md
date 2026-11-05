@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.10, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.11, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -48,7 +48,7 @@ synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
 | id | family | examples | why it is machine-origin |
 |----|--------|----------|--------------------------|
 | A | gibberish | `asdkjh qwe`, `xk9f2m`, `aaaaaaaa`, UUID/hash-like strings | keyboard mashing, fuzzers, random IDs |
-| B | injection / probing payloads | `sofa' or 1=1--`, `<script>alert(1)</script>`, `${{7*7}}`, `../../etc/passwd`, `{"$gt":""}` | security scanners |
+| B | injection / probing payloads | `sofa' or 1=1--`, `<script>alert(7)</script>`, `${{7*7}}`, `../../../etc/hosts`, `{"$gt":""}` | security scanners |
 | C | enumeration / scraping | `a`, `aa`, `ab`, ... dictionary walks, URL paths (`/category/sofas?page=3`), query-string fragments (`page=2&sort=price`), pagination/offset sweeps (`offset=340&limit=20`) | catalogue scrapers walking the search engine rather than the catalogue |
 | D | spam / promotional | URLs, emails, phone numbers, `buy cheap ... click here`, crypto/SEO phrases | comment-spam bots hitting every text field |
 
@@ -61,7 +61,7 @@ synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
 | - | off-domain shopping queries (`iphone 11 case`) | **No label in v1**; excluded from every data set. See 2.1 (decided by the user, Q10 in 12.1). |
 | - | typos and misspellings | **Legitimate**. WANDS contains `desk for kids tjat ate 10 year old`, `trinaic towel rod`, `cool desins`. Generators must not produce "typo" positives. |
 | - | single-word queries | **Legitimate**. WANDS has 23 one-word queries incl. `zen`, `owl`, `gold`, `canadian`. Family C "dictionary walk" positives are 1-2 character strings only, never real words. |
-| - | SKUs, part numbers, model numbers (`sku000123`, `w003096809`, `wf-2049x desk`) | **Legitimate** (user decision 2026-11-05, Q11: "SKUs should remain legit, customers might search by part numbers"). Removed from family C. WANDS itself contains `ines shag rug w003096809` (13.15). No generator may emit a part-number shape as a whole query (2.2). |
+| - | SKUs, part numbers, model numbers (`abc000456`, `w003096809`, `kx-7731b desk`) | **Legitimate** (user decision 2026-11-05, Q11: "SKUs should remain legit, customers might search by part numbers"). Removed from family C. WANDS itself contains `ines shag rug w003096809` (13.15). No generator may emit a part-number shape as a whole query (2.2). |
 
 **Rationale.** A-D are unambiguously not produced by a shopper and have textual
 fingerprints (character classes, punctuation patterns, structure) that TF-IDF over
@@ -98,8 +98,8 @@ present = legitimate", which is a dataset artefact, not a bot signal.
 ### 2.2 Part numbers vs gibberish: the boundary for template authors
 
 Removing SKUs from the positives is not enough if family A can still emit strings
-that look like part numbers. The user's sanity labels draw the line: `xk9qz7vplm`
-and `qqqqwwwweeee 8374651` are illegitimate, `wf-2049x desk` and `sku000123` are
+that look like part numbers. The user's decision draws the line: `rt4kq8wvz` and
+`zzzzxxxxcccc 5190284` are illegitimate, `kx-7731b desk` and `abc000456` are
 legitimate. The distinguishing feature is **block structure**, not the presence of
 digits:
 
@@ -109,13 +109,13 @@ digits:
   Regex, applied to a whole token after `normalise()`:
   `^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$`.
 - **Gibberish with digits** (family A) interleaves letters and digits in four or
-  more blocks (`xk9qz7vplm` is `xk|9|qz|7|vplm`). The other illegitimate form in
-  the sanity set, a keyboard mash next to a bare digit run (`qqqqwwwweeee
-  8374651`), is **not** a generator form: its digit token is one block and would
-  fail the rule below, and a bare digit run next to anything is too close to a
-  part number for a template to be trusted with. The sanity set covers that form;
-  family A does not generate it (decided 2026-11-05; the rule below holds, the
-  description that previously allowed the form was the contradiction).
+  more blocks (`rt4kq8wvz` is `rt|4|kq|8|wvz`). A keyboard mash next to a bare
+  digit run (`zzzzxxxxcccc 5190284`) is illegitimate too but is **not** a
+  generator form: its digit token is one block and would fail the rule below, and
+  a bare digit run next to anything is too close to a part number for a template
+  to be trusted with. Family A does not generate it (decided 2026-11-05; the rule
+  below holds, the description that previously allowed the form was the
+  contradiction).
 
 **Decision (extended 2026-11-05 after M2.T1 validation):** every template output,
 in every family, must contain **at least one token that is not benign**. A token
@@ -127,11 +127,11 @@ is *benign* if, after `normalise()` and whitespace splitting, it is either
 - a **number-shaped token**: it contains a digit, matches
   `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, **and has at most three letter/digit
   blocks** (a block is a maximal run of letters or of digits; separators do not
-  count). This covers bare numbers (`72`), part numbers (`w003412`, `sku000123`,
-  `wf-2049x`), and the measurement forms WANDS uses (`18x18`, `3/4`, `72.5`,
+  count). This covers bare numbers (`72`), part numbers (`w003412`, `abc000456`,
+  `kx-7731b`), and the measurement forms WANDS uses (`18x18`, `3/4`, `72.5`,
   `3-3/4`, `36"`, `7qt`, `e12/candelabra`); all 36 digit-bearing WANDS tokens match
   and have at most 3 blocks (verified 2026-11-05). The block limit is what keeps
-  `xk9qz7vplm` (5 blocks) and UUID/hash-like tokens non-benign, as the table below
+  `rt4kq8wvz` (5 blocks) and UUID/hash-like tokens non-benign, as the table below
   requires; without it the regex alone would match them. (Corrected 2026-11-05
   after `opus` found the omission.)
 
@@ -166,7 +166,7 @@ What passes and what fails (vocabulary = WANDS words):
 | `leather sofa' union select`, `sofa' or 1=1--` | passes | `sofa'`, `union`, `select` are not benign |
 | `area rug&page=2`, `/search?q=accent+chair`, `page=17` | passes | `&`, `/`, `?`, `=` tokens |
 | `cheap area rug http://x.co`, `call (555) 012-3456 now` | passes | URL; `(555)`, `call`, `now` (M2.T5: phone numbers are never a bare digit run) |
-| `accent chair asdfgh`, `xk9qz7vplm`, `aaaaaaaa` | passes | non-vocabulary letter tokens; 5-block token |
+| `accent chair asdfgh`, `rt4kq8wvz`, `aaaaaaaa` | passes | non-vocabulary letter tokens; 5-block token |
 | `aa`, `ab` (dictionary walk) | passes | not vocabulary words |
 | `a`, `x`, `or`, `tv` (dictionary walk) | **fails** | WANDS vocabulary words; the walk template must skip vocabulary tokens |
 | `what is the capital of france` | passes | `capital`, `france` outside the vocabulary |
@@ -177,10 +177,10 @@ part-number shape even inside a longer string), and family A's hard-positive
 templates combine vocabulary words with gibberish tokens only, never with
 digits. Four is the floor, not the target: the implemented A template uses a
 minimum of **seven** blocks (M2.T2), which keeps training positives further
-from three-block part numbers; the section 2 examples `xk9f2m` and sanity row
-`xk9qz7vplm` (five blocks each) are illustrations of the shape, not strings the
-template must be able to produce. Revisit the minimum if the M6 run misses that
-sanity row. The benign-token predicate, the block-count function and the
+from three-block part numbers; the examples `xk9f2m` and `rt4kq8wvz` (five blocks
+each) are illustrations of the shape, not strings the template must be able to
+produce (the revisit trigger for the minimum is recorded in 8.6.1). The
+benign-token predicate, the block-count function and the
 "at least one non-benign token" check have one home, `bqc/synth/registry.py`;
 the registry contract test (`assert_template_rules`) applies them to every
 output of every template in every family, with a fold-sized vocabulary. The
@@ -278,10 +278,13 @@ anti-inflation measures in section 8 possible.
    never the sanity file. The example strings in section 2 are illustrations, not
    a list templates may copy.
 8. **Template authors do not open `data/sanity.csv`** (ruled 2026-11-05). The
-   delegation that writes or corrects a generator may contain the family's row in
-   section 2, sections 2.2 and 4, and the task entry, and nothing from the sanity
-   file; the author does not read the file, and no generator source, docstring,
-   comment or test quotes a sanity query or reads the real file. Collisions are the
+   delegation that writes or corrects a generator may contain **exactly**: the
+   family's row in section 2 (and, for the part-number task, 8.6 item 4), sections
+   2.1, 2.2 and 4, and the task entry; nothing from the sanity file and nothing
+   from 8.6.1, 11, 12, 13 or 14 (those name rows to explain decisions). Those
+   author-facing sections contain only invented examples (8.6.1). The author does
+   not read the file, and no generator source, docstring, comment or test quotes a
+   sanity query or reads the real file. Collisions are the
    audit's job (rule 4), not the author's. Rationale in 8.6.1: the earlier practice
    of asking authors to steer around sanity queries made them read the file, and
    phrases traceable only to it ended up in templates.
@@ -644,8 +647,8 @@ WANDS from *these generators*". Four additional checks make that limitation visi
    WANDS says nothing about them, and family A teaches the model that letter-digit
    mixtures are illegitimate. The run therefore generates **100 part-number-shaped
    strings** (`bqc/synth/partnumbers.py`, tag `family="P"`, label 0, same seeded
-   machinery; shapes: bare prefix+digits like `sku000123`, bare digit runs,
-   prefix-digits-suffix like `wf-2049x`, and product words from the full WANDS
+   machinery; shapes: bare prefix+digits like `abc000456`, bare digit runs,
+   prefix-digits-suffix like `kx-7731b`, and product words from the full WANDS
    vocabulary plus a part number like `ines shag rug w003096809`), never used in any
    fit, threshold or audit-as-positive, and scores them with each final model (8.7).
    The P strings must pass the same exact-match check as positives (no P string
@@ -653,8 +656,8 @@ WANDS from *these generators*". Four additional checks make that limitation visi
    never a memorised one; `bqc generate` writes them in its report under their own
    key, separate from the positives (section 10).
    Reported per model: the **fraction flagged at the model's threshold** (the
-   expected FPR on such queries), with min/median/max score. The three part-number
-   rows of the sanity set give a second, human-labelled look at the same thing.
+   expected FPR on such queries), with min/median/max score. The sanity set
+   (8.6.1) gives a second, human-labelled look at legitimate shapes.
 
 All four are reported, not optimised. A run that looks great on 8.5 and poor on
 8.6 is reported as exactly that. If the diagnostic shows part numbers flagged at a
@@ -719,6 +722,16 @@ docstrings and tests quoting rows or reading the real file. Decisions:
   over all 50 rows, and over the rows below that threshold, with the excluded
   rows named by id. A row the generators are close to tells us about the
   generators, not about the model.
+- Revisit trigger for family A's seven-block minimum (2.2): if the M6 sanity
+  results miss the short five-block gibberish row, lower the minimum toward the
+  four-block floor.
+
+*Author-facing text.* Sections that generator briefs may contain (section 4 rule
+8) are kept free of sanity queries: every example there is invented, and none
+says which queries are in the sanity set. Checked by script on 2026-11-05 (every
+backtick-quoted string in those sections compared with the file after
+`normalise()`): 0 matches. Sections 8.6.1, 11, 12, 13 and 14 may name rows to
+explain a decision, because authors do not read them.
 
 *Content guideline for the author (not recorded in the file).* All queries stay in
 the furniture and home-goods domain, with no off-domain shopping queries (2.1).

@@ -3,8 +3,9 @@
 Six templates: four spam templates (bare URLs, email addresses, phone numbers,
 promotional / crypto / SEO phrases) and two hard positives (product words next to a
 URL, product words next to a contact detail). Output is inert text: only reserved
-or obviously fictional domains (`.example`, `.test`, `.invalid`), and phone numbers
-in the fictional 555-01xx range. No phone number is a bare digit run (2.2).
+invented text built at run time and never fetched or dialled (rule 9): domains are
+label parts plus a common spam TLD, phone numbers use random area codes and random
+7-digit shapes. No phone number is a bare digit run (2.2).
 """
 import random
 from collections.abc import Sequence
@@ -13,35 +14,34 @@ from bqc.synth.registry import Template, register
 
 FAMILY = "D"
 
-_LABELS = ("promo", "deals", "bestoffer", "megasale", "cheapstuff", "winbig", "topshop",
+_LABELS = ("topoffer", "superprize", "bestoffer", "megasale", "cheapstuff", "winbig", "topshop",
            "hotdeal", "luckyday", "fastcash", "bigsavings", "clickhere", "freegift",
            "seoboost", "coinflip", "pillbox")
-_TLDS = ("example", "test", "invalid", "example.com", "example.net", "example.org")
-_PATHS = ("", "", "/", "/offer", "/buy-now", "/deal?id=7", "/win", "/signup", "/promo/1")
+_TLDS = ("biz", "info", "xyz", "top", "club", "online", "shop", "site", "com", "net")
+_PATHS = ("", "", "/", "/offer", "/buy-now", "/deal?id=7", "/win", "/signup", "/sale/1")
 _SCHEMES = ("http://", "https://", "www.", "", "http://www.")
-_USERS = ("sales", "info", "promo", "winner", "support", "offers", "admin", "deals",
+_USERS = ("sales", "info", "promo", "winner", "support", "offers", "admin", "bonus",
           "marketing", "contact", "ceo", "billing")
-_CONTACT_VERBS = ("call", "text", "whatsapp", "dial", "contact", "ring")
-_AREA_CODES = ("212", "415", "310", "800", "888", "647", "206", "303")
-_SPAM_ITEMS = ("followers", "watches", "pills", "likes", "handbags", "sunglasses",
-               "viagra alternatives", "views", "replica shoes", "loans", "backlinks",
+_CONTACT_VERBS = ("call", "text", "message", "dial", "contact", "ring")
+_SPAM_ITEMS = ("comments", "watches", "pills", "likes", "handbags", "sunglasses",
+               "diet supplements", "views", "replica shoes", "loans", "backlinks",
                "traffic", "meds", "subscribers", "diplomas")
 _PROMO_OPENERS = ("buy cheap", "order cheap", "get free", "discount", "best price on",
                   "wholesale", "100% genuine", "buy now")
 _PROMO_CLOSERS = ("click here", "limited offer!!!", "act now", "visit our site",
                   "free shipping $$$", "order today!", "no prescription", "click here!!!")
 _CRYPTO_SEO = (
-    "double your bitcoin in 24 hours guaranteed",
+    "double your bitcoin in one day guaranteed",
     "earn $500 a day crypto trading signals",
     "free nft airdrop claim now",
     "seo services rank #1 on page one",
-    "cheap backlinks 1000 da50 sites",
-    "buy 10000 website visitors $5",
+    "cheap backlinks high da50 sites",
+    "buy website visitors $5",
     "forex robot 100% profit join now",
-    "casino bonus free spins no deposit",
+    "win big jackpot free credits no deposit",
     "work from home earn $$$ fast",
     "you have won a prize claim your reward",
-    "crypto giveaway send 1 get 2 back",
+    "crypto giveaway send one get two back",
     "increase your traffic with our seo packages",
     "guaranteed first page ranking cheap seo",
     "make money online no experience needed!!!",
@@ -63,7 +63,7 @@ def _domain(rng: random.Random) -> str:
 
 
 def _url(rng: random.Random) -> str:
-    """`http://megasale-deals.example/offer`; a scheme or `www.` is always present or
+    """`http://megasale-winbig.biz/offer`; a scheme or `www.` is always present or
     the domain carries a dot, so it is never a vocabulary word or a bare number."""
     return f"{rng.choice(_SCHEMES)}{_domain(rng)}{rng.choice(_PATHS)}"
 
@@ -73,10 +73,18 @@ def _email(rng: random.Random) -> str:
            f"{rng.choice(_LABELS)}@{_domain(rng)}"
 
 
+def _digits(rng: random.Random, n: int) -> str:
+    return "".join(rng.choice("0123456789") for _ in range(n))
+
+
 def _phone_number(rng: random.Random) -> str:
-    """A fictional 555-01xx number, always with a `(`, `+` or four-block form, so it
-    is never a bare digit run or a part-number shape (2.2)."""
-    area, line = rng.choice(_AREA_CODES), f"555-01{rng.randint(0, 99):02d}"
+    """A random area code and a random 7-digit line in one of three hyphenated shapes
+    (`867-5309`, `86-75-309`, `867-53-09`), in a `(`, `+` or four-block form, so it is
+    never a bare digit run or a part-number shape (2.2)."""
+    area = rng.choice("23456789") + _digits(rng, 2)
+    line = rng.choice((f"{_digits(rng, 3)}-{_digits(rng, 4)}",
+                       f"{_digits(rng, 2)}-{_digits(rng, 2)}-{_digits(rng, 3)}",
+                       f"{_digits(rng, 3)}-{_digits(rng, 2)}-{_digits(rng, 2)}"))
     form = rng.randrange(4)
     if form == 0:
         return f"({area}) {line}"
@@ -88,7 +96,7 @@ def _phone_number(rng: random.Random) -> str:
 
 
 def _phone(rng: random.Random, vocabulary: Sequence[str]) -> str:
-    """`call (212) 555-0142 now`: a verb, the number, sometimes a closer."""
+    """`call (212) 867-5309 now`: a verb, the number, sometimes a closer."""
     out = f"{rng.choice(_CONTACT_VERBS)} {_phone_number(rng)}"
     return out + rng.choice(("", "", " now", " today", " free quote", " 24/7"))
 
@@ -123,7 +131,7 @@ def _hard_url(rng: random.Random, vocabulary: Sequence[str]) -> str:
 
 
 def _hard_contact(rng: random.Random, vocabulary: Sequence[str]) -> str:
-    """`leather sofa sales@megasale.example`: vocabulary words next to an email or phone."""
+    """`leather sofa sales@megasale.biz`: vocabulary words next to an email or phone."""
     words = _words(rng, vocabulary)
     if rng.random() < 0.5:
         return f"{words} {rng.choice(_CONTACT_VERBS)} {_phone_number(rng)}"

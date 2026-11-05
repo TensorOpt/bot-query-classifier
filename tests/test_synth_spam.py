@@ -7,12 +7,13 @@ from test_synth_registry import FOLD_VOCAB, renders
 
 SEEDS = 150
 TEMPLATES = {t.template_id: t for t in REGISTRY.templates("D")}
-URL_RE = re.compile(r"(https?://|www\.)\S+|\S+\.(example|test|invalid)\b\S*")
+TLDS = "biz|info|xyz|top|club|online|shop|site|com|net"
+URL_RE = re.compile(rf"(https?://|www\.)\S+|\S+\.({TLDS})\b\S*")
 EMAIL_RE = re.compile(r"\b[a-z0-9._-]+@[a-z0-9-]+\.[a-z.]+")
-# Number groups: (212) 555-0142, +1-212-555-0142, 1-212-555-0142.
-PHONE_RE = re.compile(r"(?:\(\d{3}\)|\d{3}) 555-01\d\d\b|-555-01\d\d\b|\) 555-01\d\d\b")
-RESERVED_DOMAIN_RE = re.compile(r"[a-z0-9-]+\.(example|test|invalid|example\.com|example\.net"
-                                r"|example\.org)\b")
+# Number groups: (212) 867-5309, +1-212-867-5309, 1-212-86-75-309 (random digits, three line shapes).
+PHONE_RE = re.compile(r"(?:\(\d{3}\) |\b\d{3}-)(?:\d{3}-\d{4}|\d{2}-\d{2}-\d{3}|\d{3}-\d{2}-\d{2})\b")
+HOST_RE = re.compile(rf"[a-z]+(?:-[a-z]+)?\.({TLDS})$")
+BANNED = (".example", ".test", ".invalid", "555-01")
 HARD = ("hard_url", "hard_contact")
 
 
@@ -42,7 +43,7 @@ class KindsTest(unittest.TestCase):
         for s in outputs("email"):
             self.assertRegex(s, EMAIL_RE)
 
-    def test_phone_template_emits_555_01xx_numbers(self):
+    def test_phone_template_emits_phone_numbers(self):
         for s in outputs("phone", n=300):
             self.assertRegex(s, PHONE_RE)
 
@@ -57,21 +58,27 @@ class KindsTest(unittest.TestCase):
             self.assertTrue(any(pattern.search(s) for s in everything), pattern)
 
 
-class InertTextTest(unittest.TestCase):
-    def test_every_domain_is_reserved_or_fictional(self):
+class InventedDetailsTest(unittest.TestCase):
+    def test_no_output_uses_reserved_shapes(self):
+        for tid in TEMPLATES:
+            for s in outputs(tid, n=300):
+                for banned in BANNED:
+                    self.assertNotIn(banned, s, (tid, s))
+
+    def test_every_host_is_label_parts_plus_a_spam_tld(self):
         for tid in TEMPLATES:
             for s in outputs(tid, n=300):
                 for host in re.findall(r"@([a-z0-9.-]+)|(?:https?://|www\.)([a-z0-9.-]+)", s):
-                    host = host[0] or host[1]
-                    self.assertRegex(host, RESERVED_DOMAIN_RE, (tid, s))
+                    host = (host[0] or host[1]).rstrip(".")
+                    self.assertRegex(host, HOST_RE, (tid, s))
 
-    def test_phone_numbers_are_only_555_01xx(self):
-        for tid in TEMPLATES:
-            for s in outputs(tid, n=300):
-                for line in re.findall(r"\b555-(\d{4})\b", s):
-                    self.assertTrue(line.startswith("01"), (tid, s))
-                if "555" in s:
-                    self.assertRegex(s, PHONE_RE)
+    def test_every_spam_tld_and_varied_area_codes_appear(self):
+        outs = [s for tid in TEMPLATES for s in outputs(tid, n=300)]
+        text = " ".join(outs)
+        for tld in TLDS.split("|"):
+            self.assertRegex(text, rf"\.{tld}\b", tld)
+        areas = {m for s in outputs("phone", n=300) for m in re.findall(r"\b(\d{3})-\d", s)}
+        self.assertGreater(len(areas), 20)
 
 
 class NoPartNumberTest(unittest.TestCase):
@@ -80,12 +87,14 @@ class NoPartNumberTest(unittest.TestCase):
             for s in outputs(tid, n=300):
                 self.assertIsNone(PART_NUMBER_RE.match(s), (tid, s))
                 self.assertFalse(s.isdigit(), (tid, s))
+                for token in s.split():
+                    self.assertIsNone(re.fullmatch(r"\d+", token), (tid, s))
 
     def test_phone_output_never_matches_part_number_regex_by_token(self):
         for s in outputs("phone", n=300) + outputs("hard_contact", n=300):
             for token in s.split():
                 self.assertIsNone(PART_NUMBER_RE.match(token), (token, s))
-                self.assertFalse(token.isdigit(), (token, s))
+                self.assertIsNone(re.fullmatch(r"\d+", token), (token, s))
 
 
 class HardPositiveTest(unittest.TestCase):
@@ -102,7 +111,7 @@ class HardPositiveTest(unittest.TestCase):
             self.assertTrue(set(s.split()) & set(vocab), s)
         outs = outputs("hard_contact", vocab, 300)
         self.assertTrue(any("@" in s for s in outs))
-        self.assertTrue(any("555" in s for s in outs))
+        self.assertTrue(any(PHONE_RE.search(s) for s in outs))
 
     def test_hard_positives_work_with_repeated_vocabulary_tokens(self):
         for tid in HARD:

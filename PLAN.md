@@ -543,13 +543,8 @@ Sign-off: pending.
   - Jaccard exactly at the threshold (not reported) and just above it (reported), at 0.6 and at 0.5.
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
 - **Depends on:** M1.T3, M1.T6, M2.T1.
-- **Status:** done
-- **Changes requested (`opus`, 2026-11-05, on `411330a`; scope `fix(M2.T7)`):**
-  1. `bqc/synth/audit.py:40`: `check_exact(positives)` with the default empty lists checks nothing, so a
-     caller that forgets a list silently turns the gate off. Make `negatives` and `sanity` required. A
-     caller with nothing to compare passes `[]` explicitly.
-  2. `tests/test_synth_audit.py:65`: update `test_callable_with_only_positives_and_accepts_iterators`, and
-     add a test that omitting either list raises `TypeError`.
+- **Status:** validated
+- **Status note:** implemented in `411330a`, corrected in `968c199`. `opus`'s correction list is in `d6ef691`.
 
 ### M2.T9: Part-number strings
 

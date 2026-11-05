@@ -544,6 +544,12 @@ Sign-off: pending.
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
 - **Depends on:** M1.T3, M1.T6, M2.T1.
 - **Status:** done
+- **Changes requested (`opus`, 2026-11-05, on `411330a`; scope `fix(M2.T7)`):**
+  1. `bqc/synth/audit.py:40`: `check_exact(positives)` with the default empty lists checks nothing, so a
+     caller that forgets a list silently turns the gate off. Make `negatives` and `sanity` required. A
+     caller with nothing to compare passes `[]` explicitly.
+  2. `tests/test_synth_audit.py:65`: update `test_callable_with_only_positives_and_accepts_iterators`, and
+     add a test that omitting either list raises `TypeError`.
 
 ### M2.T9: Part-number strings
 
@@ -562,7 +568,7 @@ Sign-off: pending.
   3. It isn't a registered positive family, so it is outside the 480 and the 600, the rule 6
      template check, the 2.2 registry assertions and the Jaccard report.
   4. It must not collide with a WANDS or sanity query after `normalise()`: it reuses the
-     exact-match check of M2.T7. On a collision the generator changes, never the sanity file.
+     exact-match check of M2.T7, with both lists passed by its caller. On a collision the generator changes, never the sanity file.
 - **Tests:**
   - Exactly 100 distinct strings; 25 per shape; each has `family="P"` and label 0.
   - The first three shapes match the part-number regex as a whole, and the last token of the
@@ -609,7 +615,7 @@ Sign-off: pending.
      generated positive, as its id and its maximum Jaccard, computed with the M2.T7 function. It holds
      no query text, and it never fails a run (rule 4, 8.6.1).
   8. The real run passes the audit, with the real sanity queries, loaded through `load_sanity`
-     with the real WANDS queries, among the checked lists, and its near-duplicate count goes in the task report.
+     with the real WANDS queries and passed as `[q.query for q in sanity.queries]`, among the checked lists, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
   - Length statistics, near-duplicate pairs and both one-off shares are present.
@@ -679,7 +685,8 @@ Sign-off: pending.
   4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
      training set.
   5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4), against all 480
-     negatives, not only the fold's, and the sanity queries (8.6.1).
+     negatives, not only the fold's, and the sanity queries (8.6.1), which the runner takes from the
+     M1.T6 loader as `[q.query for q in sanity.queries]`.
   6. A single fold-check function raises if either class or any training family (A-D) is
      missing from a training fold, or if either class is missing from a test fold. Families
      are never asserted on the test side (8.1, 11.16). M3.T5 and M3.T9 use it too.
@@ -852,7 +859,8 @@ Sign-off: pending.
      8.1, out-of-fold scores, then the threshold rule of 8.4. The model is then fitted on all
      960.
   2. Positives are generated once from the token occurrences, with repeats, of all 480 negatives
-     (8.3) and pass the exact-match check (rule 4), and family E is excluded.
+     (8.3) and pass the exact-match check against all negatives and the sanity queries (rule 4), and
+     family E is excluded.
   3. The pickle goes to `results/` and holds the scorer and threshold, and loading it
      reproduces the same scores.
 - **Tests** (with the fake): 960-equivalent fit input with no E; pickle round trip gives
@@ -1097,7 +1105,8 @@ Sign-off: pending.
 - **Design refs:** 9, 10.
 - **Files:** `bqc/cluster.py`, `bqc/cli.py`, `tests/test_cli_cluster.py`.
 - **Acceptance criteria:** `python -m bqc cluster` builds the 960 strings (WANDS plus positives
-  from the occurrence vocabulary of all negatives that pass the exact-match check of rule 4, no family E or P) and
+  from the occurrence vocabulary of all negatives that pass the exact-match check of rule 4 against all negatives and the sanity queries, no family E
+  or P) and
   writes a separate JSON file with
   `write_report` imported from `bqc/report.py`; `bqc/cluster.py` doesn't import `bqc/cli.py`
   (section 10). It shares no state with `evaluate`. A missing raw file exits non-zero with a

@@ -138,7 +138,13 @@ Sign-off: pending.
   The validator doesn't record any breakdown of the content by intended class, in
   `PLAN.md` or in its report, because the user reads both before labelling.
 - **Depends on:** none.
-- **Status:** todo
+- **Status:** validated (implemented in `74def5b`; `opus` PASS; status recorded by
+  `fable` on 2026-11-05 per the delegation note above). Not verifiable from the
+  repository: criterion 2 (the shuffle), because the authoring script was deleted as
+  criterion 6 requires; and whether the queries were written from scratch and what
+  the delegate read. Mitigation for the latter is now structural: the generator
+  audit fails on any output equal to a sanity query (DESIGN.md 4 rule 4, 8.6.1;
+  M2.T7, M3.T3).
 
 ### M1.T2: Project scaffold
 
@@ -367,22 +373,28 @@ Sign-off: pending.
 
 ### M2.T7: Generation audit
 
-- **Goal:** fail on exact collisions with negatives, report near-duplicates, and log
-  length distributions.
-- **Design refs:** 4 (rules 2 and 4), 11.7.
+- **Goal:** fail on exact collisions with negatives or sanity queries, report
+  near-duplicates, and log length distributions.
+- **Design refs:** 4 (rules 2 and 4), 8.6.1 (independence paragraph), 11.7.
 - **Files:** `bqc/synth/audit.py`, `tests/test_synth_audit.py`.
 - **Acceptance criteria:**
-  1. A positive identical to a negative after `normalise()` raises an error naming both
-     strings. This check is callable on its own, because it runs on every generation,
-     including the per-fold ones (rule 4, M3.T3).
+  1. A positive identical, after `normalise()`, to a negative **or to a sanity query**
+     raises an error naming both strings and which list was hit. This check is callable
+     on its own, because it runs on every generation, including the per-fold ones (rule
+     4, M3.T3). The sanity queries come from the M1.T6 loader, which exposes them
+     regardless of label state.
   2. Every positive-negative pair with character-3-gram Jaccard above 0.6 is reported. This
-     report runs only in `bqc generate` (rule 4).
+     report runs only in `bqc generate` (rule 4) and covers negatives only.
   3. Length statistics are returned per family, alongside those of WANDS.
 - **Tests:**
-  - Identical pair; pair differing only in case and whitespace.
+  - Identical pair; pair differing only in case and whitespace; the same two cases
+    against a sanity fixture query (the fixture is not the real file).
   - Jaccard exactly 0.6 (not reported) and just above it (reported).
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
-- **Depends on:** M1.T3, M2.T1.
+- **Depends on:** M1.T3, M1.T6, M2.T1.
+- **Change log:** 2026-11-05, `fable`: added the sanity-query half of criterion 1, its
+  tests, the M1.T6 dependency and the 8.6.1 ref (DESIGN.md 4 rule 4, 8.6.1). For
+  `opus` to review.
 - **Status:** todo
 
 ### M2.T8: `bqc generate`
@@ -463,7 +475,9 @@ Sign-off: pending.
      only on test-fold negatives.
   4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
      training set.
-  5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4).
+  5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4), against
+     both the fold's negatives and the sanity queries (8.6.1). (`fable`, 2026-11-05:
+     added the sanity half; test below added with it. For `opus` to review.)
   6. A single fold-check function raises if either class or any training family (A-D) is
      missing from a training fold, or if either class is missing from a test fold. Families
      are never asserted on the test side (8.1, 11.16). M3.T5 and M3.T9 use it too.
@@ -479,7 +493,8 @@ Sign-off: pending.
   - A training fold missing a family raises (11.16).
   - A family present in training but absent from a test fold doesn't raise, and its test count
     is returned as 0 (8.1, 13.14).
-  - A per-fold collision with a negative raises (rule 4).
+  - A per-fold collision with a negative raises, and so does one with a sanity fixture
+    query (rule 4, 8.6.1).
 - **Depends on:** M2.T1, M2.T7. Real families aren't required, because the tests use stub
   templates.
 - **Status:** todo

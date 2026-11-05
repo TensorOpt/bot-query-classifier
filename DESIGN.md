@@ -160,9 +160,16 @@ anti-inflation measures in section 8 possible.
    queries (8.3) so test-fold vocabulary never leaks into training positives.
 4. Near-duplicate audit after generation: character-3-gram Jaccard similarity between
    every positive and every negative; any pair above 0.6 is reported, and the
-   generation fails if any positive is identical to a negative after `normalise()`
-   (section 5). The exact-match check runs on every generation, including the
-   per-fold ones (8.3); the Jaccard report runs only in `bqc generate` (section 10).
+   generation fails if any positive is identical, after `normalise()` (section 5),
+   to a negative **or to a sanity-set query** (8.6.1). The exact-match check runs
+   on every generation, including the per-fold ones (8.3), against both lists; the
+   Jaccard report runs only in `bqc generate` (section 10) and covers negatives
+   only. The sanity half of the check is what keeps the sanity set outside the
+   generators by construction (added 2026-11-05, see 8.6.1): if a template can emit
+   a sanity query, the template changes, never the sanity file. The example strings
+   in section 2 are illustrations, not a list templates may copy; a template whose
+   output included one of them would be caught by this check only if that string
+   is in the sanity set, which is the only case that matters.
 5. Template-level diversity: each template must be able to produce at least 50
    distinct strings; the generator test asserts this.
 6. **Templates per family (decided 2026-11-05, OQ-3).** Each family has **exactly 6
@@ -418,10 +425,12 @@ For each model x SMOTE setting, per repeat and pooled:
   family E, which is scored by every outer-fold model at that fold's threshold but
   never trained on (section 2). E's number is reported in its own row, marked
   evaluation-only, and is never pooled into the headline recall. **Per-family recall
-  is a pooled quantity**: caught / total over all test folds of a repeat (120 per
-  family per repeat) and over the three repeats (360), never a mean of per-fold
-  values, because a family is absent from the test side of about half the outer
-  folds (8.1, 13.14). The per-fold breakdown in the JSON records each family's test
+  is a pooled quantity**: caught / total over all test folds of a repeat and over
+  the three repeats, never a mean of per-fold values, because a training family is
+  absent from the test side of about half the outer folds (8.1, 13.14). For A-D
+  the totals are 120 per family per repeat and 360 overall (each group is in
+  exactly one test fold per repeat); for E, which is scored in every outer fold,
+  they are 120 per fold, 600 per repeat and 1800 overall. The per-fold breakdown in the JSON records each family's test
   count and caught count, with recall `null` where the count is 0.
 - The list of all false positives (the actual WANDS queries that would be discarded).
   With ~5 FPs at 1% this list *is* the most useful output of the whole project.
@@ -480,6 +489,20 @@ overlap check; neither says anything about the generators. The delegate must not
 open `DESIGN.md` or any other plan task. After that commit the file is modified only
 by the user adding labels. The loader test asserts that no sanity query equals a
 WANDS query after `normalise()`.
+
+*Independence is enforced, not only requested (decided 2026-11-05).* On validating
+the committed set, `opus` found two rows verbatim equal to example strings in
+section 2. The restricted brief makes that plausibly coincidence (the examples are
+the obvious instances of their patterns), but it cannot be proven from the
+repository, and the real risk is forward-looking: a generator written later could
+emit those strings, and the rows would then be inside the generators. The rows
+stay as they are, because after the authoring commit only the user edits the file
+and labelling was in progress. Instead, the exact-match audit of section 4 rule 4
+also fails any generation whose output equals a sanity query after `normalise()`,
+on every generation including the per-fold ones. So whatever the author read, no
+string in the sanity set can be produced by the generators that are actually used.
+The loader therefore exposes the queries regardless of label state, and the
+generator audit depends on it.
 
 *Content guideline for the author (not recorded in the file).* All queries stay in
 the furniture and home-goods domain, with no off-domain shopping queries (2.1).
@@ -681,8 +704,9 @@ Each item names the component and the designed behaviour.
    positives. Not solvable with WANDS as the only negative source; accepted as a
    known v1 limitation (Q6). No fix is planned: the user rejected mixing in another
    query source (Q7).
-7. **Synthetic positive identical or near-identical to a WANDS query.** Generation
-   fails on exact matches and reports near-duplicates (section 4, rule 4).
+7. **Synthetic positive identical or near-identical to a WANDS query, or identical
+   to a sanity query.** Generation fails on exact matches against either list and
+   reports near-duplicates against WANDS (section 4, rule 4; 8.6.1).
 8. **Synthetic near-duplicates straddling folds.** Prevented by grouping on
    `(family, template_id)` (8.1); the fold test asserts no group appears in both sides.
 9. **Leakage of vectoriser / SMOTE / threshold.** All fitted inside the training

@@ -116,10 +116,18 @@ class FetchTest(unittest.TestCase):
 
 
 class FetchCommandTest(unittest.TestCase):
-    def test_success_returns_zero(self):
+    def test_success_fetches_both_files_and_returns_zero(self):
         with mock.patch.object(cli, "fetch") as f:
             self.assertEqual(cli.main(["fetch"]), 0)
-        f.assert_called_once()
+        self.assertEqual(
+            [(c.args[0], c.args[1], c.args[2]) for c in f.call_args_list],
+            [
+                (cli.RAW_PATH, cli.CHECKSUMS_PATH, cli.URL),
+                (cli.PRODUCT_PATH, cli.CHECKSUMS_PATH, cli.PRODUCT_URL),
+            ],
+        )
+        self.assertEqual(cli.RAW_PATH.name, "query.csv")
+        self.assertEqual(cli.PRODUCT_PATH.name, "product.csv")
 
     def test_error_returns_non_zero_and_reports(self):
         err = io.StringIO()
@@ -129,6 +137,33 @@ class FetchCommandTest(unittest.TestCase):
         ):
             self.assertNotEqual(cli.main(["fetch"]), 0)
         self.assertIn("boom", err.getvalue())
+
+    def test_failure_on_second_file_returns_non_zero_and_keeps_first(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        raw = Path(tmp.name) / "raw"
+        checksums = Path(tmp.name) / "CHECKSUMS"
+        checksums.write_text(
+            f"{hashlib.sha256(GOOD).hexdigest()}  query.csv\n"
+            f"{hashlib.sha256(b'product').hexdigest()}  product.csv\n"
+        )
+
+        def fake_fetch(target, checksums_path, url):
+            opener = stub(GOOD) if target.name == "query.csv" else failing
+            fetch(target, checksums_path, url, opener=opener)
+
+        err = io.StringIO()
+        with (
+            mock.patch.object(cli, "RAW_PATH", raw / "query.csv"),
+            mock.patch.object(cli, "PRODUCT_PATH", raw / "product.csv"),
+            mock.patch.object(cli, "CHECKSUMS_PATH", checksums),
+            mock.patch.object(cli, "fetch", side_effect=fake_fetch),
+            contextlib.redirect_stderr(err),
+        ):
+            self.assertNotEqual(cli.main(["fetch"]), 0)
+        self.assertEqual(sorted(p.name for p in raw.iterdir()), ["query.csv"])
+        self.assertEqual((raw / "query.csv").read_bytes(), GOOD)
+        self.assertIn("no network", err.getvalue())
 
 
 class ExitStatusTest(unittest.TestCase):

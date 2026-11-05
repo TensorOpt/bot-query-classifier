@@ -400,7 +400,7 @@ Follow-ups:
   In `tests/test_fetch.py`: the command fetches both files; a failure on the second returns non-zero
   and leaves the first; nothing downloads.
 - **Depends on:** M1.T7.
-- **Status:** todo
+- **Status:** done
 - **Status note:** M1's sign-off doesn't cover this task. `fable` reviews it as for M1.T7.
 
 ---

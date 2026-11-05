@@ -20,7 +20,7 @@ from synth_stubs import build_family, build_registry, gibberish, letters
 ROOT = Path(__file__).resolve().parent.parent
 # Families whose templates are registered; each of M2.T2-T6 adds its family here
 # and imports its module in bqc/synth/__init__.py (M2.T1 criterion 8).
-IMPLEMENTED_FAMILIES = ("A", "B", "C")
+IMPLEMENTED_FAMILIES = ("A", "B", "C", "D")
 # Fold-sized, with the short WANDS words and number tokens that are vocabulary words.
 FOLD_VOCAB = [
     "".join(chr(97 + (i // 26 ** p) % 26) for p in range(3)) for i in range(384)

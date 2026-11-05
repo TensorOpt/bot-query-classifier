@@ -480,7 +480,7 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each kind appears in the output; the phone
   template's output never matches the part-number regex.
 - **Depends on:** M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 

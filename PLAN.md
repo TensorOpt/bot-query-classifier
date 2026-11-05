@@ -897,7 +897,13 @@ Sign-off: pending.
 - **Tests:** the fake meets the protocol; it returns one score per text; it records its
   fit input.
 - **Depends on:** M1.T2.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `c6911b0`. Process deviation (F1): the fake's bodies were filled in by a
+  Python script rewriting `tests/fakes.py`, not the Edit tool; disclosed. For later tasks: `FakeScorer`
+  keeps only its last fit, so tests count fits through a factory that records each instance (M3.T5,
+  M3.T13); and an all-letters string scores 0.0, so threshold fixtures need queries with varied scores.
+  `tests/test_scorer_port.py:8` imports `tests.fakes`, while other tests import helpers as top-level
+  modules (`from synth_stubs ...`); later tests should use one form, `from fakes import FakeScorer`.
 
 ### M3.T3: Outer folds and per-fold data
 

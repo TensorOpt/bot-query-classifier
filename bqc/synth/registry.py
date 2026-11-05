@@ -16,7 +16,7 @@ ALL_FAMILIES = TRAINING_FAMILIES + (EVAL_FAMILY,)
 TEMPLATES_PER_FAMILY = 6
 MIN_HARD_TEMPLATES = 2
 QUOTA = 20
-ROUND_FACTOR = 2  # render() allows ROUND_FACTOR * ceil(per_template / QUOTA) rounds
+ROUND_FACTOR = 5  # render() allows ROUND_FACTOR * ceil(per_template / QUOTA) rounds
 
 PART_NUMBER_RE = re.compile(r"^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$")
 MIN_GIBBERISH_BLOCKS = 4

@@ -440,14 +440,6 @@ class ValidationTest(unittest.TestCase):
         self.assertEqual({s.family for s in samples}, set(TRAINING_FAMILIES))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-def pairs(registry, families=TRAINING_FAMILIES):
-    return [(f, t.template_id) for f in families for t in registry.templates(f)]
-
-
 class RenderTest(unittest.TestCase):
     def setUp(self):
         self.registry = build_registry()
@@ -599,3 +591,12 @@ class RenderTest(unittest.TestCase):
         for p in wanted:
             n = sum((s.family, s.template_id) == p for s in samples)
             self.assertEqual(n + short[p], 209)
+
+    def test_b_template_reaches_209_without_shortfall(self):
+        samples, short = reg.render(SPAN_VOCAB, 3, [("B", "template")], 209)
+        self.assertEqual(short, {("B", "template"): 0})
+        self.assertEqual(len(samples), 209)
+
+
+if __name__ == "__main__":
+    unittest.main()

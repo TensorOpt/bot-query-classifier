@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `b385eb3`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.3 (commit `f07a5da`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -30,7 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T1, the first of M3. M3 stays on hold until the embedding probe reports (Q16).
+**Next task:** M3.T1, the first of M3.
 
 ### Order constraints
 
@@ -95,10 +95,10 @@ changes it.
 - **LR or MLP: after M6.T1.** M6.T1 carries a recommendation; the user decides (12.1, item 13).
 - **Catalogue gap: only if the check fails in M6.T1.** What to do then is a user decision
   (8.6 item 5).
-- **Q16, embedding features: waits for the probe.** Section 5 stays as it is until the probe reports
-  and the user decides (12.2). This plan schedules no work for it.
+- **Q17, truncated SVD: a separate read-only probe (12.2).** No milestone waits for it, section 5 stays
+  as it is, and this plan schedules no work for it.
 
-12.1 items 1 to 11 and 13 to 15 are closed. Off-domain queries stay outside both classes, so no task
+12.1 items 1 to 11 and 13 to 15 are closed; embeddings were abandoned for latency (item 15). Off-domain queries stay outside both classes, so no task
 exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 
 ### Open questions for `fable`
@@ -868,14 +868,10 @@ Follow-ups:
 
 Sign-off: pending.
 
-**On hold until the embedding probe reports (Q16, 12.2).** The answer may change the features of M3.T1 and
-the adapters of M4 if the user decides for embeddings. This plan doesn't plan for that; it follows
-section 5 until the design changes.
-
 ### M3.T1: Vectoriser factory
 
 - **Goal:** one factory for the TF-IDF configuration.
-- **Design refs:** 5, 11.1, 11.3, 11.9.
+- **Design refs:** `DESIGN.md` `f07a5da`: 5, 11.1, 11.3, 11.9, 13.3, 13.21.
 - **Files:** `bqc/features.py`, `tests/test_features.py`.
 - **Acceptance criteria:** returns an unfitted vectoriser with exactly the parameters of
   section 5. Empty and unknown strings give an all-zero row without raising.

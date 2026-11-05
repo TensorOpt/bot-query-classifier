@@ -270,6 +270,45 @@ class CollisionTest(DataTestCase):
             sum(t["dropped"] for t in r["templates"]), 6)
 
 
+class WiringTest(DataTestCase):
+    def test_build_spans_gets_the_sanity_queries_and_the_p_strings(self):
+        sanity = ["kzqv hwxj 4417", "plmn rtsy 9082"]
+        self.write_sanity(sanity)
+        with mock.patch.object(cli, "build_spans", wraps=cli.build_spans) as spans:
+            r = self.report()
+        args = spans.call_args.args
+        self.assertEqual(args[4], [p["text"] for p in r["part_numbers"]])
+        self.assertEqual(len(args[4]), 100)
+        self.assertEqual(args[5], sanity)
+        self.assertEqual(list(args[3]), self.queries)
+
+    def test_near_duplicates_against_spans_never_see_p_strings(self):
+        with mock.patch.object(cli, "near_duplicates", wraps=cli.near_duplicates) as near:
+            r = self.report()
+        p_texts = {p["text"] for p in r["part_numbers"]}
+        span_texts = [s["text"] for s in r["spans"]]
+        calls = [c.args for c in near.call_args_list if c.args[2] == 0.6]
+        self.assertEqual(len(calls), 2)  # real queries vs spans, positives vs spans
+        for _, others, _ in calls:
+            self.assertEqual(list(others), span_texts)
+            self.assertFalse(p_texts & set(others))
+
+    def test_vocabulary_cap_limits_the_span_occurrences(self):
+        with mock.patch.object(cli, "VOCABULARY_CAP", 50):
+            r = self.report()
+        self.assertEqual(r["vocabulary"]["span_occurrences"], 50)
+        self.assertEqual(r["vocabulary"]["cap"], 50)
+
+    def test_sanity_error_message_is_withheld(self):
+        secret = self.queries[0]  # a sanity query equal to a WANDS query is rejected
+        self.write_sanity([secret])
+        code, out, err = self.run_generate()
+        self.assertEqual(code, 1)
+        self.assertTrue(err)
+        self.assertNotIn(secret, out + err)
+        self.assertFalse(list(self.results.glob("*.json")))
+
+
 class FailureTest(DataTestCase):
     def test_missing_raw_files_exit_non_zero_and_point_at_fetch(self):
         for path in (self.query_path, self.product_path):

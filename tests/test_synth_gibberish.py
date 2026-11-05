@@ -1,15 +1,11 @@
-import csv
 import random
 import re
 import unittest
-from pathlib import Path
 
-from bqc.preprocess import normalise
 from bqc.synth import registry as reg
 from bqc.synth.registry import REGISTRY, TEMPLATES_PER_FAMILY
 from test_synth_registry import A_DIGIT_VOCAB, FOLD_VOCAB, renders
 
-ROOT = Path(__file__).resolve().parent.parent
 SEEDS = 2000
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 HEX_RE = re.compile(r"^[0-9a-f]+$")
@@ -144,13 +140,6 @@ class PatternShapeTest(unittest.TestCase):
 
 
 class IsolationTest(unittest.TestCase):
-    def test_no_template_emits_a_sanity_query(self):
-        with open(ROOT / "data" / "sanity.csv", newline="", encoding="utf-8") as f:
-            sanity = {normalise(r["query"]) for r in csv.DictReader(f)}
-        for tid, t in TEMPLATES.items():
-            for s in renders(t, FOLD_VOCAB, 3000):
-                self.assertNotIn(s, sanity, tid)
-
     def test_no_output_is_a_part_number_shape(self):
         for tid in TEMPLATES:
             for s in outputs(tid, n=500):

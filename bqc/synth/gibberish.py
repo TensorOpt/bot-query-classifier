@@ -32,10 +32,7 @@ def _fresh(rng: random.Random, vocabulary: Sequence[str],
 
 
 def _mash_token(rng: random.Random) -> str:
-    """5-12 keys drawn from a window of 4-6 adjacent keys of one keyboard row.
-
-    Sanity-set `zxcv` has 4 characters, so `asdfghjkl qwerty zxcv` is unreachable.
-    """
+    """5-12 keys drawn from a window of 4-6 adjacent keys of one keyboard row."""
     row = rng.choice(KEYBOARD_ROWS)
     width = rng.randint(4, min(6, len(row)))
     start = rng.randint(0, len(row) - width)
@@ -44,7 +41,7 @@ def _mash_token(rng: random.Random) -> str:
 
 
 def _repeat_token(rng: random.Random) -> str:
-    """A 1-3 letter unit repeated to 6-16 characters (the sanity `a`*20 is out of range)."""
+    """A 1-3 letter unit repeated to 6-16 characters."""
     unit = "".join(rng.choice(_LETTERS) for _ in range(rng.randint(1, 3)))
     copies = rng.randint(-(-6 // len(unit)), 16 // len(unit))
     return unit * copies
@@ -53,7 +50,7 @@ def _repeat_token(rng: random.Random) -> str:
 def _alnum_token(rng: random.Random) -> str:
     """7-9 alternating letter/digit blocks, letters first: always at least 4 blocks (2.2).
 
-    At least 11 characters, so the sanity `xk9qz7vplm` (10) is unreachable.
+    At least 11 characters in total.
     """
     parts = []
     for i in range(rng.randint(7, 9)):

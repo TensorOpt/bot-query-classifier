@@ -43,7 +43,7 @@ class Template:
 def block_count(token: str) -> int:
     """Number of contiguous letter blocks plus digit blocks in a token (2.2).
 
-    Other characters (`-`, `/`) separate blocks: `xk9qz7vplm` has 5, `wf-2049x` has 3.
+    Other characters (`-`, `/`) separate blocks: `rt4kq8wvz` has 5, `kx-7731b` has 3.
     """
     return len(_BLOCK_RE.findall(token))
 

@@ -65,26 +65,26 @@ def assert_template_rules(tc, template, vocab=FOLD_VOCAB):
 
 class HelpersTest(unittest.TestCase):
     def test_block_count_examples_from_design(self):
-        self.assertEqual(reg.block_count("xk9qz7vplm"), 5)
-        self.assertEqual(reg.block_count("wf-2049x"), 3)
+        self.assertEqual(reg.block_count("rt4kq8wvz"), 5)
+        self.assertEqual(reg.block_count("kx-7731b"), 3)
         self.assertEqual(reg.block_count("sofa"), 1)
-        self.assertEqual(reg.block_count("8374651"), 1)
+        self.assertEqual(reg.block_count("5190284"), 1)
 
     def test_part_number_regex(self):
-        for t in ["sku000123", "w003096809", "wf-2049x", "1234", "ab/123", "123ab"]:
+        for t in ["abc000456", "w003096809", "kx-7731b", "1234", "ab/123", "123ab"]:
             self.assertTrue(reg.PART_NUMBER_RE.match(t), t)
-        for t in ["xk9qz7vplm", "12", "sofa", "abcde123", "a1b2c3"]:
+        for t in ["rt4kq8wvz", "12", "sofa", "abcde123", "a1b2c3"]:
             self.assertFalse(reg.PART_NUMBER_RE.match(t), t)
 
     def test_number_shaped_regex_matches_wands_forms(self):
-        for t in ["72", "w003412", "sku000123", "wf-2049x", "18x18", "3/4", "72.5",
+        for t in ["72", "w003412", "abc000456", "kx-7731b", "18x18", "3/4", "72.5",
                   "3-3/4", '36"', "7qt", "e12/candelabra"]:
             self.assertTrue(reg.NUMBER_SHAPED_RE.match(t), t)
         for t in ["sofa", "/123", "page=17", "(555)", "a'1", ""]:
             self.assertFalse(reg.NUMBER_SHAPED_RE.match(t), t)
 
     def test_benign_token_number_shapes_with_at_most_three_blocks(self):
-        for t in ["72", "w003412", "sku000123", "wf-2049x", "18x18", "3/4", "72.5",
+        for t in ["72", "w003412", "abc000456", "kx-7731b", "18x18", "3/4", "72.5",
                   "3-3/4", '36"', "7qt", "e12/candelabra"]:
             self.assertTrue(reg.is_benign_token(t, FOLD_VOCAB), t)
 
@@ -95,7 +95,7 @@ class HelpersTest(unittest.TestCase):
         self.assertFalse(reg.is_benign_token("aa", ["a"]))
 
     def test_four_or_more_blocks_are_not_benign(self):
-        for t in ["xk9qz7vplm", "a1b2c3", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"]:
+        for t in ["rt4kq8wvz", "a1b2c3", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"]:
             self.assertFalse(reg.is_benign_token(t, FOLD_VOCAB), t)
 
     def test_punctuation_tokens_are_not_benign(self):
@@ -109,7 +109,7 @@ class HelpersTest(unittest.TestCase):
                  "a", "x", "or", "tv"]
         passes = ["leather sofa' union select", "sofa' or 1=1--", "area rug&page=2",
                   "/search?q=accent+chair", "page=17", "cheap area rug http://x.co",
-                  "call (555) 012-3456 now", "accent chair asdfgh", "xk9qz7vplm",
+                  "call (555) 012-3456 now", "accent chair asdfgh", "rt4kq8wvz",
                   "aaaaaaaa", "aa", "ab", "what is the capital of france"]
         for q in fails:
             self.assertFalse(reg.has_non_benign_token(q, vocab), q)
@@ -120,13 +120,13 @@ class HelpersTest(unittest.TestCase):
         self.assertFalse(reg.has_non_benign_token("", FOLD_VOCAB))
 
     def test_block_rule(self):
-        self.assertEqual(reg.digit_tokens_below_block_rule("xk9qz7vplm abc"), [])
+        self.assertEqual(reg.digit_tokens_below_block_rule("rt4kq8wvz abc"), [])
         self.assertEqual(
-            reg.digit_tokens_below_block_rule("wf-2049x desk 18x18"),
-            ["wf-2049x", "18x18"],
+            reg.digit_tokens_below_block_rule("kx-7731b desk 18x18"),
+            ["kx-7731b", "18x18"],
         )
-        self.assertEqual(reg.digit_tokens_below_block_rule("qqqqwwwweeee 8374651"),
-                         ["8374651"])
+        self.assertEqual(reg.digit_tokens_below_block_rule("zzzzxxxxcccc 5190284"),
+                         ["5190284"])
 
 
 class StubContractTest(unittest.TestCase):

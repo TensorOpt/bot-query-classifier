@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.8 (commit `3dbe549`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.9 (commit `0a29571`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -407,7 +407,8 @@ Sign-off: pending.
      `accent chair asdfgh`. Registered with family `A`.
   2. Every digit-bearing token has at least 4 letter/digit blocks in every template, by
      construction rather than by chance: random hex must not occasionally produce fewer
-     (2.2). So a separate digit run, as a token of its own, isn't produced.
+     (2.2). So a separate digit run, as a token of its own, isn't produced. Four blocks is the
+     design floor; seven is this template's implementation choice (2.2, `0a29571`).
   3. Hard-positive templates use only vocabulary words without digits, because real WANDS
      words such as `18x18` and `w003096809` would break the block rule.
   4. Random letter tokens that serve as the non-benign token can't be vocabulary words: a template
@@ -436,13 +437,13 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each pattern kind appears in the
   output; payload characters survive lowercasing.
 - **Depends on:** M2.T1.
-- **Status:** done
+- **Status:** validated
 
 ### M2.T4: Family C, enumeration and scraping
 
 - **Goal:** generate dictionary walks, URL paths and query-string forms that walk the search
   engine, plus hard positives, and no SKUs or part numbers.
-- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
+- **Design refs:** `DESIGN.md` `0a29571`: 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
 - **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** registered with family `C`, with exactly the six templates of 2.2:
@@ -460,6 +461,8 @@ Sign-off: pending.
   - Every dictionary-walk output is 1-2 letters, so `zen`, `owl` and digits can never appear,
     and the walk template still reaches 50 distinct strings.
   - With `a` and `x` in the vocabulary, the walk never emits them.
+  Also, in `tests/test_synth_registry.py`: `assert_template_rules` accepts a vocabulary list with
+  repeats, with one test using a repeated word (2.2, `0a29571`; M2.T1 is already validated).
   - Template 3 varies keys with fixed-form numbers; template 4 uses a fixed set of key names.
 - **Depends on:** M2.T1.
 - **Status:** todo
@@ -468,7 +471,7 @@ Sign-off: pending.
 
 - **Goal:** generate URLs, emails, phone numbers and promotional phrases, plus hard
   positives.
-- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family D, hard positives), 2.2, 4.
+- **Design refs:** `DESIGN.md` `0a29571`: 2 (family D, hard positives), 2.2, 4.
 - **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers each
@@ -482,7 +485,7 @@ Sign-off: pending.
 ### M2.T6: Family E, off-topic natural language (evaluation-only)
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.
-- **Design refs:** `DESIGN.md` `3dbe549`: 2 (family E, 2.1), 2.2, 4.
+- **Design refs:** `DESIGN.md` `0a29571`: 2 (family E, 2.1), 2.2, 4.
 - **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`, `bqc/synth/__init__.py`,
   `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:**
@@ -531,7 +534,8 @@ Sign-off: pending.
      `seed` metadata, 25 per shape: bare prefix+digits (`sku000123`), bare digit runs,
      prefix-digits-suffix (`wf-2049x`), and product words plus a part number
      (`ines shag rug w003096809`).
-  2. Product words come from a vocabulary argument; the callers pass all 480 negatives.
+  2. Product words come from a vocabulary argument; the callers pass the occurrence list of all
+     480 negatives (8.3).
   3. It isn't a registered positive family, so it is outside the 480 and the 600, the rule 6
      template check, the 2.2 registry assertions and the Jaccard report.
   4. It must not collide with a WANDS or sanity query after `normalise()`: it reuses the
@@ -554,15 +558,17 @@ Sign-off: pending.
 
 - **Goal:** generate the full-vocabulary positives from the command line and write the
   report for inspection by eye.
-- **Design refs:** 4, 10.
+- **Design refs:** `DESIGN.md` `0a29571`: 4, 8.3, 10, 13.17.
 - **Files:** `bqc/report.py`, `bqc/cli.py`, `tests/test_report.py`,
   `tests/test_cli_generate.py`.
 - **Acceptance criteria:**
-  1. `python -m bqc generate` uses vocabulary from all 480 negatives to generate the 480
-     training positives of A-D and the 120 of family E, each tagged with its family, and runs
+  1. `python -m bqc generate` passes the vocabulary as token occurrences with repeats, in file
+     order, from all 480 negatives (8.3), through one helper that M3.T3, M3.T10 and M5.T3 reuse,
+     to generate the 480 training positives of A-D and the 120 of family E, each tagged with its family, and runs
      the audit over all 600. It writes one JSON report to `results/` holding the samples with
-     their metadata, the per-family length statistics next to WANDS', and the near-duplicate
-     pairs (section 10).
+     their metadata, the per-family length statistics next to WANDS', the near-duplicate pairs,
+     and the one-off share of hard-positive word slots next to the one-off share of WANDS token
+     occurrences (section 10, 13.17).
   2. The report holds the 100 part-number strings of M2.T9 under their own key,
      `part_numbers`. They aren't counted among the 600, aren't in the positives' samples or
      length statistics, and aren't in the near-duplicate report.
@@ -580,7 +586,9 @@ Sign-off: pending.
      with the real WANDS queries, among the checked lists, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
-  - Length statistics and near-duplicate pairs are present.
+  - Length statistics, near-duplicate pairs and both one-off shares are present.
+  - A vocabulary with `chair` x10 and `zen` x1 yields `chair` far more often than `zen` across
+    outputs.
   - `part_numbers` holds 100 entries, and no `P` sample is among the 600.
   - `write_report`: config fields present; a name collision doesn't overwrite.
   - Collision with a negative, or with a sanity fixture query, exits non-zero, for a family E
@@ -630,15 +638,16 @@ Sign-off: pending.
 
 - **Goal:** build repeated grouped folds, and regenerate positives from each side's
   vocabulary.
-- **Design refs:** 4 (rule 4), 8.1, 8.3, 10 (seeds), 11.8, 11.16, 13.10, 13.14.
+- **Design refs:** `DESIGN.md` `0a29571`: 4 (rules 3 and 4), 8.1, 8.3, 10 (seeds), 11.8, 11.16,
+  13.10, 13.14, 13.17.
 - **Files:** `bqc/evaluate.py`, `tests/test_folds.py`.
 - **Acceptance criteria:**
   1. `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`,
      3 repeats, with both parameters overridable for tiny test configs.
   2. Groups: each query is its own group; each positive's group is `(family, template_id)`.
   3. Training hard positives draw only on training-fold negatives, and test hard positives
-     only on test-fold negatives. The vocabulary comes from the negatives after `normalise()`
-     (section 5).
+     only on test-fold negatives. Each side's vocabulary is the list of token occurrences, with
+     repeats, of that side's negatives after `normalise()`, from the M2.T8 helper (section 5, 8.3).
   4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
      training set.
   5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4), against all 480
@@ -652,6 +661,8 @@ Sign-off: pending.
   - No group on both sides of a fold (11.8).
   - A sentinel word present only in a test-fold negative never appears in a training
     positive, and the reverse (8.3).
+  - A stub template given a side whose negatives hold `chair` x10 and `zen` x1 yields `chair` far
+    more often than `zen`.
   - No E sample is in a training set.
   - Same seed gives the same folds; different repeats give different folds.
   - A class missing from a training or a test fold raises (11.16).
@@ -660,8 +671,8 @@ Sign-off: pending.
     is returned as 0 (8.1, 13.14).
   - A per-fold collision raises for a negative in the same fold, for a negative in the other
     side of the fold, and for a sanity fixture query (rule 4, 8.6.1).
-- **Depends on:** M2.T1, M2.T7. Real families aren't required, because the tests use stub
-  templates.
+- **Depends on:** M2.T1, M2.T7, M2.T8. Real families aren't required by the tests, which use stub
+  templates; M2.T8 provides the vocabulary helper.
 - **Status:** todo
 
 ### M3.T4: Threshold selection
@@ -809,8 +820,8 @@ Sign-off: pending.
      it: `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups of
      8.1, out-of-fold scores, then the threshold rule of 8.4. The model is then fitted on all
      960.
-  2. Positives are generated once from the vocabulary of all 480 negatives and pass the
-     exact-match check (rule 4), and family E is excluded.
+  2. Positives are generated once from the token occurrences, with repeats, of all 480 negatives
+     (8.3) and pass the exact-match check (rule 4), and family E is excluded.
   3. The pickle goes to `results/` and holds the scorer and threshold, and loading it
      reproduces the same scores.
 - **Tests** (with the fake): 960-equivalent fit input with no E; pickle round trip gives
@@ -1055,7 +1066,7 @@ Sign-off: pending.
 - **Design refs:** 9, 10.
 - **Files:** `bqc/cluster.py`, `bqc/cli.py`, `tests/test_cli_cluster.py`.
 - **Acceptance criteria:** `python -m bqc cluster` builds the 960 strings (WANDS plus positives
-  from all-negative vocabulary that pass the exact-match check of rule 4, no family E or P) and
+  from the occurrence vocabulary of all negatives that pass the exact-match check of rule 4, no family E or P) and
   writes a separate JSON file with
   `write_report` imported from `bqc/report.py`; `bqc/cluster.py` doesn't import `bqc/cli.py`
   (section 10). It shares no state with `evaluate`. A missing raw file exits non-zero with a

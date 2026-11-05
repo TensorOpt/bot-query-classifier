@@ -347,7 +347,8 @@ Sign-off: pending.
 
 - **Goal:** a seeded, vocabulary-parameterised entry point for generating positives.
 - **Design refs:** 2, 2.2, 4, 5, 8.3, 10, 11.18, 11.23.
-- **Files:** `bqc/synth/__init__.py`, `bqc/synth/registry.py`, `tests/test_synth_registry.py`.
+- **Files:** `bqc/synth/__init__.py`, `bqc/synth/registry.py`, `tests/test_synth_registry.py`,
+  `tests/synth_stubs.py`.
 - **Acceptance criteria:**
   1. **History:** the commit of `data/sanity.csv` is an ancestor of the first commit
      touching `bqc/synth/` (`git merge-base --is-ancestor`).
@@ -363,6 +364,9 @@ Sign-off: pending.
   6. An empty vocabulary raises `ValueError`.
   7. The part-number regex of 2.2, `^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$`, and the letter/digit
      block count have one home here.
+  8. **Wiring:** `tests/test_synth_registry.py` has `IMPLEMENTED_FAMILIES`, empty at this task.
+     Each of M2.T2 to M2.T6 imports its module in `bqc/synth/__init__.py` and adds its family
+     there, so a family that isn't imported fails the suite.
 - **Tests** (with stub templates; they also run against every real template once
   registered, so M2.T2-T6 inherit them):
   - Output lowercased and ASCII-only (section 4 rule 1).
@@ -385,13 +389,34 @@ Sign-off: pending.
     template raises (rule 6).
 - **Depends on:** M1.T1, M1.T3.
 - **Status:** done
+- **Changes requested (`opus`, 2026-11-05, on `2bbfe9e`):** `bqc/synth/registry.py` is accepted.
+  The contract in `tests/test_synth_registry.py` needs these fixes:
+  1. `:91`: `test_stub_emitting_part_number_shape_fails` passes for the wrong reason. Its constant
+     output fails the 50-distinct check at `:40` and never reaches the part-number check. Emit
+     varied strings, such as `f"wf-{rng.randint(1000, 99999)}x"`.
+  2. `:41`: the part-number check depends on chance, with `w003096809` being 1 word in 385, so a
+     template that rarely emits a vocabulary word alone gets through. Check over a short vocabulary
+     instead: `["plainword", "w003096809", "18x18"]`.
+  3. `:43`: the family A block rule only sees digit-free vocabulary, so it can't catch a hard
+     template that lets `18x18` through. Run it over the vocabulary of item 2.
+  4. `:46`: removing the sentinel check fails no test. Add a negative stub: a hard template that
+     ignores its vocabulary.
+  5. `:49`: `outsideword` can never appear, so that check tests nothing. Render with `["otherword"]`,
+     then with `["sentinelword"]`, and assert the second output has no `otherword`. Add a negative
+     stub that caches its first vocabulary.
+  6. `:39`: `len(normalise(s))` can't exceed 512, because `normalise` truncates. Assert on `len(s)`.
+  7. `:137`: `RealTemplatesTest` passes on an empty registry. Add `IMPLEMENTED_FAMILIES = ()` and
+     assert that the registered families equal it (criterion 8), then validate those families.
+  8. `:198`: the hash-seed test covers only stubs. Also generate from `REGISTRY` for
+     `IMPLEMENTED_FAMILIES` in the subprocess, so real templates inherit it.
 
 ### M2.T2: Family A, gibberish
 
 - **Goal:** generate keyboard mashing, random IDs and hash-like strings, plus hard
   positives, without producing part-number shapes.
 - **Design refs:** 2 (family A, hard positives), 2.2, 4.
-- **Files:** `bqc/synth/gibberish.py`, `tests/test_synth_gibberish.py`.
+- **Files:** `bqc/synth/gibberish.py`, `tests/test_synth_gibberish.py`, `bqc/synth/__init__.py`,
+  `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:**
   1. Exactly 6 templates, at least 2 hard-positive (rule 6). Covers mashing, repeated
      characters and UUID/hash-like strings, with hard positives such as
@@ -415,7 +440,8 @@ Sign-off: pending.
 
 - **Goal:** generate scanner payloads, plus hard positives.
 - **Design refs:** 2 (family B, hard positives), 4.
-- **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`.
+- **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`, `bqc/synth/__init__.py`,
+  `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers SQL, script, template, path-traversal and
   NoSQL patterns, with hard positives such as `leather sofa' union select`.
   Registered with family `B`. Payloads are only ever generated as text, never executed.
@@ -429,7 +455,8 @@ Sign-off: pending.
 - **Goal:** generate dictionary walks, URL paths and query-string forms that walk the search
   engine, plus hard positives, and no SKUs or part numbers.
 - **Design refs:** 2 (family C, single-word and SKU rows), 2.2, 4, 11.23.
-- **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`.
+- **Files:** `bqc/synth/enumeration.py`, `tests/test_synth_enumeration.py`, `bqc/synth/__init__.py`,
+  `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** registered with family `C`, with exactly the six templates of 2.2:
   1. dictionary walks (1-2 letters);
   2. URL paths;
@@ -453,7 +480,8 @@ Sign-off: pending.
 - **Goal:** generate URLs, emails, phone numbers and promotional phrases, plus hard
   positives.
 - **Design refs:** 2 (family D, hard positives), 2.2, 4.
-- **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`.
+- **Files:** `bqc/synth/spam.py`, `tests/test_synth_spam.py`, `bqc/synth/__init__.py`,
+  `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:** Exactly 6 templates, at least 2 hard-positive (rule 6). Covers each
   listed kind, with hard positives such as `cheap area rug http://x.co`. Registered with
   family `D`. Phone numbers are never a bare digit run (2.2).
@@ -466,7 +494,8 @@ Sign-off: pending.
 
 - **Goal:** generate 120 questions, chat prompts and code snippets, tagged `E`.
 - **Design refs:** 2 (family E, 2.1), 4.
-- **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`.
+- **Files:** `bqc/synth/offtopic.py`, `tests/test_synth_offtopic.py`, `bqc/synth/__init__.py`,
+  `tests/test_synth_registry.py` (wiring, M2.T1 criterion 8).
 - **Acceptance criteria:**
   1. Generated by the same machinery, with `family="E"`, exactly 6 templates of 20 and at
      least 2 hard-positive (rule 6).
@@ -474,7 +503,9 @@ Sign-off: pending.
   3. Output is text that is not a product search; no template produces an off-domain
      shopping query (2.1).
 - **Tests:** registry tests pass for this family; the training output contains no `E`
-  sample; requesting E returns exactly 120.
+  sample; requesting E returns exactly 120. As the last family, it replaces the conditional
+  test at `tests/test_synth_registry.py:312`: module-level `generate` returns the 480 and
+  `REGISTRY.validate(ALL_FAMILIES)` passes.
 - **Depends on:** M2.T1.
 - **Status:** todo
 

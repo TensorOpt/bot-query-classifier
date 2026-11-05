@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.6, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.7, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -117,15 +117,53 @@ digits:
   family A does not generate it (decided 2026-11-05; the rule below holds, the
   description that previously allowed the form was the contradiction).
 
-**Decision:** no template in any family may produce a query that, as a whole, is a
-single token matching the part-number regex, nor a bare number. Family A templates
-that use digits must produce at least four letter/digit blocks in **every**
-digit-bearing token, and family A's hard-positive templates combine vocabulary
-words with gibberish tokens only, never with digits. The regex and the block-count
-function have one home, `bqc/synth/registry.py`, and the registry test asserts
-both over every template's output in every family. Family C keeps its
-dictionary-walk template (1-2 character strings), which the regex does not match
-because it requires 3 digits.
+**Decision (extended 2026-11-05 after M2.T1 validation):** every template output,
+in every family, must contain **at least one token that is not benign**. A token
+is *benign* if, after `normalise()` and whitespace splitting, it is either
+
+- a **vocabulary word**: a token of the vocabulary passed to the generator (the
+  whitespace tokens of the normalised WANDS queries of the fold); or
+- a **number-shaped token**: it contains a digit and matches
+  `^(?=.*\d)[a-z0-9]+([-/.x][a-z0-9]+)*"?$`, which covers bare numbers (`72`),
+  part numbers (`w003412`, `sku000123`, `wf-2049x`), and the measurement forms
+  WANDS uses (`18x18`, `3/4`, `72.5`, `3-3/4`, `36"`, `7qt`, `e12/candelabra`).
+
+A string made only of benign tokens is the shape of a legitimate query
+(`leather sofa w003412`, `area rug 18x18`, `sofa`, `w003412`, `72`), and no family
+may emit one as a positive. This subsumes the earlier whole-query ban on a lone
+part-number token or bare number.
+
+Why "plain word" means *vocabulary word* and not *letters-only token*: family A's
+keyboard mashes (`asdkjh qwe`) and family E's sentences (`what is the capital of
+france`) are letters-only and must stay allowed; what makes `leather sofa w003412`
+legitimate is that its words are the shop's words. A letters-only token outside
+the vocabulary (`asdkjh`, `capital`, `select`) is therefore non-benign and
+satisfies the rule on its own.
+
+What passes and what fails (vocabulary = WANDS words):
+
+| output | verdict | why |
+|---|---|---|
+| `leather sofa w003412`, `area rug 18x18`, `sofa`, `w003412`, `72` | **fails** | all tokens benign |
+| `leather sofa' union select`, `sofa' or 1=1--` | passes | `sofa'`, `union`, `select` are not benign |
+| `area rug&page=2`, `/search?q=accent+chair`, `page=17` | passes | `&`, `/`, `?`, `=` tokens |
+| `cheap area rug http://x.co`, `call (555) 012-3456 now` | passes | URL; `(555)`, `call`, `now` (M2.T5: phone numbers are never a bare digit run) |
+| `accent chair asdfgh`, `xk9qz7vplm`, `aaaaaaaa` | passes | non-vocabulary letter tokens; 5-block token |
+| `aa`, `ab` (dictionary walk) | passes | not vocabulary words |
+| `a`, `x`, `or`, `tv` (dictionary walk) | **fails** | WANDS vocabulary words; the walk template must skip vocabulary tokens |
+| `what is the capital of france` | passes | `capital`, `france` outside the vocabulary |
+
+Family A templates that use digits must additionally produce at least four
+letter/digit blocks in **every** digit-bearing token (so a token never has a
+part-number shape even inside a longer string), and family A's hard-positive
+templates combine vocabulary words with gibberish tokens only, never with
+digits. The benign-token predicate, the block-count function and the
+"at least one non-benign token" check have one home, `bqc/synth/registry.py`;
+the registry contract test (`assert_template_rules`) applies them to every
+output of every template in every family, with a fold-sized vocabulary. The
+property is structural per template (a template either always carries a
+non-benign marker or does not), so it is a contract test, not a generation-time
+audit; the generation-time audit stays the exact-match check of section 4 rule 4.
 
 **Family C after the change (section 4 rule 6 still holds: six templates, at least
 two hard-positive):** (1) dictionary walks; (2) URL paths; (3) generic query-string

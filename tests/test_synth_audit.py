@@ -10,10 +10,12 @@ from bqc.synth.audit import (
     AuditError,
     LengthStats,
     NearDuplicate,
+    SanityCollision,
     check_exact,
     drop_exact,
     length_stats,
     near_duplicates,
+    screen_samples,
 )
 from bqc.synth.registry import Sample
 
@@ -136,6 +138,27 @@ class DropExactTest(unittest.TestCase):
 
     def test_never_raises_on_match(self):
         self.assertEqual(drop_exact(["x"], {"a": ["x"]}), ([], {"a": 1}))
+
+
+class ScreenSamplesTest(unittest.TestCase):
+    SAMPLES = [Sample("keep one", "A", "a0", 1), Sample("Drop Me", "A", "a0", 1),
+               Sample("keep two", "B", "b0", 1), Sample("other", "B", "b1", 1)]
+
+    def test_drops_in_order_and_counts_per_list(self):
+        kept, counts = screen_samples(
+            self.SAMPLES, {"first": ["drop me"], "second": ["OTHER"]}, ["unrelated"])
+        self.assertEqual([s.text for s in kept], ["keep one", "keep two"])
+        self.assertEqual(counts, {"first": 1, "second": 1})
+
+    def test_sanity_match_raises_without_text_and_names_the_template(self):
+        with self.assertRaises(SanityCollision) as cm:
+            screen_samples(self.SAMPLES, {}, ["KEEP   two"])
+        self.assertIsInstance(cm.exception, AuditError)
+        self.assertEqual((cm.exception.family, cm.exception.template_id), ("B", "b0"))
+        self.assertNotIn("keep", str(cm.exception))
+
+    def test_empty_samples(self):
+        self.assertEqual(screen_samples([], {"a": ["x"]}, ["y"]), ([], {"a": 0}))
 
 
 # Sets of 3-grams: "abcd" has 2, "abcde" 3, "abcdef" 4, "abcdefg" 5, "abcdefgh" 6.

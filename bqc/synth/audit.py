@@ -81,6 +81,45 @@ def drop_exact(
     return kept, counts
 
 
+class SanityCollision(AuditError):
+    """A sample equals a sanity query. The message holds no text; `family` and
+    `template_id` name the first template that collided."""
+
+    def __init__(self, family: str, template_id: str):
+        super().__init__(f"a positive of template {family}/{template_id} equals a sanity query")
+        self.family = family
+        self.template_id = template_id
+
+
+def screen_samples(
+    samples: Sequence[Sample],
+    lists: Mapping[str, Iterable[str]],
+    sanity: Iterable[str],
+) -> tuple[list[Sample], dict[str, int]]:
+    """Rule 4 for rendered positives: fail on a sanity match, drop the other matches.
+
+    Raises SanityCollision (no text) if a sample equals a sanity query. Otherwise returns
+    the samples that survive `drop_exact` against `lists`, in their original order, and
+    the removals per list name.
+    """
+    sanity_list = list(sanity)
+    for key in dict.fromkeys((s.family, s.template_id) for s in samples):
+        try:
+            check_exact(
+                (s.text for s in samples if (s.family, s.template_id) == key), [], sanity_list)
+        except AuditError:
+            raise SanityCollision(*key) from None
+    survivors, counts = drop_exact([s.text for s in samples], lists)
+    kept: list[Sample] = []
+    wanted = iter(survivors)
+    next_text = next(wanted, None)
+    for sample in samples:  # survivors are a subsequence of the texts, in order
+        if sample.text == next_text:
+            kept.append(sample)
+            next_text = next(wanted, None)
+    return kept, counts
+
+
 def near_duplicates(
     positives: Sequence[str], others: Sequence[str], threshold: float
 ) -> list[NearDuplicate]:

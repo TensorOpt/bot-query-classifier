@@ -1,6 +1,7 @@
 import json
 import unittest
 from collections import Counter
+from unittest import mock
 
 from synth_stubs import build_family, build_registry
 
@@ -14,7 +15,7 @@ from bqc.evaluate import (
     check_fold,
     iter_fold_data,
 )
-from bqc.negatives import build_spans
+from bqc.negatives import build_spans, token_occurrences
 from bqc.synth.registry import (
     ALL_FAMILIES,
     EVAL_FAMILY,
@@ -237,8 +238,76 @@ class FoldDataTest(unittest.TestCase):
             self.assertEqual(set(rep["span_removals"]),
                              {"empty", "drawn", "real_queries", "part_numbers", "sanity"})
 
+    def test_family_absent_from_a_test_fold_does_not_raise_and_reports_zero(self):
+        # Fixture folds: family A has no test sample in (0, 2) and (1, 0), yet it trains.
+        for key in ((0, 2), (1, 0)):
+            for arm in ARMS:
+                d = self.by_key[(*key, arm)]
+                self.assertEqual(d.test_families.count("A"), 0)
+                self.assertEqual(d.report["test"]["families"]["A"], 0)
+                self.assertGreater(d.report["train"]["families"]["A"], 0)
+                check_fold(d.train_y, d.train_families, d.test_y)
+
+    def test_groups_give_the_template_of_each_row(self):
+        folds = {(a.repeat, a.fold): a for a in assignments()}
+        for d in self.data:
+            a = folds[(d.repeat, d.fold)]
+            for side, groups, families, y, allowed in (
+                    ("train", d.train_groups, d.train_families, d.train_y, a.train_templates),
+                    ("test", d.test_groups, d.test_families, d.test_y, a.test_templates)):
+                self.assertEqual(len(groups), len(y))
+                for group, family, label in zip(groups, families, y):
+                    if label == 0:
+                        self.assertIsNone(group)
+                    else:
+                        self.assertEqual(group[0], family)
+                        if group[0] != EVAL_FAMILY:
+                            self.assertIn(group, allowed)
+                if side == "test":
+                    e_ids = {g for g in groups if g and g[0] == EVAL_FAMILY}
+                    self.assertEqual(
+                        e_ids, {(EVAL_FAMILY, t.template_id)
+                                for t in build_registry().templates(EVAL_FAMILY)})
+                    self.assertEqual(
+                        {g for g in groups if g and g[0] != EVAL_FAMILY}, set(a.test_templates))
+
     def test_report_is_json_serialisable(self):
         json.dumps([d.report for d in self.data])
+
+
+class SpanInputsTest(unittest.TestCase):
+    """build_spans must get every list the repeat needs, each with `seed + repeat`."""
+
+    def calls(self):
+        with mock.patch("bqc.evaluate.build_spans", wraps=build_spans) as spy:
+            run(part_numbers=["kx-9931"], sanity=["unrelated sanity query"])
+        return spy.call_args_list
+
+    def test_build_spans_receives_all_three_lists_and_the_repeat_seed(self):
+        calls = self.calls()
+        self.assertEqual(len(calls), CONFIG["repeats"])
+        for repeat, call in enumerate(calls):
+            products, n, seed, real, part_numbers, sanity = call.args
+            self.assertEqual((n, seed), (CONFIG["n"], SEED + repeat))
+            self.assertIs(products, PRODUCTS)
+            self.assertEqual(list(real), REAL)
+            self.assertEqual(list(part_numbers), ["kx-9931"])
+            self.assertEqual(list(sanity), ["unrelated sanity query"])
+
+
+class VocabularyCapTest(unittest.TestCase):
+    def test_primary_training_positives_draw_only_on_the_first_tokens(self):
+        cap = 6
+        data = [d for d in run(vocabulary_cap=cap) if d.arm == PRIMARY]
+        for d in data:
+            n_spans = d.train_y.index(1)
+            span_texts = d.train_texts[:n_spans]
+            allowed = set(token_occurrences(span_texts, cap=cap))
+            span_words = {w for t in span_texts for w in t.split()}
+            used = {w for t in d.train_texts[n_spans:] for w in t.split()} & span_words
+            self.assertTrue(used)
+            self.assertLessEqual(used, allowed)
+            self.assertGreater(len(span_words), len(allowed))
 
 
 class VocabularyTest(unittest.TestCase):

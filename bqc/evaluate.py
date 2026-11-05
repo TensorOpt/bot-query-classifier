@@ -12,7 +12,7 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 from bqc import SEED
 from bqc.negatives import DEFAULT_N, VOCABULARY_CAP, build_spans, token_occurrences
-from bqc.synth.audit import AuditError, check_exact, drop_exact
+from bqc.synth.audit import SanityCollision, screen_samples
 from bqc.synth.registry import (
     ALL_FAMILIES,
     EVAL_FAMILY,
@@ -51,6 +51,9 @@ class FoldData(NamedTuple):
     """Texts and labels for one (repeat, fold, arm); `report` is for the run JSON (8.1).
 
     `*_families` hold the family of each positive and None for a real query.
+    `*_groups` hold the `(family, template_id)` of each positive and None for a real
+    query: per-template recall (M3.T7) and inner-fold groups (M3.T13) use them, a real
+    query being its own group by position.
     `threshold_texts` are the training-side real queries in the primary arm and
     empty in the comparison arm (its threshold comes from an inner split, later).
     """
@@ -60,10 +63,12 @@ class FoldData(NamedTuple):
     train_texts: list[str]
     train_y: list[int]
     train_families: list[str | None]
+    train_groups: list[tuple[str, str] | None]
     threshold_texts: list[str]
     test_texts: list[str]
     test_y: list[int]
     test_families: list[str | None]
+    test_groups: list[tuple[str, str] | None]
     report: dict[str, Any]
 
 
@@ -137,17 +142,9 @@ def _render_screened(
     """
     samples, shortfall = registry.render(vocabulary, seed, templates, per_template)
     try:
-        check_exact((s.text for s in samples), [], sanity)
-    except AuditError:
+        kept, dropped = screen_samples(samples, drop_lists, sanity)
+    except SanityCollision:
         raise FoldError("a positive equals a sanity query (text withheld)") from None
-    survivors, dropped = drop_exact([s.text for s in samples], drop_lists)
-    kept = []
-    wanted = iter(survivors)
-    next_text = next(wanted, None)
-    for sample in samples:  # survivors are a subsequence of the texts, in order
-        if sample.text == next_text:
-            kept.append(sample)
-            next_text = next(wanted, None)
     return kept, {f"{f}/{t}": v for (f, t), v in shortfall.items()}, dropped
 
 
@@ -155,6 +152,7 @@ class _Side(NamedTuple):
     texts: list[str]
     y: list[int]
     families: list[str | None]
+    groups: list[tuple[str, str] | None]
     report: dict[str, Any]
 
 
@@ -174,6 +172,7 @@ def _side(
         list(negatives) + [s.text for s in samples],
         [0] * len(negatives) + [1] * len(samples),
         [None] * len(negatives) + [s.family for s in samples],
+        [None] * len(negatives) + [(s.family, s.template_id) for s in samples],
         {
             "negatives": len(negatives),
             "positives": len(samples),
@@ -244,9 +243,9 @@ def iter_fold_data(
                     sanity, drop)], per_template)
                 check_fold(train.y, train.families, test.y)
                 yield FoldData(
-                    repeat, fold.fold, arm, train.texts, train.y, train.families,
+                    repeat, fold.fold, arm, train.texts, train.y, train.families, train.groups,
                     list(fold.train_queries) if arm == PRIMARY else [],
-                    test.texts, test.y, test.families,
+                    test.texts, test.y, test.families, test.groups,
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
                      "span_removals": removals, "train": train.report, "test": test.report},
                 )

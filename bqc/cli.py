@@ -25,10 +25,10 @@ from bqc.synth.audit import (
     SANITY_THRESHOLD,
     WANDS_KEY,
     AuditError,
-    check_exact,
-    drop_exact,
+    SanityCollision,
     length_stats,
     near_duplicates,
+    screen_samples,
 )
 from bqc.synth.partnumbers import generate_part_numbers
 from bqc.synth.registry import (
@@ -110,23 +110,13 @@ def _screen(
 
     Returns the kept samples (original order) and the removals per list in `others`.
     """
-    for key in dict.fromkeys((s.family, s.template_id) for s in samples):
-        try:
-            check_exact((s.text for s in samples if (s.family, s.template_id) == key), [], sanity)
-        except AuditError:
-            raise GenerateError(
-                f"a positive of template {key[0]}/{key[1]} equals a sanity query "
-                "(text withheld); fix the template"
-            ) from None
-    survivors, counts = drop_exact([s.text for s in samples], others)
-    kept: list[Sample] = []
-    wanted = iter(survivors)
-    next_text = next(wanted, None)
-    for sample in samples:  # survivors are a subsequence of the texts, in order
-        if sample.text == next_text:
-            kept.append(sample)
-            next_text = next(wanted, None)
-    return kept, counts
+    try:
+        return screen_samples(samples, others, sanity)
+    except SanityCollision as e:
+        raise GenerateError(
+            f"a positive of template {e.family}/{e.template_id} equals a sanity query "
+            "(text withheld); fix the template"
+        ) from None
 
 
 def _template_report(

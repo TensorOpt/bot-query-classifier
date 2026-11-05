@@ -30,7 +30,7 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T5.
+**Next task:** M3.T13.
 
 ### Order constraints
 
@@ -1035,21 +1035,15 @@ Sign-off: pending.
   - Across a repeat, each real query is a test item exactly once.
   - A fake emitting `ConvergenceWarning` is captured, not raised (11.12).
 - **Depends on:** M3.T2, M3.T3, M3.T4.
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `cdc1fcb`. Real fold by `opus`, repeat 0 fold 0, real vectoriser and a
   scratch logistic regression: no overlap between the fit and any real query or the test side, raw or
   normalised; no E in the fit; scores `float64` before and after the runner; `t`'s FPR over the 384 is
   3/384; no warning from fit or score. Warnings are captured around `fit` only, which is what 11.12
   covers. `test_evaluate_imports_no_sklearn_estimator` passed at the skeleton stage, as a guard. `sonnet`
-  reports no scripted edits, apart from an empty no-op heredoc.
-- **Changes requested:**
-  1. `bqc/evaluate.py:342`, `tests/test_runner.py:178`: `FoldResult` copies `test_y`, `test_families` and
-     `test_groups` but not `test_texts`, which M3.T7 needs for the FP list and the one-word count (criteria
-     6, 7). Add `test_texts` in the same order and assert it in `test_test_side_rows_unchanged`, before
-     M3.T13 reuses the shape.
-  2. `tests/test_runner.py:168`: the comment says `t` is about 1.0, and the test has 0.7. Correct it.
-  3. `bqc/evaluate.py:8`: `import warnings` splits the `collections` imports. `bqc/evaluate.py:1`: the
-     module docstring doesn't mention thresholds or the runner. Correct both.
+  reports no scripted edits, apart from an empty no-op heredoc. Corrected in `d999ca9`, list in `9ab1b52`:
+  `FoldResult` now carries `test_texts`, and a comment, an import and the docstring are fixed. All 27
+  mutations are caught, and both new ones on `test_texts`.
 
 ### M3.T13: Nested runner (comparison arm)
 

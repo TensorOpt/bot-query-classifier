@@ -69,6 +69,10 @@ class NormaliseTest(unittest.TestCase):
             "", " ", "a\tb", "so​fa", "so\x00fa", "ＳＯＦＡ",
             "café 🛋 é", "Grey SOFA", "a" * 511, "a" * 513, "a" * 511 + " b",
             "ﬁ" * 300, "ab " * 400_000, "İ" * 600, "x y",
+            "e\u200b\u0301", "\u1100\u200b\u1161", "\u0391\u0342",
+            "a \u200b b", "\u2103", "x\u0301",
+            " " * 1000 + "sofa", "\u200b" * 1000 + "sofa",
+            "so\ufefffa", "a\nb", "a" * 512,
         ]
         for s in samples:
             once = normalise(s)

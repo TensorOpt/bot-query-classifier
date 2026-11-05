@@ -242,7 +242,7 @@ Sign-off: pending.
   (run `bqc.__main__` with `runpy` and `main` patched, because in-process tests of `main`
   can't see `__main__` dropping it).
 - **Depends on:** M1.T4.
-- **Status:** todo
+- **Status:** done
 
 ### M1.T6: Sanity set loader
 

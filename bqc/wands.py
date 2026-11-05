@@ -3,9 +3,16 @@
 import csv
 import hashlib
 import io
+import os
+import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
+URL = "https://raw.githubusercontent.com/wayfair/WANDS/main/dataset/query.csv"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+RAW_PATH = DATA_DIR / "raw" / "query.csv"
+CHECKSUMS_PATH = DATA_DIR / "CHECKSUMS"
 HEADER = ["query_id", "query", "query_class"]
 
 
@@ -16,6 +23,37 @@ class WandsQuery(NamedTuple):
 
 class WandsError(Exception):
     """The WANDS file or its checksum is missing, wrong or malformed."""
+
+
+def fetch(
+    target: Path,
+    checksums: Path,
+    url: str = URL,
+    opener: Callable = urllib.request.urlopen,
+) -> None:
+    """Download `url` to `target`, atomically, after checking the pinned hash.
+
+    The bytes go to `<target>.tmp` and are renamed onto `target` only if their SHA-256
+    equals the `checksums` line for `target.name`. On any failure raises WandsError and
+    leaves no temp file; an existing `target` is left untouched.
+    """
+    expected = _expected_hash(target, checksums)
+    tmp = target.with_name(target.name + ".tmp")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with opener(url) as response:
+            data = response.read()
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise WandsError(
+                f"hash mismatch for {url}: expected {expected}, got {actual}"
+            )
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    except OSError as e:  # URLError is an OSError
+        raise WandsError(f"cannot fetch {url} to {target}: {e}") from e
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def load_queries(path: Path, checksums: Path) -> list[WandsQuery]:

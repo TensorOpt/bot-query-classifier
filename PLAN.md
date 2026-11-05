@@ -517,7 +517,7 @@ Sign-off: pending.
   test `test_module_level_generate_uses_default_registry`: module-level `generate` returns the 480 and
   `REGISTRY.validate(ALL_FAMILIES)` passes.
 - **Depends on:** M2.T1.
-- **Status:** done
+- **Status:** validated
 
 ### M2.T7: Generation audit
 
@@ -525,6 +525,8 @@ Sign-off: pending.
   near-duplicates, and log length distributions.
 - **Design refs:** `DESIGN.md` `7482987`: 4 (rules 2 and 4), 8.6.1 (independence paragraph), 11.7.
 - **Files:** `bqc/synth/audit.py`, `tests/test_synth_audit.py`.
+- **Brief:** this task isn't template authoring. Code reads the sanity queries through the M1.T6
+  loader; the delegate has no need to view them, and reports give ids and counts, not query text.
 - **Acceptance criteria:**
   1. A positive identical, after `normalise()`, to a negative **or to a sanity query**
      raises an error naming both strings and which list was hit. This check is callable
@@ -580,6 +582,8 @@ Sign-off: pending.
 - **Design refs:** `DESIGN.md` `7482987`: 4, 8.3, 8.6.1, 10, 13.17.
 - **Files:** `bqc/report.py`, `bqc/cli.py`, `tests/test_report.py`,
   `tests/test_cli_generate.py`.
+- **Brief:** this task isn't template authoring. Code reads the sanity queries through the M1.T6
+  loader; the delegate has no need to view them, and reports give ids and counts, not query text.
 - **Acceptance criteria:**
   1. `python -m bqc generate` passes the vocabulary as token occurrences with repeats, in file
      order, from all 480 negatives (8.3), through one helper that M3.T3, M3.T10 and M5.T3 reuse,

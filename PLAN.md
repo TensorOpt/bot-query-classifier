@@ -465,7 +465,7 @@ Sign-off: pending.
   repeats, with one test using a repeated word (2.2, `0a29571`; M2.T1 is already validated).
   - Template 3 varies keys with fixed-form numbers; template 4 uses a fixed set of key names.
 - **Depends on:** M2.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T5: Family D, spam and promotional
 

@@ -20,7 +20,7 @@ from synth_stubs import build_family, build_registry, gibberish, letters
 ROOT = Path(__file__).resolve().parent.parent
 # Families whose templates are registered; each of M2.T2-T6 adds its family here
 # and imports its module in bqc/synth/__init__.py (M2.T1 criterion 8).
-IMPLEMENTED_FAMILIES = ("A", "B")
+IMPLEMENTED_FAMILIES = ("A", "B", "C")
 # Fold-sized, with the short WANDS words and number tokens that are vocabulary words.
 FOLD_VOCAB = [
     "".join(chr(97 + (i // 26 ** p) % 26) for p in range(3)) for i in range(384)
@@ -234,6 +234,23 @@ class RealTemplatesTest(unittest.TestCase):
             for t in REGISTRY.templates(family):
                 with self.subTest(template=(t.family, t.template_id)):
                     assert_template_rules(self, t)
+
+
+class RepeatedVocabularyTest(unittest.TestCase):
+    """The vocabulary is a list of token occurrences with repeats (2.2, 8.3)."""
+
+    def test_assert_template_rules_accepts_a_vocabulary_with_repeats(self):
+        vocab = ["sofa"] * 200 + ["rug"] * 100 + FOLD_VOCAB
+        t = Template("B", "ok", True,
+                     lambda rng, v: f"{rng.choice(v)} {rng.choice(v)}' {letters(rng)}")
+        assert_template_rules(self, t, vocab)
+
+    def test_real_templates_pass_with_a_repeated_word(self):
+        vocab = ["sofa"] * 50 + ["rug", "a", "a", "a"]
+        for family in IMPLEMENTED_FAMILIES:
+            for t in REGISTRY.templates(family):
+                with self.subTest(template=(t.family, t.template_id)):
+                    assert_template_rules(self, t, vocab)
 
 
 class GenerateTest(unittest.TestCase):

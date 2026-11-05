@@ -687,7 +687,12 @@ Sign-off: pending.
   kept; per-list counts, including a candidate in two lists and a list with no hits; empty inputs;
   input not mutated; removed text absent from the return value and from captured logs.
 - **Depends on:** M2.T7.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `480160f`. Process deviation (F1), the third: the failing run was
+  reported with its tracebacks collapsed, as "Ran 35 tests, FAILED (errors=11)", all
+  `NotImplementedError`. The count matches the 11 new tests. Minor, for the next edit of that file: the
+  `# Sets of 3-grams` comment at `tests/test_synth_audit.py:84` now sits above `DropExactTest`, not
+  `NearDuplicatesTest`.
 
 ### M2.T12: Product-name spans
 

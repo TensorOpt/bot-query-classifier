@@ -1036,6 +1036,20 @@ Sign-off: pending.
   - A fake emitting `ConvergenceWarning` is captured, not raised (11.12).
 - **Depends on:** M3.T2, M3.T3, M3.T4.
 - **Status:** done
+- **Status note:** implemented in `cdc1fcb`. Real fold by `opus`, repeat 0 fold 0, real vectoriser and a
+  scratch logistic regression: no overlap between the fit and any real query or the test side, raw or
+  normalised; no E in the fit; scores `float64` before and after the runner; `t`'s FPR over the 384 is
+  3/384; no warning from fit or score. Warnings are captured around `fit` only, which is what 11.12
+  covers. `test_evaluate_imports_no_sklearn_estimator` passed at the skeleton stage, as a guard. `sonnet`
+  reports no scripted edits, apart from an empty no-op heredoc.
+- **Changes requested:**
+  1. `bqc/evaluate.py:342`, `tests/test_runner.py:178`: `FoldResult` copies `test_y`, `test_families` and
+     `test_groups` but not `test_texts`, which M3.T7 needs for the FP list and the one-word count (criteria
+     6, 7). Add `test_texts` in the same order and assert it in `test_test_side_rows_unchanged`, before
+     M3.T13 reuses the shape.
+  2. `tests/test_runner.py:168`: the comment says `t` is about 1.0, and the test has 0.7. Correct it.
+  3. `bqc/evaluate.py:8`: `import warnings` splits the `collections` imports. `bqc/evaluate.py:1`: the
+     module docstring doesn't mention thresholds or the runner. Correct both.
 
 ### M3.T13: Nested runner (comparison arm)
 
@@ -1055,6 +1069,8 @@ Sign-off: pending.
      strings.
   5. Every score array, the out-of-fold threshold scores included, goes through the M3.T5 finite-score
      check (11.30).
+  6. The test-side scoring of `run_primary_fold` is shared, not repeated. Warnings from the inner fits and
+     the refit are captured per outer fold (11.12).
 - **Tests** (with the fake):
   - A `NaN` in the out-of-fold scores raises the 11.30 error, naming the score set.
   - No test-side or E text in any recorded fit input (11.9).
@@ -1095,7 +1111,11 @@ Sign-off: pending.
      `query.csv` (8.5).
   8. No metric feeds any selection. The test side's positive-to-negative ratio is stated next to
      precision and macro F1 (8.5).
+  9. Every flag comes from `is_illegitimate` (M3.T4, 11.19) applied to `FoldResult.test_scores` at that
+     result's `threshold`. M3.T5 returns scores and `t` without applying `t`, so this is where the rule
+     first decides a metric.
 - **Tests:**
+  - A test-side score exactly at `t` counts as flagged, in FPR and in recall (11.19).
   - Wilson against the 13.13 values, to 5 decimals: `0/480`, `5/480`, `1/96`, `0/30`,
     `480/480`, including `k = 0` and `k = n`.
   - Pooled total 15 over 3 repeats gives point 15/1440 and interval `[0.00446, 0.02415]`,
@@ -1125,7 +1145,8 @@ Sign-off: pending.
      vocabulary cap), and under each arm's own key (8.2): per-fold and pooled metrics, each fold's class
      and per-family counts, span removal and dropped-positive counts with no removed text, render
      shortfalls, FP list, per-family and per-template recall, `target_unmet` and warning fields, and
-     per-fold convergence warnings.
+     per-fold convergence warnings. The counts come from `FoldData.report`, once per (repeat, fold, arm);
+     `FoldResult` is per model and doesn't carry them.
   2. In the primary arm, it records the realised span length mix per repeat next to the target of 3.2
      (3.2, 13.20).
   3. Written by `write_report` imported from `bqc/report.py`; there is no second writer, and
@@ -1160,6 +1181,8 @@ Sign-off: pending.
   6. Off by default, enabled by a parameter (`--lofo` is wired in M4.T4).
   7. The fold check asserts the other three families and both classes, in the inner folds too (11.16).
   8. Every LOFO score array goes through the M3.T5 finite-score check, with its own score-set name (11.30).
+     The runners' score-set names are fixed at M3.T5, so this task, followed by M3.T14, adds the way to
+     label them.
 - **Tests** (with the fake), in both arms:
   - A `NaN` in LOFO scores raises the 11.30 error, naming the score set.
   - No F text in any fit input.

@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `99037a5`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.2 (commit `5654502`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -14,7 +14,7 @@ Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 | Milestone | Content | Tasks |
 |-----------|---------|-------|
 | M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening, product file | 8 |
-| M2 | Synthetic generators, audit, part-number set, render helper, product-name spans, `generate` | 12 |
+| M2 | Synthetic generators, audit, part-number set, render helper, product-name spans, `generate` | 13 |
 | M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check | 13 |
 | M4 | Real models, `evaluate` command, SMOTE experiment, paired comparisons | 7 |
 | M5 | HDBSCAN experiment (unchanged by v2.0) | 3 |
@@ -29,7 +29,8 @@ comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next tasks, in order:** M1.T8, M2.T10, M2.T11, M2.T12, M2.T8.
+**Next task:** M3.T1, the first of M3. M3 stays on hold until the embedding probe reports (Q16). M2.T13
+isn't on hold, and it must come before M6.T1.
 
 ### Order constraints
 
@@ -152,8 +153,7 @@ generators):
 
 Follow-ups:
 
-- **F1 (process):** every `sonnet` report from M2 on includes the failing-run output
-  (step 3 of TDD) verbatim or names the commit where it can be reproduced.
+- **F1 (process, wording from the M2 sign-off):** Every sonnet report pastes, unedited, the `python -m unittest -v` per-test lines and summary of the failing run (step 3 of TDD) and of the final passing run; tracebacks are included only for errors other than `NotImplementedError`. A report without them is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
 - **F2 (new task M1.T7, `fix(M1.T7)`, `bqc/wands.py`, for `opus` to add; may run in
   parallel with M2):** in `fetch`, (a) catch `http.client.HTTPException` alongside
   `OSError` so a truncated download (`IncompleteRead`) becomes `WandsError` as the
@@ -410,7 +410,20 @@ Follow-ups:
 
 ## M2: Synthetic generators
 
-Sign-off: pending.
+**Sign-off: 2026-11-05, `fable`, verdict POSITIVE** (audited at `468a367`; `DESIGN.md` `5654502`).
+
+- Suite: `.venv/bin/python -m unittest discover -s tests`, 336 tests, OK. `fable`'s own `generate` run
+  matched (13.20).
+- Accepted in the design: the realised span length mix (3.2) and the template shortfalls (section 4).
+
+Follow-ups:
+
+- **F1 (process):** Every sonnet report pastes, unedited, the `python -m unittest -v` per-test lines and summary of the failing run (step 3 of TDD) and of the final passing run; tracebacks are included only for errors other than `NotImplementedError`. A report without them is rejected by the coordinator before validation. Files are changed with the Edit tool; no `sed -i` or other in-place rewriting of source or test files.
+  Deviations at M1.T8, M2.T10, M2.T11, M2.T12 and M2.T8's `sed -i` are recorded without penalty.
+- **F5:** widen `B.script` and `B.traversal`; task M2.T13, before M6.T1, not a condition of M2.
+- **F6:** fix the misplaced comment at `tests/test_synth_audit.py:84`, and add a `token_occurrences` test
+  with a cap below the token count, so `bqc/negatives.py:132` is exercised. M3.T3 carries it, as the
+  first scheduled task to build on both modules.
 
 ### M2.T1: Sample type, registry and quotas
 
@@ -459,7 +472,7 @@ Sign-off: pending.
   - A family with 5 templates, with a quota other than 20, or with one hard-positive
     template raises (rule 6).
 - **Depends on:** M1.T1, M1.T3.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `2bbfe9e`, corrected in `bf8a6f5`. `opus`'s review lists are in
   `99ff23d` and `8878e13`.
 
@@ -494,7 +507,7 @@ Sign-off: pending.
   Also remove `test_is_part_number_query_is_gone` from `tests/test_synth_registry.py`: asserting
   that a function is absent has no future value.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `4265190`, corrected in `0e61958`. The correction also replaced example
   strings in `bqc/synth/registry.py`'s docstring and `tests/test_synth_registry.py`, as listed in
   `d7f95e3`. `opus`'s correction list is in `839923b`.
@@ -513,7 +526,7 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each pattern kind appears in the
   output; payload characters survive lowercasing.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `b21290a`, corrected in `92dc5da`. `opus`'s correction list is in
   `5915427`.
 
@@ -545,7 +558,7 @@ Sign-off: pending.
   repeats, with one test using a repeated word (2.2, `0a29571`; M2.T1 is already validated).
   - Template 3 varies keys with fixed-form numbers; template 4 uses a fixed set of key names.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** signed off
 
 ### M2.T5: Family D, spam and promotional
 
@@ -562,7 +575,7 @@ Sign-off: pending.
 - **Tests:** registry tests pass for this family; each kind appears in the output; the phone
   template's output never matches the part-number regex.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `c0dcd80`, corrected in `f78aca4`, `2dac920` and `496645e`. Review history
   is in git (`428b969`, `34c01e6`, `d29b06e`); it isn't part of any brief.
 
@@ -585,7 +598,7 @@ Sign-off: pending.
   test `test_module_level_generate_uses_default_registry`: module-level `generate` returns the 480 and
   `REGISTRY.validate(ALL_FAMILIES)` passes.
 - **Depends on:** M2.T1.
-- **Status:** validated
+- **Status:** signed off
 
 ### M2.T7: Generation audit
 
@@ -611,7 +624,7 @@ Sign-off: pending.
   - Jaccard exactly at the threshold (not reported) and just above it (reported), at 0.6 and at 0.5.
   - Strings shorter than 3 characters, such as family C's `a`, don't raise.
 - **Depends on:** M1.T3, M1.T6, M2.T1.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `411330a`, corrected in `968c199`. `opus`'s correction list is in `d6ef691`.
 
 ### M2.T9: Part-number strings
@@ -642,7 +655,7 @@ Sign-off: pending.
   - No `P` sample appears in the training output or in family E.
   - Collision with a WANDS fixture query, and with a sanity fixture query, raises.
 - **Depends on:** M2.T1, M2.T7.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `7b0678a`, corrected in `e3f2229`. `opus`'s correction list is in `3ef106b`.
 
 ### M2.T10: Render any number of positives per template
@@ -665,7 +678,7 @@ Sign-off: pending.
   - `assert_template_rules` runs on every real template with a fold-sized vocabulary that also holds
     product-span tokens: repeats, `''`, `.`, `-`, `&`, `w/`, `all-clad`, `qt`, `24''`.
 - **Depends on:** M2.T1, M2.T6.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `2a9d1ec`, corrected in `eebc638`. `opus`'s correction list is in
   `554d7da`. `ROUND_FACTOR` is 5: at 833 per template (the 20,000 sensitivity), `B.template` stays about
   9 short of what a larger cap reaches, which is negligible.
@@ -687,7 +700,7 @@ Sign-off: pending.
   kept; per-list counts, including a candidate in two lists and a list with no hits; empty inputs;
   input not mutated; removed text absent from the return value and from captured logs.
 - **Depends on:** M2.T7.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `480160f`. Process deviation (F1), the third: the failing run was
   reported with its tracebacks collapsed, as "Ran 35 tests, FAILED (errors=11)", all
   `NotImplementedError`. The count matches the 11 new tests. Minor, for the next edit of that file: the
@@ -732,7 +745,7 @@ Sign-off: pending.
   - Spans are contiguous words of their product, and `product_id` and `k` match.
   - `token_occurrences` keeps repeats and order; the cap keeps the first 10,000.
 - **Depends on:** M1.T8, M2.T11.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** implemented in `17ed0ac`. Real builds by `opus`: 5,000 spans take 0.34 s; 589,376
   distinct spans are available, so exhaustion can't fire on real data at 40,000 or on half the catalogue.
   Deduplication shifts the `k` shares a little: `k=1` 3.9-4.5% against 4.8%, `k=2` 20-21% against 22.7%,
@@ -803,7 +816,7 @@ Sign-off: pending.
     isn't, and the run still exits zero.
   - `generate` doesn't call `fetch`, and `fetch` doesn't call `generate`.
 - **Depends on:** M1.T4, M1.T5, M1.T8, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7, M2.T9, M2.T10, M2.T11, M2.T12.
-- **Status:** validated
+- **Status:** signed off
 - **Status note:** real run (5,000 spans, 35 s; `opus` re-ran it twice, identical JSON): 4,804 positives
   of A-D plus 120 of E; shortfalls only `B.script` (148, flagged as a finding, 60 of 208 distinct) and
   `B.traversal` (40, not flagged, 168 of 208); 0 outputs without a non-benign token; span removals drawn
@@ -815,14 +828,41 @@ Sign-off: pending.
   Implemented in `aeb7f41`, tests added in `ffc6694` and `0f635f0`. `opus`'s correction lists are in
   `a57249b` and `f23b5ef`.
 
+### M2.T13: Widen `B.script` and `B.traversal`
+
+- **Goal:** give the two short templates enough variety that family B reaches its quarter of the
+  positives (M2 sign-off, follow-up F5). Commit scope: `fix(M2.T3)`.
+- **Design refs:** `DESIGN.md` `5654502`: 2 (family B), 2.2, 4 (rules 4, 5, 6, 8), 13.20.
+- **Files:** `bqc/synth/payloads.py`, `tests/test_synth_payloads.py`.
+- **Brief:** the delegate's brief contains the family's section 2 row, sections 2.1, 2.2 and 4, and the
+  task entry; nothing from `data/sanity.csv`. The delegate doesn't open that file or
+  `tests/fixtures/sanity_*.csv` beyond what its task needs (section 4 rule 8). This is template
+  authoring: the delegate chooses the new forms and arguments, and doesn't add examples quoted from
+  anywhere else.
+- **Acceptance criteria:**
+  1. `B.script` and `B.traversal` have more forms or arguments, and each reaches 263 distinct strings
+     through `render` (`5,000 // 19`, a fold's training size) with no shortfall.
+  2. Family B keeps exactly its 6 templates, and every output keeps passing `assert_template_rules`.
+  3. A real `python -m bqc generate` exits 0 with no shortfall on either template. The task report gives
+     the positives total and only the count of sanity queries above 0.5.
+- **Tests:**
+  - Each of the two templates reaches 263 with no shortfall, on `SPAN_VOCAB`.
+  - Each new form appears in the output.
+  - Registry tests pass for this family.
+- **Depends on:** M2.T3, M2.T8, M2.T10.
+- **Status:** todo
+- **Status note:** M2's sign-off doesn't cover this task. It isn't a condition of M2, and it comes before
+  M6.T1. It can run while M3 is on hold.
+
 ---
 
 ## M3: Features and evaluation harness (fake `Scorer`)
 
 Sign-off: pending.
 
-Q16 (12.2) may change the features of M3.T1 and the adapters of M4 if the user decides for embeddings.
-This plan doesn't plan for that; it follows section 5 until the design changes.
+**On hold until the embedding probe reports (Q16, 12.2).** The answer may change the features of M3.T1 and
+the adapters of M4 if the user decides for embeddings. This plan doesn't plan for that; it follows
+section 5 until the design changes.
 
 ### M3.T1: Vectoriser factory
 
@@ -860,7 +900,8 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
   either arm.
 - **Design refs:** `DESIGN.md` `6cec6c6`: 3.2, 4 (rules 3 and 4), 8.1, 8.2, 8.3, 10 (seeds), 11.7, 11.8,
   11.16, 13.10, 13.14, 13.17, 13.19.
-- **Files:** `bqc/evaluate.py`, `tests/test_folds.py`.
+- **Files:** `bqc/evaluate.py`, `tests/test_folds.py`; for follow-up F6, `tests/test_synth_audit.py` and
+  `tests/test_negatives.py`.
 - **Acceptance criteria:**
   1. `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`,
      3 repeats, with both parameters overridable for tiny test configs.
@@ -907,6 +948,9 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
   - A collision with a sanity fixture query raises, on the training and the test side.
   - A collision with a training negative, a real query on either side or a P string is dropped and
     counted, with no text in what's returned.
+  - Follow-up F6: `token_occurrences` with a cap below the token count returns exactly the cap, so
+    `bqc/negatives.py:132` is exercised; and the `# Sets of 3-grams` comment at
+    `tests/test_synth_audit.py:84` moves back above `NearDuplicatesTest`.
 - **Depends on:** M2.T1, M2.T7, M2.T10, M2.T11, M2.T12. Real families aren't required by the tests,
   which use stub templates.
 - **Status:** todo
@@ -1034,7 +1078,7 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
 ### M3.T8: Run report JSON
 
 - **Goal:** build one reproducible JSON report per run, written through `write_report`.
-- **Design refs:** 8.1, 10, 11.12, 11.18.
+- **Design refs:** `DESIGN.md` `5654502`: 3.2, 8.1, 10, 11.12, 11.18, 13.20.
 - **Files:** `bqc/evaluate.py`, `tests/test_run_report.py`.
 - **Acceptance criteria:**
   1. Contains config (all parameters, seed, git commit hash, library versions, arms, negatives size,
@@ -1042,13 +1086,16 @@ This plan doesn't plan for that; it follows section 5 until the design changes.
      and per-family counts, span removal and dropped-positive counts with no removed text, render
      shortfalls, FP list, per-family and per-template recall, `target_unmet` and warning fields, and
      per-fold convergence warnings.
-  2. Written by `write_report` imported from `bqc/report.py`; there is no second writer, and
+  2. In the primary arm, it records the realised span length mix per repeat next to the target of 3.2
+     (3.2, 13.20).
+  3. Written by `write_report` imported from `bqc/report.py`; there is no second writer, and
      `bqc/evaluate.py` doesn't import `bqc/cli.py` (section 10).
 - **Tests:**
   - Two tiny-config runs give identical JSON apart from the timestamp (11.18).
   - Output round-trips through `json` (no numpy types left).
   - Fold class and per-family counts, span removal and dropped-positive counts and shortfalls are
     present, and a run with both arms has both keys in one file.
+  - A hand-checked span length mix sits next to the target; the comparison arm has none.
   - Removed span and positive text appears nowhere in the report.
 - **Depends on:** M2.T8, M3.T7, M3.T13.
 - **Status:** todo
@@ -1477,5 +1524,5 @@ Sign-off: pending.
      this is reported as a finding. The rework is `fable`'s decision (6.3, 8.6), and this
      task doesn't change generators.
 - **Tests:** none (no code). The determinism test of M4.T4 covers reproducibility.
-- **Depends on:** M2.T8, M4.T7, M4.T8, M5.T3.
+- **Depends on:** M2.T8, M2.T13, M4.T7, M4.T8, M5.T3.
 - **Status:** todo

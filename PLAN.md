@@ -666,6 +666,17 @@ Sign-off: pending.
     product-span tokens: repeats, `''`, `.`, `-`, `&`, `w/`, `all-clad`, `qt`, `24''`.
 - **Depends on:** M2.T1, M2.T6.
 - **Status:** done
+- **Changes requested (`opus`, 2026-11-05, on `2a9d1ec`; scope `fix(M2.T10)`):**
+  1. `bqc/synth/registry.py:19`: `ROUND_FACTOR = 2` reports false shortfalls. On a real 5,000-span
+     vocabulary at 209 per template, `B.template` falls 90 short at factor 2 and 0 at factor 20,
+     because its large form is one render in five; `B.traversal` shows 10 false. At 100 per template
+     (the test side), `B.template` shows 34 false. Factor 5 gives the same totals as factor 20 at 100,
+     209 and 263 per template. Set it to 5.
+  2. `tests/test_synth_registry.py`: add a test that a real low-yield template, `B.template`, reaches 209
+     with no shortfall. `test_real_templates_render_209_distinct_or_report_shortfall` only checks the sum.
+  3. `tests/test_synth_registry.py:443`: the `__main__` guard sits above the new tests. Move it to the
+     end of the file.
+  4. `tests/test_synth_registry.py:447`: `pairs` is never called. Remove it.
 
 ### M2.T11: Drop exact matches without showing them
 

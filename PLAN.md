@@ -218,7 +218,7 @@ Sign-off: pending.
   - a double-space query kept as is.
   Failure paths: wrong hash; missing file; wrong header.
 - **Depends on:** M1.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M1.T5: `bqc fetch` and the real checksum
 

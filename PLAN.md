@@ -180,17 +180,17 @@ Sign-off: pending.
   - Empty and whitespace-only input return `""` without raising (11.1).
   - `\t` and `\n` become a space: `a\tb` gives `a b`.
   - U+200B, U+FEFF and a non-whitespace control character such as `\x00` are removed,
-    joining their neighbours: `so​fa` gives `sofa`.
-  - Removal runs before collapsing: `a ​ b` gives `a b`.
-  - Removal runs before NFKC: `e​́` gives U+00E9 on the first call.
-  - Hangul jamo split by a format character: `ᄀ​ᅡ` gives U+AC00.
-  - The second NFKC: `Α͂` gives U+1FB6.
-  - Lowercasing runs after the first NFKC: `℃` gives `°c`.
-  - Full-width ASCII maps to ASCII; `x́`, emoji and non-ASCII letters are kept (11.4).
+    joining their neighbours: `so\u200bfa` gives `sofa`.
+  - Removal runs before collapsing: `a \u200b b` gives `a b`.
+  - Removal runs before NFKC: `e\u200b\u0301` gives U+00E9 on the first call.
+  - Hangul jamo split by a format character: `\u1100\u200b\u1161` gives U+AC00.
+  - The second NFKC: `\u0391\u0342` gives U+1FB6.
+  - Lowercasing runs after the first NFKC: `\u2103` gives `°c`.
+  - Full-width ASCII maps to ASCII; `x\u0301`, emoji and non-ASCII letters are kept (11.4).
   - Results of 511, 512 and 513 code points, and a 1 MB input, give at most 512 code points
     with no trailing space, including a cut that lands inside a space (11.2).
-  - An input that NFKC lengthens past 512 (`ﬁ` x 300) is truncated to 512.
-  - Truncation runs last: `" " * 1000 + "sofa"` and `"​" * 1000 + "sofa"` give `sofa`.
+  - An input that NFKC lengthens past 512 (`\ufb01` x 300) is truncated to 512.
+  - Truncation runs last: `" " * 1000 + "sofa"` and `"\u200b" * 1000 + "sofa"` give `sofa`.
   - Mixed case (11.5).
 - **Depends on:** M1.T2.
 - **Status:** done
@@ -202,13 +202,13 @@ Sign-off: pending.
   1. `bqc/preprocess.py:14-21`: implement the six steps in the order of criterion 1. Update the
      docstring at `bqc/preprocess.py:10-12`, which states the old order and an unqualified
      "idempotent".
-  2. `tests/test_preprocess.py:16`: add `a ​ b` -> `a b`, `e​́` -> U+00E9 and
-     `ᄀ​ᅡ` -> U+AC00. Keep `so​fa` -> `sofa`.
-  3. `tests/test_preprocess.py:24`: add `x́` -> unchanged. The file has no combining mark
+  2. `tests/test_preprocess.py:16`: add `a \u200b b` -> `a b`, `e\u200b\u0301` -> U+00E9 and
+     `\u1100\u200b\u1161` -> U+AC00. Keep `so\u200bfa` -> `sofa`.
+  3. `tests/test_preprocess.py:24`: add `x\u0301` -> unchanged. The file has no combining mark
      today, and its `é` characters are precomposed.
-  4. `tests/test_preprocess.py:28`: add `℃` -> `°c` and `Α͂` -> U+1FB6.
+  4. `tests/test_preprocess.py:28`: add `\u2103` -> `°c` and `\u0391\u0342` -> U+1FB6.
   5. `tests/test_preprocess.py:46`: add `" " * 1000 + "sofa"` -> `sofa` and
-     `"​" * 1000 + "sofa"` -> `sofa`.
+     `"\u200b" * 1000 + "sofa"` -> `sofa`.
   6. `tests/test_preprocess.py:51`: assert idempotence for every case in the test list, including
      items 2 to 5 and the existing single-code-point, full-width, tab/newline, 511/512/513 and
      1 MB cases. Sharing one case table is fine.

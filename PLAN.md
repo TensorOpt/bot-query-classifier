@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v1.2 (commit `ffb4de2`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v1.3 (commit `8888a74`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked` means the task can't start until `fable`
@@ -21,7 +21,7 @@ Test command, everywhere: `.venv/bin/python -m unittest discover -s tests`.
 | M6 | Full run on real data | 1 |
 
 Task ids stay stable: `M1.T7`, `M3.T6` and `M4.T5` were probe tasks, are retired, and
-aren't reused. One task is blocked: M3.T3 (see the task).
+aren't reused.
 
 ### Order constraints
 
@@ -38,13 +38,14 @@ No probe task is scheduled: section 13 already answers every question a task dep
 | Question | Finding | Used by |
 |----------|---------|---------|
 | `StratifiedGroupKFold` with 6 templates x 20 per family, outer and inner | 13.10 | M2.T1, M3.T3, M3.T5 |
+| Family presence per fold side, with the real seeds | 13.14 | M3.T3, M3.T5, M3.T7, M3.T9 |
 | `normalise()` order, idempotence and cost | 13.11 | M1.T3 |
 | `imblearn` `Pipeline` skips SMOTE at `predict_proba` time; callable `sampling_strategy` | 13.12 | M4.T6 |
 | Wilson reference values | 13.13 | M3.T7 |
 
-13.9 keeps two items. "No bot traffic in the 480 queries" can't be probed; its
+13.9 keeps one item. "No bot traffic in the 480 queries" can't be probed; its
 mitigation, reviewing the false-positive list by eye, is an acceptance criterion of
-M6.T1. The in-house Wilson function is tested in M3.T7 against the 13.13 values.
+M6.T1.
 
 ### File ownership
 
@@ -62,6 +63,7 @@ changes it.
 | `bqc/synth/__init__.py`, `bqc/synth/registry.py` | M2.T1 |
 | `bqc/synth/gibberish.py`, `payloads.py`, `enumeration.py`, `spam.py`, `offtopic.py` | M2.T2 to M2.T6 |
 | `bqc/synth/audit.py` | M2.T7 |
+| `bqc/report.py` | M2.T8 |
 | `bqc/features.py` | M3.T1 |
 | `bqc/models.py` | M3.T2 |
 | `bqc/evaluate.py` | M3.T3 |
@@ -388,23 +390,25 @@ Sign-off: pending.
 - **Goal:** generate the full-vocabulary positives from the command line and write the
   report for inspection by eye.
 - **Design refs:** 4, 10.
-- **Files:** `bqc/cli.py`, `tests/test_cli_generate.py`.
+- **Files:** `bqc/report.py`, `bqc/cli.py`, `tests/test_report.py`,
+  `tests/test_cli_generate.py`.
 - **Acceptance criteria:**
-  1. `python -m bqc generate` uses vocabulary from all 480 negatives and writes one JSON
-     report to `results/` holding the generated samples with their metadata, the per-family
-     length statistics next to WANDS', and the near-duplicate pairs (section 10). Family E
-     is included, tagged, because it is scored too.
-  2. A `write_report` helper in `bqc/cli.py` is the one home for writing results: it adds
-     the config fields of section 10, puts the config hash and timestamp in the file name,
-     and never overwrites. M3.T8 and M5.T3 reuse it.
+  1. `python -m bqc generate` uses vocabulary from all 480 negatives to generate the 480
+     training positives of A-D and the 120 of family E, each tagged with its family, and runs
+     the audit over all 600. It writes one JSON report to `results/` holding the samples with
+     their metadata, the per-family length statistics next to WANDS', and the near-duplicate
+     pairs (section 10).
+  2. `write_report()` in `bqc/report.py` is the one home for writing results: it adds the
+     config fields of section 10, names the file by config hash and timestamp, and refuses to
+     overwrite. M3.T8 and M5.T3 import it from there.
   3. An audit failure exits non-zero, and a missing `data/raw/query.csv` exits non-zero
      with a message pointing at `fetch`.
   4. The real run passes the audit, and its near-duplicate count goes in the task report.
 - **Tests:** on fixture paths:
   - Success writes a report with samples and `family`, `template_id`, `seed` on each.
   - Length statistics and near-duplicate pairs are present.
-  - A name collision doesn't overwrite.
-  - Collision with a negative exits non-zero.
+  - `write_report`: config fields present; a name collision doesn't overwrite.
+  - Collision with a negative exits non-zero, for a family E sample too.
   - Missing raw file exits non-zero.
 - **Depends on:** M1.T4, M1.T5, M2.T2, M2.T3, M2.T4, M2.T5, M2.T6, M2.T7.
 - **Status:** todo
@@ -449,7 +453,7 @@ Sign-off: pending.
 
 - **Goal:** build repeated grouped folds, and regenerate positives from each side's
   vocabulary.
-- **Design refs:** 4 (rule 4), 8.1, 8.3, 10 (seeds), 11.8, 11.16, 13.10.
+- **Design refs:** 4 (rule 4), 8.1, 8.3, 10 (seeds), 11.8, 11.16, 13.10, 13.14.
 - **Files:** `bqc/evaluate.py`, `tests/test_folds.py`.
 - **Acceptance criteria:**
   1. `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED + repeat_index)`,
@@ -460,30 +464,25 @@ Sign-off: pending.
   4. Family E is generated from test-fold vocabulary for scoring, and never appears in a
      training set.
   5. Every per-fold generation runs the exact-match check of M2.T7 (rule 4).
-  6. A single fold-check function raises if either class is missing from any training or
-     test fold, or if any training family (A-D) is missing from a training fold (11.16).
-     M3.T5 and M3.T9 use it too.
-  7. Each fold's class counts are returned for the run JSON (8.1). The positive share isn't
-     assumed to be 0.50: about 0.45-0.51 is expected (13.10).
+  6. A single fold-check function raises if either class or any training family (A-D) is
+     missing from a training fold, or if either class is missing from a test fold. Families
+     are never asserted on the test side (8.1, 11.16). M3.T5 and M3.T9 use it too.
+  7. Each fold's class and per-family counts are returned for the run JSON (8.1). The positive
+     share isn't assumed to be 0.50: about 0.45-0.51 is expected (13.10).
 - **Tests:**
   - No group on both sides of a fold (11.8).
   - A sentinel word present only in a test-fold negative never appears in a training
     positive, and the reverse (8.3).
   - No E sample is in a training set.
   - Same seed gives the same folds; different repeats give different folds.
-  - A missing class raises (11.16).
-  - **A training fold missing a family raises (11.16).**
-  - A test fold missing a family doesn't raise (see the blocking point below).
+  - A class missing from a training or a test fold raises (11.16).
+  - A training fold missing a family raises (11.16).
+  - A family present in training but absent from a test fold doesn't raise, and its test count
+    is returned as 0 (8.1, 13.14).
   - A per-fold collision with a negative raises (rule 4).
 - **Depends on:** M2.T1, M2.T7. Real families aren't required, because the tests use stub
   templates.
-- **Status:** blocked. 8.1 says the runner asserts all four training families on "both
-  sides" of a fold; 11.16 says every outer and inner *training* fold. They can't both
-  stand: with 6 templates x 20, a training family is absent from the test side in 8 of 15
-  outer folds with the real seeds (planning check, 2026-11-05, scikit-learn 1.9.1; 369 of
-  500 over 100 other seeds), so the 8.1 wording would make the real run raise. 13.10
-  measured only the training side. This task is written to 11.16, and is unblocked once
-  `fable` confirms that wording and corrects 8.1.
+- **Status:** todo
 
 ### M3.T4: Threshold selection
 
@@ -540,7 +539,7 @@ Sign-off: pending.
 ### M3.T7: Metrics and aggregation
 
 - **Goal:** compute every number in 8.5 from fold results.
-- **Design refs:** 8.4, 8.5, 13.9, 13.13.
+- **Design refs:** 8.1, 8.4, 8.5, 13.13, 13.14.
 - **Files:** `bqc/evaluate.py`, `tests/test_metrics.py`.
 - **Acceptance criteria:**
   1. Per repeat and pooled: headline recall and achieved FPR, Wilson 95% CI (standard
@@ -551,19 +550,26 @@ Sign-off: pending.
      `k = total / 3` at `n = 480`; `k` need not be an integer. Never `n = 1440`. The same
      rule applies to a recall interval, if one is reported. (`n` and the repeat count come
      from the run, so tiny configs work.)
-  3. Per-family recall is pooled over a repeat's folds. A family can be absent from a given
-     test fold (the planning check in M3.T3), which must not raise or divide by zero. E is in
-     its own row, marked evaluation-only, and never pooled into headline recall.
-  4. The full list of false positives, with their query text.
-  5. No metric feeds any selection.
+  3. Per-family recall is caught / total, pooled over all test folds of a repeat and over all
+     repeats, never a mean of per-fold values (8.5). For A-D that is 120 per repeat and 360
+     overall. E is scored in every fold, so its total is 120 per fold. E is in its own row,
+     marked evaluation-only, and never pooled into headline recall.
+  4. The per-fold breakdown records each family's test count and caught count, with recall
+     `null` where the count is 0. A family with zero test samples in a fold is normal (13.14)
+     and doesn't raise or divide by zero.
+  5. The full list of false positives, with their query text.
+  6. No metric feeds any selection.
 - **Tests:**
   - Wilson against the 13.13 values, to 5 decimals: `0/480`, `5/480`, `1/96`, `0/30`,
     `480/480`, including `k = 0` and `k = n`.
   - Pooled total 15 over 3 repeats gives point 15/1440 and interval `[0.00446, 0.02415]`,
     not the `15/1440` row. Pooled total 0 gives upper bound 0.00794.
   - Non-integer `k` (total 16) gives bounds between those of `5/480` and `6/480`.
-  - Hand-computed confusion matrix and per-family recall, including a family absent from
-    one test fold.
+  - Hand-computed confusion matrix and pooled per-family recall.
+  - A fold where a family has zero test samples: count 0, caught 0, recall `null`, and the
+    pooled recall is unaffected by it.
+  - Folds of unequal family counts give caught / total, which differs from the mean of the
+    per-fold recalls.
   - Adding E samples leaves headline recall unchanged.
   - The FP list holds exactly the expected queries.
   - A single-class input to ROC-AUC raises rather than reporting a number.
@@ -574,16 +580,17 @@ Sign-off: pending.
 
 - **Goal:** build one reproducible JSON report per run, written through `write_report`.
 - **Design refs:** 8.1, 10, 11.12, 11.18.
-- **Files:** `bqc/evaluate.py`, `tests/test_report.py`.
+- **Files:** `bqc/evaluate.py`, `tests/test_run_report.py`.
 - **Acceptance criteria:**
   1. Contains config (all parameters, seed, git commit hash, library versions), per-fold
-     and pooled metrics, each fold's class counts, FP list, per-family recall, `target_unmet`
-     and warning fields, and per-fold convergence warnings.
-  2. Written through the `write_report` helper of M2.T8; there is no second writer.
+     and pooled metrics, each fold's class and per-family counts, FP list, per-family recall,
+     `target_unmet` and warning fields, and per-fold convergence warnings.
+  2. Written by `write_report` imported from `bqc/report.py`; there is no second writer, and
+     `bqc/evaluate.py` doesn't import `bqc/cli.py` (section 10).
 - **Tests:**
   - Two tiny-config runs give identical JSON apart from the timestamp (11.18).
   - Output round-trips through `json` (no numpy types left).
-  - Fold class counts are present.
+  - Fold class and per-family counts are present.
 - **Depends on:** M2.T8, M3.T7.
 - **Status:** todo
 
@@ -613,12 +620,15 @@ Sign-off: pending.
 ### M3.T10: Final models
 
 - **Goal:** fit one model per configuration on all 960 samples, and pickle it.
-- **Design refs:** 8.7, 10.
+- **Design refs:** 8.2, 8.7, 10.
 - **Files:** `bqc/evaluate.py`, `tests/test_final_model.py`.
 - **Acceptance criteria:**
-  1. The threshold comes from a 5-fold out-of-fold pass on all data, reusing the M3.T5 inner
-     procedure with `random_state=SEED`; the model is then fitted on all of it.
-  2. Positives use vocabulary from all negatives, and family E is excluded.
+  1. The threshold comes from the M3.T5 inner procedure applied to all 960 rows, as 8.7 names
+     it: `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEED)` with the groups of
+     8.1, out-of-fold scores, then the threshold rule of 8.4. The model is then fitted on all
+     960.
+  2. Positives are generated once from the vocabulary of all 480 negatives, and family E is
+     excluded.
   3. The pickle goes to `results/` and holds the scorer and threshold, and loading it
      reproduces the same scores.
 - **Tests** (with the fake): 960-equivalent fit input with no E; pickle round trip gives
@@ -756,16 +766,18 @@ Sign-off: pending.
   2. Both arms come from one fold construction, so folds, seeds and generated positives are
      identical.
   3. A `smote_comparison` section gives, for MLP and LR separately: the per-fold paired
-     differences in headline recall (SMOTE minus no-SMOTE, 15 values), their mean and standard
-     deviation, the number of folds where SMOTE wins, and the paired difference in achieved
+     differences in headline recall (SMOTE minus no-SMOTE, 15 values), their mean and sample
+     standard deviation (`ddof=1`, `statistics.stdev`), the number of folds where SMOTE wins, and the paired difference in achieved
      FPR.
   4. `smote_justified` per model is true only if the mean paired recall difference is positive
      and exceeds twice `sd / sqrt(15)`, and the mean paired FPR difference isn't positive.
   5. Without `--smote` there is no SMOTE arm and no comparison section.
-  6. Final models and sanity scoring cover the SMOTE configurations too (8.7).
+  6. Final models and sanity scoring cover the SMOTE configurations too (8.7). They pickle
+     because the `sampling_strategy` callable of M4.T6 is a module-level function (7.1).
 - **Tests** (with fakes):
   - Identical folds and texts across arms.
-  - Hand-computed paired differences, mean, sd and win count.
+  - Hand-computed paired differences, mean, sample sd and win count; a case where `ddof=0`
+    would flip `smote_justified`.
   - `smote_justified`: true case; mean exactly at the 2-standard-error bound (false); positive
     mean with positive FPR difference (false); zero FPR difference (allowed); negative mean
     (false).
@@ -832,10 +844,11 @@ Sign-off: pending.
 
 - **Goal:** run the experiment from the command line and write its JSON.
 - **Design refs:** 9, 10.
-- **Files:** `bqc/cli.py`, `tests/test_cli_cluster.py`.
+- **Files:** `bqc/cluster.py`, `bqc/cli.py`, `tests/test_cli_cluster.py`.
 - **Acceptance criteria:** `python -m bqc cluster` builds the 960 strings (WANDS plus positives
-  from all-negative vocabulary, no family E) and writes a separate JSON file through
-  `write_report`. It shares no state with `evaluate`. A missing raw file exits non-zero with a
+  from all-negative vocabulary, no family E) and writes a separate JSON file with
+  `write_report` imported from `bqc/report.py`; `bqc/cluster.py` doesn't import `bqc/cli.py`
+  (section 10). It shares no state with `evaluate`. A missing raw file exits non-zero with a
   message pointing at `fetch`.
 - **Tests:** tiny config end to end; report round-trips through `json`; missing raw file;
   two runs identical apart from the timestamp (11.18).

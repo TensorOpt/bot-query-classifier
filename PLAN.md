@@ -400,8 +400,14 @@ Follow-ups:
   In `tests/test_fetch.py`: the command fetches both files; a failure on the second returns non-zero
   and leaves the first; nothing downloads.
 - **Depends on:** M1.T7.
-- **Status:** done
-- **Status note:** M1's sign-off doesn't cover this task. `fable` reviews it as for M1.T7.
+- **Status:** validated
+- **Status note:** implemented in `1b02ff3`. Criterion 6, real load re-run by `opus` on a copy with the
+  pinned hash at `data/raw/product.csv`: 42,994 rows, 42,577 distinct names, no error, 0.85 s, peak RSS
+  577.5 MB. `python -m bqc fetch` hasn't completed a real `product.csv` download: the sandbox was too
+  slow, so only stubbed tests cover criterion 1, and the URL answers with the expected
+  90,621,131 bytes. M6.T1 runs it from a clean clone. Process deviation: the failing run was reported
+  as a summary, not verbatim (F1). M1's sign-off doesn't cover this task; `fable` reviews it as for
+  M1.T7.
 
 ---
 

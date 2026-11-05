@@ -850,7 +850,7 @@ Follow-ups:
   - Each new form appears in the output.
   - Registry tests pass for this family.
 - **Depends on:** M2.T3, M2.T8, M2.T10.
-- **Status:** todo
+- **Status:** done
 - **Status note:** M2's sign-off doesn't cover this task. It isn't a condition of M2, and it comes before
   M6.T1. It can run while M3 is on hold.
 

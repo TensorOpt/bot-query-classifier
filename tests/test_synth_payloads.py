@@ -2,15 +2,17 @@ import random
 import re
 import unittest
 
-from bqc.synth.registry import REGISTRY, TEMPLATES_PER_FAMILY
-from test_synth_registry import FOLD_VOCAB, renders
+from bqc.synth.registry import REGISTRY, TEMPLATES_PER_FAMILY, render
+from test_synth_registry import FOLD_VOCAB, SPAN_VOCAB, renders
 
 SEEDS = 150
 TEMPLATES = {t.template_id: t for t in REGISTRY.templates("B")}
 SQL_RE = re.compile(r"union select|\bor\b.*=|sleep\(|--|;")
-SCRIPT_RE = re.compile(r"<script>.*</script>|onerror=|onload=|javascript:")
+SCRIPT_RE = re.compile(
+    r"<script>.*</script>|onerror=|onload=|onfocus=|onmouseover=|ontoggle=|javascript:")
 TEMPLATE_RE = re.compile(r"\$\{.+\}|\{\{.+\}\}|<%=.+%>|#\{.+\}|\{% print .+ %\}")
-TRAVERSAL_RE = re.compile(r"(\.\./|\.\.\\|\.\.%2f|\.\.\.\.//)")
+TRAVERSAL_RE = re.compile(r"(\.\./|\.\.\\|\.\.%2f|\.\.\.\.//|%2e%2e%2f|\.\.;/)")
+FOLD_SIZE = 5000 // 19  # a fold's per-template training size
 NOSQL_RE = re.compile(r"\{\"\$(gt|ne|regex|where)\"|\[\$(gt|ne|regex)\]")
 
 
@@ -81,6 +83,29 @@ class PatternKindTest(unittest.TestCase):
                 self.assertEqual(s, s.lower())
                 seen |= set(s) & specials
             self.assertTrue(seen, tid)
+
+
+class WidenedFormsTest(unittest.TestCase):
+    """M2.T13: `script` and `traversal` reach a fold's size with no shortfall."""
+
+    def test_script_and_traversal_reach_fold_size_with_no_shortfall(self):
+        for tid in ("script", "traversal"):
+            samples, short = render(SPAN_VOCAB, 3, [("B", tid)], FOLD_SIZE)
+            distinct = len({s.text for s in samples})
+            self.assertEqual(short[("B", tid)], 0, f"{tid}: distinct {distinct}")
+            self.assertEqual(distinct, FOLD_SIZE, tid)
+
+    def test_script_new_forms_appear(self):
+        outs = outputs("script", n=600)
+        for marker in ("prompt(", "confirm(", "<iframe", "<details", "<body", "<input",
+                       "onfocus=", "onmouseover=", "ontoggle="):
+            self.assertTrue(any(marker in s for s in outs), marker)
+
+    def test_traversal_new_forms_appear(self):
+        outs = outputs("traversal", n=600)
+        for marker in ("%2e%2e%2f", "..;/", "file:///", "%00", "/../", "win.ini",
+                       "proc/self/cmdline", "etc/issue"):
+            self.assertTrue(any(marker in s for s in outs), marker)
 
 
 class HardPositiveTest(unittest.TestCase):

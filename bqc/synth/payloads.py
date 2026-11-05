@@ -15,10 +15,12 @@ FAMILY = "B"
 _TABLES = ("accounts", "orders", "customers", "admin", "products", "sessions")
 _COLUMNS = ("username", "password", "email", "id", "token")
 _TRAVERSAL_TARGETS = ("etc/passwd", "etc/shadow", "etc/hosts", "proc/self/environ",
-                      "windows/win.ini", "boot.ini", "var/log/auth.log")
+                      "windows/win.ini", "boot.ini", "var/log/auth.log",
+                      "proc/self/cmdline", "etc/issue", "etc/group", "etc/hostname")
 _ARITHMETIC = ("7*7", "7*'7'", "3*3", "9*9", "13*37", "1337*2")
 _XSS_ARGS = ("2", "9", "42", "7331", "document.cookie", "document.domain", "'xss'",
              "'x'", "string.fromcharcode(88)", "this.id", "top.location", "0")
+_XSS_FUNCTIONS = ("alert", "prompt", "confirm")
 
 
 def _words(rng: random.Random, vocabulary: Sequence[str]) -> str:
@@ -65,13 +67,19 @@ def _sql(rng: random.Random, vocabulary: Sequence[str]) -> str:
 
 def _script(rng: random.Random, vocabulary: Sequence[str]) -> str:
     """Cross-site scripting payloads: script tags, event handlers and javascript: URLs."""
-    arg = rng.choice(_XSS_ARGS)
+    call = f"{rng.choice(_XSS_FUNCTIONS)}({rng.choice(_XSS_ARGS)})"
     return rng.choice((
-        f"<script>alert({arg})</script>",
-        f"<img src=x onerror=alert({arg})>",
-        f"<svg onload=alert({arg})>",
-        f"\"><script>alert({arg})</script>",
-        "javascript:alert(" + arg + ")",
+        f"<script>{call}</script>",
+        f"<img src=x onerror={call}>",
+        f"<svg onload={call}>",
+        f"\"><script>{call}</script>",
+        f"javascript:{call}",
+        f"<body onload={call}>",
+        f"<input autofocus onfocus={call}>",
+        f"<iframe src=javascript:{call}>",
+        f"<details open ontoggle={call}>",
+        f"<a href=# onmouseover={call}>",
+        f"'><img src=x onerror={call}>",
     ))
 
 
@@ -90,10 +98,12 @@ def _template(rng: random.Random, vocabulary: Sequence[str]) -> str:
 
 def _traversal(rng: random.Random, vocabulary: Sequence[str]) -> str:
     """Path traversal: repeated parent-directory steps (several encodings) to a system file."""
-    depth = rng.randint(3, 8)
-    up = rng.choice(("../", "..\\", "..%2f", "....//"))
+    depth = rng.randint(3, 12)
+    up = rng.choice(("../", "..\\", "..%2f", "....//", "%2e%2e%2f", "..;/"))
     target = rng.choice(_TRAVERSAL_TARGETS)
-    return up * depth + target
+    start = rng.choice(("", "", "/", "file:///", "/var/www/"))
+    end = rng.choice(("", "", "%00", "%00.jpg"))
+    return start + up * depth + target + end
 
 
 def _hard_sql(rng: random.Random, vocabulary: Sequence[str]) -> str:

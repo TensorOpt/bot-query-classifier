@@ -574,7 +574,7 @@ Sign-off: pending.
   - No `P` sample appears in the training output or in family E.
   - Collision with a WANDS fixture query, and with a sanity fixture query, raises.
 - **Depends on:** M2.T1, M2.T7.
-- **Status:** todo
+- **Status:** done
 
 ### M2.T8: `bqc generate`
 

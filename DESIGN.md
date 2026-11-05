@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v1.4, 2026-11-05. The user answered Q1-Q11 (12.1);
+Owner: `fable`. Status: v1.5, 2026-11-05. The user answered Q1-Q11 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
 waits for the diagnostic of 8.6 item 4 and blocks nothing before M6.
@@ -58,7 +58,7 @@ synthetic generator. The taxonomy below was accepted by the user on 2026-11-05
 |----|--------|--------|
 | E | off-topic natural language (`what is the capital of france`, chat/LLM prompts, code snippets) | **Evaluation-only** (decided, Q1). Generated like A-D (own module, own `family` tag) but excluded from every training fold; scored by the fold models and reported as a per-family recall number in 8.5. A real customer typing `drudge report` (which is in WANDS, see 13.1) still gets served, which is why E is not a training family until we have seen what the model does with it (14). |
 | F | non-English shopping queries | **Legitimate**, not a positive family. WANDS has no non-ASCII query (13.1), so the model cannot learn this; accepted as a known v1 limitation (Q6), see 11.6. |
-| - | off-domain shopping queries (`iphone 11 case`) | **No label in v1**; excluded from every data set. See 2.1 and Q10. |
+| - | off-domain shopping queries (`iphone 11 case`) | **No label in v1**; excluded from every data set. See 2.1 (decided by the user, Q10 in 12.1). |
 | - | typos and misspellings | **Legitimate**. WANDS contains `desk for kids tjat ate 10 year old`, `trinaic towel rod`, `cool desins`. Generators must not produce "typo" positives. |
 | - | single-word queries | **Legitimate**. WANDS has 23 one-word queries incl. `zen`, `owl`, `gold`, `canadian`. Family C "dictionary walk" positives are 1-2 character strings only, never real words. |
 | - | SKUs, part numbers, model numbers (`sku000123`, `w003096809`, `wf-2049x desk`) | **Legitimate** (user decision 2026-11-05, Q11: "SKUs should remain legit, customers might search by part numbers"). Removed from family C. WANDS itself contains `ines shag rug w003096809` (13.15). No generator may emit a part-number shape as a whole query (2.2). |
@@ -68,6 +68,32 @@ fingerprints (character classes, punctuation patterns, structure) that TF-IDF ov
 character n-grams can see. E is a judgement call about product policy, not about
 bots, and is the family most likely to produce false positives on unusual but real
 queries.
+
+### 2.1 Off-domain shopping queries
+
+A query such as `iphone 11 case` or `running shoes size 10` is a well-formed product
+search for something a furniture and home-goods shop does not sell. The user ruled
+(Q7) that such queries are **not** to be mixed in as legitimate; the user did not
+say they are illegitimate, and this design does not invent that label.
+
+**Decision:** off-domain shopping queries are **outside both classes in v1**. They
+are not generated as a positive family, they are not added as negatives, and the
+sanity set (8.6) must not contain any. They are distinct from family E: E is text
+that is *not a product search at all* (questions, chat, code), whereas an off-domain
+query is a product search for the wrong shop. Whether a shop should discard
+off-domain searches is a product-policy question, not a bot-detection one, and is
+was confirmed by the user on 2026-11-05 (12.1, Q10).
+
+**Consequence to record:** the model's behaviour on off-domain queries is undefined
+and unmeasured in v1. WANDS itself contains a few queries at the edge of the domain
+(`printers`, `dumbbells`, `drudge report`); they stay legitimate because Wayfair
+served them to real customers (section 3).
+
+**Hard positives (required in every family).** Each family must include a sub-generator
+that *wraps real product vocabulary* (sampled from the training-fold WANDS queries,
+see 8.3) in the illegitimate pattern, e.g. `leather sofa' union select`, `cheap area
+rug http://x.co`, `accent chair asdfgh`. Otherwise the model learns "furniture words
+present = legitimate", which is a dataset artefact, not a bot signal.
 
 ### 2.2 Part numbers vs gibberish: the boundary for template authors
 
@@ -83,15 +109,23 @@ digits:
   Regex, applied to a whole token after `normalise()`:
   `^[a-z]{0,4}[-/]?\d{3,}[a-z0-9]{0,2}$`.
 - **Gibberish with digits** (family A) interleaves letters and digits in four or
-  more blocks (`xk9qz7vplm` is `xk|9|qz|7|vplm`), or combines a digit run with a
-  keyboard-mash or repeated-character token in the same string.
+  more blocks (`xk9qz7vplm` is `xk|9|qz|7|vplm`). The other illegitimate form in
+  the sanity set, a keyboard mash next to a bare digit run (`qqqqwwwweeee
+  8374651`), is **not** a generator form: its digit token is one block and would
+  fail the rule below, and a bare digit run next to anything is too close to a
+  part number for a template to be trusted with. The sanity set covers that form;
+  family A does not generate it (decided 2026-11-05; the rule below holds, the
+  description that previously allowed the form was the contradiction).
 
 **Decision:** no template in any family may produce a query that, as a whole, is a
 single token matching the part-number regex, nor a bare number. Family A templates
-that use digits must produce at least four letter/digit blocks in every digit-
-bearing token. The registry test asserts both over every template's output.
-Family C keeps its dictionary-walk template (1-2 character strings), which the regex
-does not match because it requires 3 digits.
+that use digits must produce at least four letter/digit blocks in **every**
+digit-bearing token, and family A's hard-positive templates combine vocabulary
+words with gibberish tokens only, never with digits. The regex and the block-count
+function have one home, `bqc/synth/registry.py`, and the registry test asserts
+both over every template's output in every family. Family C keeps its
+dictionary-walk template (1-2 character strings), which the regex does not match
+because it requires 3 digits.
 
 **Family C after the change (section 4 rule 6 still holds: six templates, at least
 two hard-positive):** (1) dictionary walks; (2) URL paths; (3) generic query-string
@@ -100,32 +134,6 @@ names; (5) hard-positive: product words plus a query-string fragment
 (`area rug&page=2`); (6) hard-positive: a search-URL form around product words
 (`/search?q=accent+chair`). Templates 3 and 4 are distinct in what they vary:
 3 varies the keys, 4 varies the numbers.
-
-### 2.1 Off-domain shopping queries
-
-A query such as `iphone 11 case` or `running shoes size 10` is a well-formed product
-search for something a furniture and home-goods shop does not sell. The user ruled
-(Q7) that such queries are **not** to be mixed in as legitimate; the user did not
-say they are illegitimate, and this design does not invent that label.
-
-**Decision:** off-domain shopping queries are **outside both classes in v1**. They
-are not generated as a positive family, they are not added as negatives, and the
-sanity set (8.6) must not contain any. They are distinct from family E: E is text
-that is *not a product search at all* (questions, chat, code), whereas an off-domain
-query is a product search for the wrong shop. Whether a shop should discard
-off-domain searches is a product-policy question, not a bot-detection one, and is
-raised as Q10 with a recommendation.
-
-**Consequence to record:** the model's behaviour on off-domain queries is undefined
-and unmeasured in v1. WANDS itself contains a few queries at the edge of the domain
-(`printers`, `dumbbells`, `drudge report`); they stay legitimate because Wayfair
-served them to real customers (section 3).
-
-**Hard positives (required in every family).** Each family must include a sub-generator
-that *wraps real product vocabulary* (sampled from the training-fold WANDS queries,
-see 8.3) in the illegitimate pattern, e.g. `leather sofa' union select`, `cheap area
-rug http://x.co`, `accent chair asdfgh`. Otherwise the model learns "furniture words
-present = legitimate", which is a dataset artefact, not a bot signal.
 
 ## 3. Data: WANDS (verified 2026-11-05)
 
@@ -195,7 +203,8 @@ anti-inflation measures in section 8 possible.
    every positive and every negative; any pair above 0.6 is reported, and the
    generation fails if any positive is identical, after `normalise()` (section 5),
    to a negative **or to a sanity-set query** (8.6.1). The exact-match check runs
-   on every generation, including the per-fold ones (8.3), against both lists; the
+   on every generation without exception: `generate`, the per-fold ones (8.3), the
+   final-model fit (8.7) and the clustering experiment (9), against both lists; the
    Jaccard report runs only in `bqc generate` (section 10) and covers negatives
    only. The sanity half of the check is what keeps the sanity set outside the
    generators by construction (added 2026-11-05, see 8.6.1): if a template can emit
@@ -474,7 +483,7 @@ for any selection. Selection (threshold) uses only FPR on inner validation data.
 ### 8.6 Anti-inflation: how would we know the model generalises?
 
 No real bot data exists, so the standard CV above measures "can the model separate
-WANDS from *these generators*". Three additional checks make that limitation visible:
+WANDS from *these generators*". Four additional checks make that limitation visible:
 
 1. **Leave-one-family-out (LOFO).** For each training family F in A-D (E is never
    trained on, so it has no LOFO row; its evaluation-only recall in 8.5 already is
@@ -504,6 +513,10 @@ WANDS from *these generators*". Three additional checks make that limitation vis
    prefix-digits-suffix like `wf-2049x`, and product words from the full WANDS
    vocabulary plus a part number like `ines shag rug w003096809`), never used in any
    fit, threshold or audit-as-positive, and scores them with each final model (8.7).
+   The P strings must pass the same exact-match check as positives (no P string
+   equals a WANDS or sanity query after `normalise()`), so a flagged P string is
+   never a memorised one; `bqc generate` writes them in its report under their own
+   key, separate from the positives (section 10).
    Reported per model: the **fraction flagged at the model's threshold** (the
    expected FPR on such queries), with min/median/max score. The three part-number
    rows of the sanity set give a second, human-labelled look at the same thing.
@@ -577,6 +590,9 @@ rejecting those would make the user re-edit for nothing). The run JSON records
 `"sanity": {"status": "skipped", "unlabelled": n}` when skipping. Blank
 is never treated as a class and a partially labelled file is not scored (a subset
 chosen by the labeller could be biased). Everything else in the run proceeds.
+The user's labels were committed on 2026-11-05 (`7332c6b`, 50 of 50 rows), so
+every real run from then on scores the sanity section; the skip path remains for
+fixtures and for any future re-authoring.
 
 *What 50 examples can support, stated plainly.* With about 30 legitimate and 20
 illegitimate queries (the final split is whatever the user's labels say), one false
@@ -693,7 +709,8 @@ negatives (the 480 training positives of A-D **and** the 120 of family E, each
 sample tagged with its family so E is never confused with the training set), runs
 the audit (section 4, rules 2 and 4) over all 600, and writes one JSON report to
 `results/` holding the generated samples with their metadata, the per-family length
-statistics next to WANDS', and the near-duplicate pairs. It exists so the positives
+statistics next to WANDS', the near-duplicate pairs, and the 100 part-number
+diagnostic strings (8.6 item 4) under their own key, never mixed with the positives. It exists so the positives
 can be inspected by eye; fold runs regenerate their own positives (8.3) and never
 read its output.
 

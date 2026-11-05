@@ -1075,7 +1075,7 @@ Sign-off: pending.
   - Changing test-side scores doesn't change the threshold.
   - Test-side strings equal the primary arm's for each repeat and fold.
 - **Depends on:** M3.T5.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T7: Metrics and aggregation
 

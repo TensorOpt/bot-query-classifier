@@ -373,6 +373,19 @@ def run_primary_fold(
         check_finite(scorer.score(data.threshold_texts), **context,
                      score_set="threshold queries"),
         target_fpr)
+    return _test_result(data, scorer, threshold, model, fit_warnings)
+
+
+def _test_result(
+    data: FoldData,
+    scorer: Scorer,
+    threshold: Threshold,
+    model: str,
+    fit_warnings: list[str],
+) -> FoldResult:
+    """Score the test side with a fitted `scorer`, check every score set is finite, and
+    return the fold's FoldResult. Shared by both arms' runners."""
+    context = dict(repeat=data.repeat, fold=data.fold, arm=data.arm, model=model)
     scores = np.asarray(scorer.score(data.test_texts), dtype=float)
     for score_set, family_matches in (
             ("test queries", lambda f: f is None),
@@ -382,4 +395,46 @@ def run_primary_fold(
         check_finite(scores[rows], **context, score_set=score_set)
     return FoldResult(
         data.repeat, data.fold, data.arm, model, threshold, scores,
-        list(data.test_texts), list(data.test_y), list(data.test_families), list(data.test_groups), fit_warnings)
+        list(data.test_texts), list(data.test_y), list(data.test_families),
+        list(data.test_groups), fit_warnings)
+
+
+def run_comparison_fold(
+    data: FoldData,
+    make_scorer: Callable[[], Scorer],
+    target_fpr: float,
+    model: str,
+) -> FoldResult:
+    """Nested-split one comparison-arm fold (8.2): an inner `StratifiedGroupKFold` over the
+    training rows gives out-of-fold scores for the training-side real queries, `t` is the 8.4
+    rule over them, then a fresh scorer is refitted on all training rows and scores the test
+    side as `run_primary_fold` does. `make_scorer` is called once per fit. Every inner
+    training fold passes `check_fold`; every score array goes through `check_finite`.
+    Warnings from the inner fits and the refit are returned, not raised (11.12).
+    Raises ValueError if `data` is not the comparison arm.
+    """
+    if data.arm != COMPARISON:
+        raise ValueError(f"run_comparison_fold needs the {COMPARISON!r} arm, got {data.arm!r}")
+    context = dict(repeat=data.repeat, fold=data.fold, arm=data.arm, model=model)
+    # a real query is its own group (None in train_groups); a template's rows share one
+    group_ids: dict[Any, int] = {}
+    codes = [group_ids.setdefault(g if g is not None else ("row", i), len(group_ids))
+             for i, g in enumerate(data.train_groups)]
+    texts, y, families = data.train_texts, data.train_y, data.train_families
+    splitter = StratifiedGroupKFold(
+        n_splits=N_SPLITS, shuffle=True, random_state=SEED + data.repeat)
+    out_of_fold = np.full(len(texts), np.nan)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for train, held_out in splitter.split(texts, y, codes):
+            check_fold([y[i] for i in train], [families[i] for i in train],
+                       [y[i] for i in held_out])
+            scorer = make_scorer().fit([texts[i] for i in train], [y[i] for i in train])
+            out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
+        scorer = make_scorer().fit(texts, y)
+    fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
+    real = [i for i, f in enumerate(families) if f is None]
+    threshold = select_threshold(
+        check_finite(out_of_fold[real], **context, score_set="out-of-fold queries"),
+        target_fpr)
+    return _test_result(data, scorer, threshold, model, fit_warnings)

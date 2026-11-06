@@ -1,6 +1,6 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.6 (commit `0386ca8`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.7 (commit `b025fde`). Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -104,14 +104,8 @@ exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 ### Open questions for `fable`
 
 PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and PQ-5 in section 10, and all are applied below; their
-text is in `530de4f` and `a3cf42e`.
-
-- **PQ-6 (blocks M4.T8): direction of `justified` (8.2, section 7).** Section 7 says the mean "exceeds"
-  twice its standard error, 8.2 says "beyond", and the removed 7.1 also required a positive mean. Taken
-  per metric, as 8.2 asks, this doesn't settle three things: whether a negative mean on recall or ROC-AUC
-  can be `justified`; what `justified` means on achieved FPR, where a gain is a negative mean and
-  "exceeds" with "FPR difference not positive" can never be true; and which way `model_comparison`
-  subtracts (LR minus MLP, or MLP minus LR), which decides what "wins" means.
+text is in `530de4f` and `a3cf42e`. PQ-6 is answered in section 7, and its text is in `f0c12cd`. None is
+open.
 
 ### Facts checked while planning
 
@@ -1449,30 +1443,39 @@ Sign-off: pending.
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
 - **Status:** todo
 
-### M4.T8: LR-vs-MLP and between-arm paired comparisons
+### M4.T8: MLP-vs-LR and between-arm paired comparisons
 
-- **Goal:** compute the paired differences M6 reports: LR against MLP, and primary against comparison
+- **Goal:** compute the paired differences M6 reports: MLP against LR, and primary against comparison
   arm.
-- **Design refs:** `DESIGN.md` `0386ca8`: 6.2, 7, 8.2, 12.1 (items 13, 17).
+- **Design refs:** `DESIGN.md` `b025fde`: 6.2, 7, 8.2, 12.1 (items 13, 17).
 - **Files:** `bqc/evaluate.py`, `tests/test_paired_comparison.py`.
 - **Acceptance criteria:**
-  1. One function computes, for each named metric: the list of per-fold paired differences (15 in a real
-     run), their mean, sample standard deviation (`ddof=1`, `statistics.stdev`), standard error
-     (`sd / sqrt(folds)`), the count of folds won, and a boolean `justified` under the rule of section 7.
-  2. A run with both arms has an `arm_comparison` section: primary minus comparison, per model, in
-     headline recall, achieved FPR and ROC-AUC (8.2).
-  3. A run with both LR and MLP has a `model_comparison` section under each arm, in the same shape
-     (8.2, 12.1 item 13).
-  4. No command compares two run files (8.2). There is no `smote_comparison` or `smote_justified`.
-- **Tests** (with fakes):
-  - Hand-computed differences, means, sample sd, standard error and win counts; a case where `ddof=0` would
-    flip `justified`.
-  - The sign is primary minus comparison.
-  - `justified`: true case; mean exactly at the 2-standard-error bound (false); a recall gain with a positive
-    FPR difference (false); zero FPR difference (allowed); and the other signs and metrics as PQ-6 rules.
+  1. One function computes, for each of headline recall, achieved FPR and ROC-AUC: the list of per-fold
+     paired differences, first-named minus second-named (15 in a real run), their mean, sample standard
+     deviation (`ddof=1`, `statistics.stdev`), standard error (`sd / sqrt(folds)`), and the count of folds
+     won. A win is a fold where the first-named is better: higher recall or ROC-AUC, lower FPR.
+  2. `justified` is true only if the mean recall difference is positive and greater than twice its standard
+     error, and `fpr_gate` holds. `worse` is true if that mean is negative and beyond twice its standard
+     error. ROC-AUC gets the same two booleans, informational only (section 7).
+  3. `fpr_gate` is true unless the mean FPR difference is positive beyond twice its standard error. Its
+     mean, sd and strict sign are reported next to it.
+  4. A run with both arms has an `arm_comparison` section: primary minus comparison, per model (8.2).
+  5. A run with both LR and MLP has a `model_comparison` section under each arm, in the same shape: MLP
+     minus LR (section 7, 12.1 item 13).
+  6. No command compares two run files (8.2). There is no `smote_comparison` or `smote_justified`.
+- **Tests** (with fakes), hand-computed:
+  - Differences, means, sample sd, standard error and win counts, including a lower FPR counting as a win
+    and a tied fold counting as none; a case where `ddof=0` would flip `justified`.
+  - A recall mean positive beyond noise with a passing gate: `justified`, not `worse`.
+  - A negative recall mean beyond noise: `worse`, not `justified`.
+  - A recall mean within noise: neither, and a mean exactly at the 2-standard-error bound: neither.
+  - An FPR rise beyond 2 standard errors blocks an otherwise justified gain; a positive FPR mean within
+    noise, or exactly at the bound, doesn't, and its strict sign is still reported.
+  - ROC-AUC's booleans don't change recall's `justified`.
+  - The sign is primary minus comparison, and MLP minus LR.
   - No `arm_comparison` with one arm; no `model_comparison` unless both models ran.
 - **Depends on:** M4.T4.
-- **Status:** blocked (PQ-6)
+- **Status:** todo
 
 ---
 
@@ -1585,7 +1588,8 @@ Sign-off: pending.
      it failed the rule of 8.6 item 5. A failure is reported for the user to decide; this task doesn't
      act on it.
   8. **LR or MLP:** `model_comparison` under the rule of section 7, and a recommendation for the user to
-     decide on (12.1 item 13).
+     decide on (12.1 item 13). With `justified` and `worse` both false the reading is "within fold-to-fold
+     noise", and the 6.2 recommendation is the simpler model.
   9. If the trivial baseline gets close to the MLP, or LOFO shows generators are too easy,
      this is reported as a finding. The rework is `fable`'s decision (6.3, 8.6), and this
      task doesn't change generators.

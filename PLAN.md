@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4 sign-off by `fable`, then M5.T1.
+**Next task:** M4 sign-off by `fable`; M5.T1 is done, next M5.T2.
 
 ### Order constraints
 
@@ -2131,7 +2131,16 @@ Sign-off: pending.
   - An all-noise result returns 0 clusters and 100% noise without raising (11.17).
   - The module doesn't import `bqc.evaluate` or `bqc.models`.
 - **Depends on:** M3.T1.
-- **Status:** todo
+- **Status:** done
+
+  Implementation notes (`sonnet`): `make_pipeline` is a sklearn `Pipeline` (vectoriser, SVD,
+  L2 `Normalizer`, `HDBSCAN(copy=True)`); `cluster_labels` normalises once per text; `run_grid`
+  returns 9 dicts (n_components, min_cluster_size, labels, n_clusters, noise_fraction).
+  Probes (2026-11-06) recorded in the `bqc/cluster.py` docstring: `copy` has no observable
+  effect on dense finite input (set True); SVD raises ValueError when n_components exceeds the
+  feature count, not when it exceeds the row count; HDBSCAN raises ValueError when rows are
+  fewer than min_cluster_size, so the all-noise test uses rows == min_cluster_size. Mutation
+  pass in an isolated copy: 12 mutants, all killed. Full suite: 787 tests OK.
 
 ### M5.T2: Cluster labelling rules and metrics
 

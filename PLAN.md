@@ -1168,7 +1168,7 @@ Sign-off: pending.
     space.
   - A single-class input to ROC-AUC raises rather than reporting a number.
 - **Depends on:** M3.T5, M3.T15 (schedule order only).
-- **Status:** todo
+- **Status:** done
 
 ### M3.T8: Run report JSON
 

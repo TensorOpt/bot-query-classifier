@@ -5,6 +5,7 @@ Fold units are the real queries (one group each) and the training templates
 (one group each, nominal size QUOTA). Spans are never fold units. `select_threshold`
 picks the threshold from the real queries' scores, `check_finite` stops the run on a
 non-finite score, and `run_primary_fold` cross-fits one fold of the primary arm.
+`compute_metrics` turns fold results into the numbers of 8.5.
 """
 import math
 import warnings
@@ -13,11 +14,13 @@ from collections.abc import Callable, Iterator, Sequence
 from typing import Any, NamedTuple
 
 import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, roc_auc_score
 from sklearn.model_selection import StratifiedGroupKFold
 
 from bqc import SEED
 from bqc.models import Scorer
 from bqc.negatives import DEFAULT_N, VOCABULARY_CAP, build_spans, token_occurrences
+from bqc.preprocess import normalise
 from bqc.synth.audit import SanityCollision, screen_samples
 from bqc.synth.registry import (
     ALL_FAMILIES,
@@ -437,3 +440,169 @@ def run_comparison_fold(
     real = [i for i, f in enumerate(families) if f is None]
     threshold = select_threshold(out_of_fold[real], target_fpr)
     return _test_result(data, scorer, threshold, model, fit_warnings)
+
+
+def wilson_interval(k: float, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
+    """Wilson score interval `(low, high)` for `k` successes in `n` trials, clamped to
+    [0, 1]. `k` need not be an integer (8.5); the default `z` is the two-sided 95% point.
+    Raises ValueError if `n < 1` or `k` is outside [0, n]. Standard library only.
+    """
+    if n < 1 or not 0 <= k <= n:
+        raise ValueError(f"need n >= 1 and 0 <= k <= n, got k={k}, n={n}")
+    p = k / n
+    scale = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / scale
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / scale
+    # k = 0 and k = n pin one end exactly; rounding would leave a 1e-18 residue there
+    return (0.0 if k == 0 else max(0.0, centre - half),
+            1.0 if k == n else min(1.0, centre + half))
+
+
+def compute_metrics(results: Sequence[FoldResult]) -> dict[str, Any]:
+    """Every number of 8.5 for one (arm, model), from its folds' results, as plain
+    Python types (JSON-ready).
+
+    Every flag comes from `is_illegitimate` at the result's own threshold. Headline
+    numbers (recall, FPR, confusion matrix, precision, macro F1, ROC-AUC) use the test
+    rows outside family E; E has its own evaluation-only row in `families`.
+    Returns `{"arm", "model", "repeats": [block per repeat], "pooled": block,
+    "folds": [one entry per fold]}`. Raises ValueError on no results, mixed arms or
+    models, repeats with different numbers of test negatives, or a single-class
+    ROC-AUC input.
+    """
+    if not results:
+        raise ValueError("no results to compute metrics from")
+    if len({(r.arm, r.model) for r in results}) != 1:
+        raise ValueError("results must share one arm and one model")
+    rows = [row for result in sorted(results, key=lambda r: (r.repeat, r.fold))
+            for row in _rows(result)]
+    repeats = sorted({row.repeat for row in rows})
+    negatives = {len([row for row in rows if row.repeat == repeat and row.y == 0])
+                 for repeat in repeats}
+    if len(negatives) != 1:
+        raise ValueError(f"repeats have different numbers of test negatives: {sorted(negatives)}")
+    n = negatives.pop()
+    folds = [_fold_entry(result, [row for row in rows
+                                  if (row.repeat, row.fold) == (result.repeat, result.fold)])
+             for result in sorted(results, key=lambda r: (r.repeat, r.fold))]
+    return {
+        "arm": results[0].arm,
+        "model": results[0].model,
+        "repeats": [
+            {"repeat": repeat,
+             **_block([row for row in rows if row.repeat == repeat],
+                      [f for f in folds if f["repeat"] == repeat], 1, n)}
+            for repeat in repeats],
+        "pooled": _block(rows, folds, len(repeats), n),
+        "folds": folds,
+    }
+
+
+class _Row(NamedTuple):
+    """One test-side row with its flag, decided by `is_illegitimate` at the fold's threshold."""
+    repeat: int
+    fold: int
+    text: str
+    score: float
+    y: int
+    family: str | None
+    group: tuple[str, str] | None
+    flagged: bool
+
+
+def _rows(result: FoldResult) -> list[_Row]:
+    t = result.threshold.threshold
+    return [
+        _Row(result.repeat, result.fold, text, float(score), y, family, group,
+             is_illegitimate(float(score), t))
+        for text, score, y, family, group in zip(
+            result.test_texts, result.test_scores, result.test_y,
+            result.test_families, result.test_groups)]
+
+
+def _recall(positives: list[_Row]) -> dict[str, Any]:
+    caught = sum(row.flagged for row in positives)
+    return {"count": len(positives), "caught": caught,
+            "recall": caught / len(positives) if positives else None}
+
+
+def _families(rows: list[_Row]) -> dict[str, dict[str, Any]]:
+    return {family: {**_recall([row for row in rows if row.family == family]),
+                     "evaluation_only": family == EVAL_FAMILY}
+            for family in ALL_FAMILIES}
+
+
+def _roc_auc(headline: list[_Row]) -> float:
+    y = [row.y for row in headline]
+    if len(set(y)) < 2:
+        raise ValueError("ROC-AUC needs both classes among the headline test rows")
+    return float(roc_auc_score(y, [row.score for row in headline]))
+
+
+def _fold_entry(result: FoldResult, rows: list[_Row]) -> dict[str, Any]:
+    headline = [row for row in rows if row.family != EVAL_FAMILY]
+    negatives = [row for row in headline if row.y == 0]
+    false_positives = sum(row.flagged for row in negatives)
+    return {
+        "repeat": result.repeat,
+        "fold": result.fold,
+        "threshold": float(result.threshold.threshold),
+        "recall": _recall([row for row in headline if row.y == 1]),
+        "fpr": {"false_positives": false_positives, "n_negatives": len(negatives),
+                "point": false_positives / len(negatives) if negatives else None},
+        "roc_auc": _roc_auc(headline),
+        "families": _families(rows),
+    }
+
+
+def _block(
+    rows: list[_Row],
+    folds: list[dict[str, Any]],
+    repeats: int,
+    n: int,
+) -> dict[str, Any]:
+    """The 8.5 numbers over `rows` spanning `repeats` repeats of `n` test negatives each.
+    Headline numbers leave family E out; `families` and `templates` keep it."""
+    headline = [row for row in rows if row.family != EVAL_FAMILY]
+    negatives = [row for row in headline if row.y == 0]
+    positives = [row for row in headline if row.y == 1]
+    false_positives = sum(row.flagged for row in negatives)
+    ci_low, ci_high = wilson_interval(false_positives / repeats, n)
+    y = [row.y for row in headline]
+    flagged = [int(row.flagged) for row in headline]
+    fold_aucs = [f["roc_auc"] for f in folds]
+    word_flagged: dict[str, bool] = {}
+    for row in negatives:
+        word = normalise(row.text)
+        if len(word.split()) == 1:
+            word_flagged[word] = word_flagged.get(word, False) or row.flagged
+    group_rows: dict[tuple[str, str], list[_Row]] = {}
+    for row in rows:
+        if row.group is not None:
+            group_rows.setdefault(row.group, []).append(row)
+    return {
+        "recall": _recall(positives),
+        "fpr": {"false_positives": false_positives, "n_negatives": n, "repeats": repeats,
+                "point": false_positives / (n * repeats), "ci_low": ci_low, "ci_high": ci_high},
+        "confusion_matrix": confusion_matrix(y, flagged, labels=[0, 1]).tolist(),
+        "precision": float(precision_score(y, flagged, zero_division=0.0)),
+        "macro_f1": float(f1_score(y, flagged, average="macro", zero_division=0.0)),
+        "test_positive_to_negative_ratio": {
+            "positives": len(positives), "negatives": len(negatives),
+            "ratio": len(positives) / len(negatives) if negatives else None},
+        "roc_auc": {
+            "pooled": _roc_auc(headline),
+            "fold_mean": float(np.mean(fold_aucs)),
+            "fold_sd": float(np.std(fold_aucs, ddof=1)) if len(fold_aucs) > 1 else None},
+        "families": _families(rows),
+        "templates": [
+            {"family": family, "template_id": template_id, **_recall(members),
+             "evaluation_only": family == EVAL_FAMILY}
+            for (family, template_id), members in sorted(group_rows.items())],
+        "one_word": {
+            "total": len(word_flagged),
+            "flagged": sum(word_flagged.values()),
+            "words": sorted(w for w, hit in word_flagged.items() if hit)},
+        "false_positives": [{"query": row.text, "repeat": row.repeat, "fold": row.fold}
+                            for row in negatives if row.flagged],
+    }

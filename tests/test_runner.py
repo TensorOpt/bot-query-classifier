@@ -227,7 +227,7 @@ class ImportTest(unittest.TestCase):
             elif isinstance(node, ast.Import):
                 modules.update(a.name for a in node.names)
         self.assertEqual({m for m in modules if m.startswith("sklearn")},
-                         {"sklearn.model_selection"})
+                         {"sklearn.model_selection", "sklearn.metrics"})  # metrics, M3.T7
 
 
 if __name__ == "__main__":

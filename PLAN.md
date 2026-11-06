@@ -869,7 +869,36 @@ Follow-ups:
 
 ## M3: Features and evaluation harness (fake `Scorer`)
 
-Sign-off: pending.
+**Sign-off: 2026-11-06, `fable`, verdict POSITIVE** (audited at `7e03854`; `DESIGN.md` `1152683`).
+
+- Suite: `.venv/bin/python -m unittest discover -s tests`, 636 tests, OK, run by `fable`.
+- Diff read: `bqc/features.py`, `bqc/models.py` and the whole of `bqc/evaluate.py` at `7e03854`,
+  plus every M3 commit's review record. Invariants checked by `fable`: runners and sections see
+  only `fit` and `score` of the `Scorer` port (section 6); no real query is in any primary fit,
+  thresholds come from training-side or out-of-fold scores only, and the sanity and part-number
+  sets reach no fit or threshold (section 8); every split and render is seeded from `SEED`
+  (no unseeded randomness in `bqc/`, section 10); no test downloads or reads `data/raw/`.
+- Probes recorded: 13.9 (no `|` in `query_class`, closed by `fable`), the pickle finding in the
+  `save_final_model` docstring (M3.T10), the real-file cell count under M3.T16.
+- Rulings made during M3 and recorded in `DESIGN.md`: `n` per arm for the LOFO quota (8.6 item 1,
+  `7bcea5e`), the loader carries `query_class` (11.15, `352f9b5`; task M3.T16), section 3 aligned
+  (`061c01c`).
+
+Follow-ups:
+
+- **F1 (process, revised at this sign-off):** the pasted-run rule of the M2 sign-off was not
+  followed in M3: `sonnet`'s reports summarised their runs instead of pasting them. What stood in
+  for it, and is now the rule: `opus` runs its own mutation pass in an isolated copy for every
+  task, each mutant alone, and lists the survivors as corrections. A task whose validation has no
+  mutation pass is not validated. Recorded without penalty for M3.
+- **F8 (cost, not a defect):** the LOFO and catalogue-gap passes each rebuild the spans and the
+  test side (four and one extra `iter_fold_data` passes). Deterministic and asserted identical to
+  the main run. M6.T1 reports the wall time; optimise only if the section 10 budget bites.
+- **F9:** M4.T4 wires what M3 left as separate calls: `fit_final_model` and `save_final_model`
+  per arm and model, `sanity_section`, `part_number_section`, and `query_classes` from the
+  loader (M3.T16) for `--catalogue-gap`. Already in M4.T4's criteria.
+- **F10 (accepted):** `leave_out` and `gap` on the runners are not mutually exclusive by
+  construction; `build_run_report` is their only caller and never combines them.
 
 ### M3.T1: Vectoriser factory
 

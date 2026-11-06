@@ -14,7 +14,15 @@ HEADER = ["id", "query", "label"]
 
 
 class SanityError(Exception):
-    """The sanity file is malformed or overlaps WANDS."""
+    """The sanity file is malformed or overlaps WANDS.
+
+    `query_id` is the offending row's `id` for a WANDS duplicate, else None. The message of
+    a duplicate quotes the query, so callers that must not show it use `query_id`.
+    """
+
+    def __init__(self, message: str, query_id: int | None = None) -> None:
+        super().__init__(message)
+        self.query_id = query_id
 
 
 class SanityQuery(NamedTuple):
@@ -65,7 +73,8 @@ def load_sanity(path: Path, wands: Iterable[WandsQuery]) -> SanitySet:
     for q in queries:
         if normalise(q.query) in wands_set:
             raise SanityError(
-                f"sanity query id {q.id} in {path} equals a WANDS query: {q.query!r}"
+                f"sanity query id {q.id} in {path} equals a WANDS query: {q.query!r}",
+                q.id,
             )
 
     invalid = sum(label not in ("0", "1") for label in raw_labels)

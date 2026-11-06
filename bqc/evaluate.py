@@ -219,6 +219,7 @@ def iter_fold_data(
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
     leave_out: str | None = None,
+    query_classes: Sequence[str] | None = None,
 ) -> Iterator[FoldData]:
     """Yield a FoldData per (repeat, fold, arm) (8.2, 8.3).
 
@@ -227,6 +228,13 @@ def iter_fold_data(
     is `n` in the primary arm), and the test side keeps only the test-side queries and that
     family's rows. The fold check still sees the full test side, so a fold with none of the
     family's templates on the test side doesn't raise, and asserts the other three families.
+
+    With `query_classes` (the `query_class` of each real query; "" for none) this is the
+    catalogue-gap pass (8.6 item 5): per fold, the products carrying a class of a test-side
+    query leave the span pool, spans are built from what is left (so once per fold, still with
+    seed `seed + repeat`; PoolExhausted if too few remain), the training-side queries of those
+    classes leave the primary arm's threshold set and the comparison arm's training negatives,
+    and the primary arm's report gains `products_removed`. An empty class removes nothing.
 
     Spans are built once per repeat with seed `seed + repeat`. The test side (test-side
     queries, test-template positives, family E) is built once per fold and shared by
@@ -240,15 +248,29 @@ def iter_fold_data(
     if leave_out is not None and leave_out not in TRAINING_FAMILIES:
         raise ValueError(f"leave_out must be one of {list(TRAINING_FAMILIES)}, got {leave_out!r}")
     kept_families = [f for f in TRAINING_FAMILIES if f != leave_out]
+    if query_classes is not None and len(query_classes) != len(real_queries):
+        raise ValueError(
+            f"{len(query_classes)} query classes for {len(real_queries)} real queries")
+    class_of = dict(zip(real_queries, query_classes or ()))
     folds = assign_folds(real_queries, registry, n_splits, repeats, seed)
     eval_templates = [(EVAL_FAMILY, t.template_id) for t in registry.templates(EVAL_FAMILY)]
     for repeat in range(repeats):
         render_seed = seed + repeat
-        spans, removals = build_spans(
-            products, n, render_seed, real_queries, part_numbers, sanity)
-        span_texts = [s.text for s in spans]
-        span_lengths = Counter(s.k for s in spans)
+        if query_classes is None:
+            spans, removals = build_spans(
+                products, n, render_seed, real_queries, part_numbers, sanity)
+            span_texts = [s.text for s in spans]
+            span_lengths = Counter(s.k for s in spans)
         for fold in (f for f in folds if f.repeat == repeat):
+            train_queries = fold.train_queries
+            if query_classes is not None:
+                gone = {class_of[q] for q in fold.test_queries} - {""}
+                kept_products = [p for p in products if not gone & set(p.classes)]
+                spans, removals = build_spans(
+                    kept_products, n, render_seed, real_queries, part_numbers, sanity)
+                span_texts = [s.text for s in spans]
+                span_lengths = Counter(s.k for s in spans)
+                train_queries = [q for q in train_queries if class_of[q] not in gone]
             test_vocabulary = token_occurrences(fold.test_queries)
             test_drop = {"training_negatives": span_texts, "real_queries": real_queries,
                          "part_numbers": part_numbers}
@@ -265,8 +287,8 @@ def iter_fold_data(
                     vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
                     per_template = n // len(train_templates)
                 else:
-                    negatives = fold.train_queries
-                    vocabulary = token_occurrences(fold.train_queries)
+                    negatives = train_queries
+                    vocabulary = token_occurrences(train_queries)
                     per_template = (len(negatives) // len(train_templates)
                                     if leave_out else QUOTA)
                 drop = {"training_negatives": negatives, "real_queries": real_queries,
@@ -279,13 +301,15 @@ def iter_fold_data(
                         if leave_out is None or f is None or f == leave_out]
                 yield FoldData(
                     repeat, fold.fold, arm, train.texts, train.y, train.families, train.groups,
-                    list(fold.train_queries) if arm == PRIMARY else [],
+                    list(train_queries) if arm == PRIMARY else [],
                     [test.texts[i] for i in rows], [test.y[i] for i in rows],
                     [test.families[i] for i in rows], [test.groups[i] for i in rows],
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
                      **({"leave_out": leave_out} if leave_out else {}),
                      "span_removals": removals, "train": train.report, "test": test.report,
-                     **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {})},
+                     **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {}),
+                     **({"products_removed": len(products) - len(kept_products)}
+                        if arm == PRIMARY and query_classes is not None else {})},
                 )
 
 
@@ -388,13 +412,15 @@ def run_primary_fold(
     target_fpr: float,
     model: str,
     leave_out: str | None = None,
+    gap: bool = False,
 ) -> FoldResult:
     """Cross-fit one primary-arm fold (8.2): fit once on `data.train_texts`, set `t` from
     the scores of `data.threshold_texts` (training-side real queries, not in the fit),
     and score the test side, which includes family E. Every score array goes through
     `check_finite`. Warnings raised by `fit` are returned, not raised (11.12).
     `leave_out` marks a LOFO fold (8.6): it prefixes every score-set name ("LOFO A test
-    queries"). Raises ValueError if `data` is not the primary arm.
+    queries"). `gap` marks a catalogue-gap fold (8.6 item 5): the prefix is "catalogue gap ".
+    Raises ValueError if `data` is not the primary arm.
     """
     if data.arm != PRIMARY:
         raise ValueError(f"run_primary_fold needs the {PRIMARY!r} arm, got {data.arm!r}")
@@ -405,13 +431,16 @@ def run_primary_fold(
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
     threshold = select_threshold(
         check_finite(scorer.score(data.threshold_texts), **context,
-                     score_set=_score_set("threshold queries", leave_out)),
+                     score_set=_score_set("threshold queries", leave_out, gap)),
         target_fpr)
-    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out)
+    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out, gap)
 
 
-def _score_set(name: str, leave_out: str | None) -> str:
-    """The score-set name for `check_finite`, prefixed with "LOFO <family> " in a LOFO run."""
+def _score_set(name: str, leave_out: str | None, gap: bool = False) -> str:
+    """The score-set name for `check_finite`, prefixed with "LOFO <family> " in a LOFO run
+    and with "catalogue gap " in the catalogue-gap pass."""
+    if gap:
+        return f"catalogue gap {name}"
     return name if leave_out is None else f"LOFO {leave_out} {name}"
 
 
@@ -422,6 +451,7 @@ def _test_result(
     model: str,
     fit_warnings: list[str],
     leave_out: str | None = None,
+    gap: bool = False,
 ) -> FoldResult:
     """Score the test side with a fitted `scorer`, check every score set is finite, and
     return the fold's FoldResult. Shared by both arms' runners."""
@@ -432,7 +462,7 @@ def _test_result(
             ("E", lambda f: f == EVAL_FAMILY),
             ("test positives", lambda f: f is not None and f != EVAL_FAMILY)):
         rows = [family_matches(f) for f in data.test_families]
-        check_finite(scores[rows], **context, score_set=_score_set(score_set, leave_out))
+        check_finite(scores[rows], **context, score_set=_score_set(score_set, leave_out, gap))
     return FoldResult(
         data.repeat, data.fold, data.arm, model, threshold, scores,
         list(data.test_texts), list(data.test_y), list(data.test_families),
@@ -445,6 +475,7 @@ def run_comparison_fold(
     target_fpr: float,
     model: str,
     leave_out: str | None = None,
+    gap: bool = False,
 ) -> FoldResult:
     """Nested-split one comparison-arm fold (8.2): an inner `StratifiedGroupKFold` over the
     training rows gives out-of-fold scores for the training-side real queries, `t` is the 8.4
@@ -453,7 +484,7 @@ def run_comparison_fold(
     training fold passes `check_fold`; every score array goes through `check_finite`.
     Warnings from the inner fits and the refit are returned, not raised (11.12).
     `leave_out` marks a LOFO fold (8.6): the inner check asks for the other three
-    families only, and score-set names are prefixed as in `run_primary_fold`.
+    families only, and score-set names are prefixed as in `run_primary_fold`, also for `gap`.
     Raises ValueError if `data` is not the comparison arm.
     """
     if data.arm != COMPARISON:
@@ -478,10 +509,10 @@ def run_comparison_fold(
         scorer = make_scorer().fit(texts, y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
     out_of_fold = check_finite(
-        out_of_fold, **context, score_set=_score_set("out-of-fold scores", leave_out))
+        out_of_fold, **context, score_set=_score_set("out-of-fold scores", leave_out, gap))
     real = [i for i, f in enumerate(families) if f is None]
     threshold = select_threshold(out_of_fold[real], target_fpr)
-    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out)
+    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out, gap)
 
 
 def wilson_interval(k: float, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
@@ -682,6 +713,8 @@ def build_run_report(
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
     lofo: bool = False,
+    catalogue_gap: bool = False,
+    query_classes: Sequence[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run every arm and model over the outer folds; return `(parameters, body)` for
     `write_report` (8.1, 8.2, 11.12).
@@ -692,13 +725,20 @@ def build_run_report(
     primary arm only, `span_lengths`: the realised mix per repeat next to the target.
     With `lofo` (off by default; 8.6 item 1) each arm also has `lofo`: per model, the
     `lofo_section` rows, run on the same folds with each family of A-D left out in turn.
+    With `catalogue_gap` (off by default; 8.6 item 5; needs `query_classes`, the `query_class`
+    of each real query) each arm also has `catalogue_gap`: per model, the
+    `catalogue_gap_section` of a pass on the same folds with the test side's classes removed;
+    the primary arm adds `folds` (`products_removed` per fold) and `unclassified_products`.
+    A failed gap never stops the run.
     No removed span, positive or sanity text is in it.
     """
+    if catalogue_gap and query_classes is None:
+        raise ValueError("catalogue_gap needs query_classes")
     parameters = {
         "arms": list(arms), "models": list(models), "target_fpr": target_fpr,
         "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
         "test_per_template": test_per_template, "eval_per_template": eval_per_template,
-        "vocabulary_cap": vocabulary_cap, "lofo": lofo,
+        "vocabulary_cap": vocabulary_cap, "lofo": lofo, "catalogue_gap": catalogue_gap,
     }
     runners = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
     fold_reports: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}
@@ -730,6 +770,21 @@ def build_run_report(
             for model, make_scorer in models.items():
                 lofo_results[data.arm][family][model].append(
                     runners[data.arm](data, make_scorer, target_fpr, model, leave_out=family))
+    gap_results: dict[str, dict[str, list[FoldResult]]] = {
+        arm: {model: [] for model in models} for arm in arms}
+    products_removed: list[dict[str, int]] = []
+    for data in iter_fold_data(
+            real_queries=real_queries, products=products, part_numbers=part_numbers,
+            sanity=sanity, arms=arms, n=n, registry=registry,
+            n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
+            eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap,
+            query_classes=query_classes) if catalogue_gap else ():
+        if "products_removed" in data.report:
+            products_removed.append({"repeat": data.repeat, "fold": data.fold,
+                                     "products_removed": data.report["products_removed"]})
+        for model, make_scorer in models.items():
+            gap_results[data.arm][model].append(
+                runners[data.arm](data, make_scorer, target_fpr, model, gap=True))
     body: dict[str, Any] = {}
     for arm in arms:
         body[arm] = {"folds": fold_reports[arm],
@@ -741,11 +796,39 @@ def build_run_report(
                     {family: lofo_results[arm][family][model] for family in TRAINING_FAMILIES},
                     results[arm][model])
                 for model in models}
+    if catalogue_gap:
+        for arm in arms:
+            body[arm]["catalogue_gap"] = {"models": {
+                model: catalogue_gap_section(rs, target_fpr)
+                for model, rs in gap_results[arm].items()}}
+        if PRIMARY in arms:
+            body[PRIMARY]["catalogue_gap"].update(
+                folds=products_removed,
+                unclassified_products=sum(1 for p in products if not p.classes))
     if PRIMARY in arms:
         body[PRIMARY]["span_lengths"] = {
             "target": length_mix(LENGTH_COUNTS),
             "repeats": [{"repeat": r, **mixes[r]} for r in sorted(mixes)]}
     return parameters, body
+
+
+def catalogue_gap_section(results: Sequence[FoldResult], target_fpr: float) -> dict[str, Any]:
+    """The catalogue-gap numbers of one (arm, model) from its gap folds (8.6 item 5): the
+    pooled `fpr` (with the Wilson interval of `compute_metrics`), `recall`, the
+    `flagged_queries`, `gap_failed` (the interval's lower bound is above `target_fpr`: the
+    lenient rule of 12.1 item 14) and `point_estimate_above_target` (a pass whose point
+    estimate is above the target). Nothing acts on it."""
+    pooled = compute_metrics(results)["pooled"]
+    fpr = pooled["fpr"]
+    failed = bool(fpr["ci_low"] > target_fpr)
+    return {
+        "target_fpr": target_fpr,
+        "fpr": fpr,
+        "recall": pooled["recall"],
+        "flagged_queries": pooled["false_positives"],
+        "gap_failed": failed,
+        "point_estimate_above_target": bool(not failed and fpr["point"] > target_fpr),
+    }
 
 
 def lofo_section(

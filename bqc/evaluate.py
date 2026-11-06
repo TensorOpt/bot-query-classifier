@@ -220,8 +220,14 @@ def iter_fold_data(
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
     lofo: bool = False,
+    query_classes: Sequence[str] | None = None,
 ) -> Iterator[FoldData]:
     """Yield a FoldData per (repeat, fold, arm) (8.2, 8.3).
+
+    With `query_classes` (the `query_class` of each of `real_queries`, "" if none), the
+    folds are the catalogue-gap check's (8.6 item 5): see `catalogue_gap_removal`. The
+    primary arm builds its spans per fold, from the products left, and its report gets a
+    `catalogue_gap` entry; the test side is the normal one.
 
     With `lofo`, each is followed by one FoldData per family A-D with `lofo_family` set
     (8.6 item 1): the arm's training negatives, positives from the other three families'
@@ -237,6 +243,7 @@ def iter_fold_data(
     unknown = [a for a in arms if a not in ARMS]
     if unknown:
         raise ValueError(f"unknown arms {unknown}")
+    class_of = _class_of(real_queries, query_classes) if query_classes is not None else None
     folds = assign_folds(real_queries, registry, n_splits, repeats, seed)
     eval_templates = [(EVAL_FAMILY, t.template_id) for t in registry.templates(EVAL_FAMILY)]
     for repeat in range(repeats):
@@ -246,9 +253,25 @@ def iter_fold_data(
         span_texts = [s.text for s in spans]
         span_lengths = Counter(s.k for s in spans)
         for fold in (f for f in folds if f.repeat == repeat):
+            train_queries = fold.train_queries
+            primary_texts, primary_lengths, primary_removals = span_texts, span_lengths, removals
+            gap_reports: dict[str, dict[str, int]] = {}  # per arm, in the catalogue-gap check
+            if class_of is not None:  # the catalogue-gap check: spans per fold (8.6 item 5)
+                train_queries, kept, counts = catalogue_gap_removal(fold, class_of, products)
+                gap_reports = {COMPARISON: {
+                    "training_queries_removed": counts["training_queries_removed"]}}
+                gap_reports[PRIMARY] = {**gap_reports[COMPARISON], **{
+                    key: counts[key] for key in ("products_removed", "unclassified_products")}}
+                if PRIMARY in arms:
+                    gap_spans, primary_removals = build_spans(
+                        products=kept, n=n, seed=render_seed, real_queries=real_queries,
+                        part_numbers=part_numbers, sanity=sanity)
+                    primary_texts = [s.text for s in gap_spans]
+                    primary_lengths = Counter(s.k for s in gap_spans)
             test_vocabulary = token_occurrences(fold.test_queries)
-            test_drop = {"training_negatives": span_texts, "real_queries": real_queries,
-                         "part_numbers": part_numbers}
+            test_drop = {"training_negatives": span_texts + (
+                             primary_texts if class_of is not None else []),
+                         "real_queries": real_queries, "part_numbers": part_numbers}
             test = _side(fold.test_queries, [
                 _render_screened(registry, test_vocabulary, render_seed, templates, per,
                                  sanity, test_drop)
@@ -257,12 +280,12 @@ def iter_fold_data(
             ], test_per_template)
             for arm in arms:
                 if arm == PRIMARY:
-                    negatives = span_texts
-                    vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
+                    negatives = primary_texts
+                    vocabulary = token_occurrences(primary_texts, cap=vocabulary_cap)
                     per_template = n // len(fold.train_templates)
                 else:
-                    negatives = fold.train_queries
-                    vocabulary = token_occurrences(fold.train_queries)
+                    negatives = train_queries
+                    vocabulary = token_occurrences(train_queries)
                     per_template = QUOTA
                 drop = {"training_negatives": negatives, "real_queries": real_queries,
                         "part_numbers": part_numbers}
@@ -272,11 +295,13 @@ def iter_fold_data(
                 check_fold(train.y, train.families, test.y)
                 yield FoldData(
                     repeat, fold.fold, arm, train.texts, train.y, train.families, train.groups,
-                    list(fold.train_queries) if arm == PRIMARY else [],
+                    list(train_queries) if arm == PRIMARY else [],
                     test.texts, test.y, test.families, test.groups,
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
-                     "span_removals": removals, "train": train.report, "test": test.report,
-                     **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {})},
+                     "span_removals": primary_removals if arm == PRIMARY else removals,
+                     "train": train.report, "test": test.report,
+                     **({"span_lengths": dict(primary_lengths)} if arm == PRIMARY else {}),
+                     **({"catalogue_gap": gap_reports[arm]} if gap_reports else {})},
                 )
                 if not lofo:
                     continue
@@ -294,12 +319,43 @@ def iter_fold_data(
                     keep = [i for i, f in enumerate(test.families) if f is None or f == family]
                     yield FoldData(
                         repeat, fold.fold, arm, left_out.texts, left_out.y, left_out.families,
-                        left_out.groups, list(fold.train_queries) if arm == PRIMARY else [],
+                        left_out.groups, list(train_queries) if arm == PRIMARY else [],
                         [test.texts[i] for i in keep], [test.y[i] for i in keep],
                         [test.families[i] for i in keep], [test.groups[i] for i in keep],
                         {"repeat": repeat, "fold": fold.fold, "arm": arm,
                          "lofo_family": family, "train": left_out.report},
                         family)
+
+
+def catalogue_gap_removal(
+    fold: FoldAssignment,
+    class_of: Mapping[str, str],
+    products: Sequence[WandsProduct],
+) -> tuple[list[str], list[WandsProduct], dict[str, int]]:
+    """What the catalogue-gap check removes in one outer fold (8.6 item 5, 11.28).
+
+    The gap classes are the `class_of` values of the fold's test-side queries, apart from
+    "". Returns the training-side queries whose class is not a gap class (empty-class
+    queries stay), the products whose `classes` hold none of them (a multi-class product
+    goes if any one matches; an empty-class product stays), and counts:
+    `products_removed`, `unclassified_products`, `training_queries_removed`.
+    """
+    gap = {class_of[q] for q in fold.test_queries} - {""}
+    queries = [q for q in fold.train_queries if class_of[q] not in gap]
+    kept = [p for p in products if gap.isdisjoint(p.classes)]
+    return queries, kept, {
+        "products_removed": len(products) - len(kept),
+        "unclassified_products": sum(1 for p in products if not p.classes),
+        "training_queries_removed": len(fold.train_queries) - len(queries),
+    }
+
+
+def _class_of(real_queries: Sequence[str], query_classes: Sequence[str]) -> dict[str, str]:
+    """Map each real query to its class; raise ValueError if the lists differ in length."""
+    if len(query_classes) != len(real_queries):
+        raise ValueError(
+            f"query_classes has {len(query_classes)} entries for {len(real_queries)} queries")
+    return dict(zip(real_queries, query_classes))
 
 
 class Threshold(NamedTuple):
@@ -556,6 +612,28 @@ def lofo_pool(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def catalogue_gap_section(results: Sequence[FoldResult], target_fpr: float) -> dict[str, Any]:
+    """The `catalogue_gap` entry of one (arm, model) from its gap folds' results (8.6 item 5).
+
+    Returns `{"target_fpr", "recall", "fpr", "flagged", "gap_failed",
+    "point_estimate_above_target"}`; `recall`, `fpr` (pooled, with the Wilson CI) and
+    `flagged` (the false-positive queries) are those of `compute_metrics`' pooled block.
+    `gap_failed` is true only when the CI's lower bound exceeds `target_fpr` (12.1 item
+    14); `point_estimate_above_target` is true for a pass whose point estimate is above it.
+    """
+    pooled = compute_metrics(results)["pooled"]
+    fpr = pooled["fpr"]
+    gap_failed = fpr["ci_low"] > target_fpr
+    return {
+        "target_fpr": target_fpr,
+        "recall": pooled["recall"],
+        "fpr": fpr,
+        "flagged": pooled["false_positives"],
+        "gap_failed": gap_failed,
+        "point_estimate_above_target": not gap_failed and fpr["point"] > target_fpr,
+    }
+
+
 def wilson_interval(k: float, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
     """Wilson score interval `(low, high)` for `k` successes in `n` trials, clamped to
     [0, 1]. `k` need not be an integer (8.5); the default `z` is the two-sided 95% point.
@@ -754,6 +832,8 @@ def build_run_report(
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
     lofo: bool = False,
+    catalogue_gap: bool = False,
+    query_classes: Sequence[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run every arm and model over the outer folds; return `(parameters, body)` for
     `write_report` (8.1, 8.2, 11.12).
@@ -764,15 +844,28 @@ def build_run_report(
     primary arm only, `span_lengths`: the realised mix per repeat next to the target.
     With `lofo`, each arm also has `lofo`: per model and family A-D, the `lofo_row` of every
     fold and their `lofo_pool` (8.6 item 1), apart from the headline in `models`.
+    With `catalogue_gap` (needs `query_classes`, one per real query), each arm also has
+    `catalogue_gap`: `models` (per model, `catalogue_gap_section`) and, in the primary arm,
+    `products` (the removed count per fold and the unclassified count; 8.6 item 5). It is a
+    second pass over the same folds and never changes the headline or stops the run.
     No removed span, positive or sanity text is in it.
     """
     parameters = {
         "arms": list(arms), "models": list(models), "target_fpr": target_fpr,
         "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
         "test_per_template": test_per_template, "eval_per_template": eval_per_template,
-        "vocabulary_cap": vocabulary_cap, "lofo": lofo,
+        "vocabulary_cap": vocabulary_cap, "lofo": lofo, "catalogue_gap": catalogue_gap,
     }
+    if catalogue_gap:
+        if query_classes is None:
+            raise ValueError("catalogue_gap needs query_classes")
+        _class_of(real_queries, query_classes)  # fail before any fit
     runners = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
+    options = dict(
+        real_queries=real_queries, products=products, part_numbers=part_numbers,
+        sanity=sanity, arms=arms, n=n, registry=registry,
+        n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
+        eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap)
     fold_reports: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}
     results: dict[str, dict[str, list[FoldResult]]] = {
         arm: {model: [] for model in models} for arm in arms}
@@ -780,11 +873,7 @@ def build_run_report(
         arm: {model: {family: [] for family in TRAINING_FAMILIES} for model in models}
         for arm in arms}
     mixes: dict[int, dict[str, Any]] = {}
-    for data in iter_fold_data(
-            real_queries=real_queries, products=products, part_numbers=part_numbers,
-            sanity=sanity, arms=arms, n=n, registry=registry,
-            n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
-            eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap, lofo=lofo):
+    for data in iter_fold_data(**options, lofo=lofo):
         if data.lofo_family is not None:  # follows its fold's main data, so `results` holds it
             for model, make_scorer in models.items():
                 main = results[data.arm][model][-1]
@@ -803,10 +892,29 @@ def build_run_report(
         for model, make_scorer in models.items():
             results[data.arm][model].append(
                 runners[data.arm](data, make_scorer, target_fpr, model))
+    gap_results: dict[str, dict[str, list[FoldResult]]] = {
+        arm: {model: [] for model in models} for arm in arms}
+    gap_products: list[dict[str, int]] = []
+    if catalogue_gap:  # a second pass over the same folds, apart from the headline (8.6 item 5)
+        for data in iter_fold_data(**options, lofo=False, query_classes=query_classes):
+            if data.arm == PRIMARY:
+                gap_products.append({"repeat": data.repeat, "fold": data.fold,
+                                     "removed": data.report["catalogue_gap"]["products_removed"]})
+                unclassified = data.report["catalogue_gap"]["unclassified_products"]
+            for model, make_scorer in models.items():
+                gap_results[data.arm][model].append(runners[data.arm](
+                    data, make_scorer, target_fpr, model, score_set_prefix="catalogue gap"))
     body: dict[str, Any] = {}
     for arm in arms:
         body[arm] = {"folds": fold_reports[arm],
                      "models": {model: _model_entry(rs) for model, rs in results[arm].items()}}
+        if catalogue_gap:
+            body[arm]["catalogue_gap"] = {"models": {
+                model: catalogue_gap_section(rs, target_fpr)
+                for model, rs in gap_results[arm].items()}}
+            if arm == PRIMARY:
+                body[arm]["catalogue_gap"]["products"] = {
+                    "unclassified": unclassified, "removed_per_fold": gap_products}
         if lofo:
             body[arm]["lofo"] = {
                 model: {family: {"folds": rows, "pooled": lofo_pool(rows)}

@@ -1311,7 +1311,7 @@ Sign-off: pending.
   - Hand-computed pooled FPR uses `k = total / 3` at `n = 480`.
   - An exhausted pool raises.
 - **Depends on:** M2.T12, M3.T8.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T10: Final models
 

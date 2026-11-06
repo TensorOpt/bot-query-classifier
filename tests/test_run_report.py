@@ -92,7 +92,7 @@ class StructureTest(unittest.TestCase):
             "arms": list(ARMS), "models": ["lr", "mlp"], "target_fpr": 0.5,
             "negatives_size": 120, "n_splits": 3, "repeats": 2, "test_per_template": 5,
             "eval_per_template": 4, "vocabulary_cap": 10_000,
-            "lofo": False})
+            "lofo": False, "catalogue_gap": False})
 
     def test_one_fold_report_per_repeat_fold_and_arm_with_counts(self):
         for arm in ARMS:

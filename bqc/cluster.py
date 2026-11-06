@@ -177,3 +177,21 @@ def seed_rule(clusters: Sequence[int], truth: Sequence[int]) -> list[dict]:
         row["draws"] = draws
         rows.append(row)
     return rows
+
+
+def grid_report(texts: Sequence[str], truth: Sequence[int]) -> list[dict]:
+    """The 9.1 grid over `texts` scored against `truth` (1 = illegitimate), one dict per cell.
+
+    {"n_components", "min_cluster_size", "n_clusters", "noise_fraction", "oracle": oracle_vote(),
+    "seed_rule": seed_rule()}. `truth` is applied only after run_grid() returns; the per-cell
+    `labels` arrays are not kept (JSON-ready output).
+    """
+    if len(texts) != len(truth):
+        raise ValueError("texts and truth must have equal length")
+    cells = run_grid(texts)  # texts only: the truth below never reaches a clustering step
+    report = []
+    for cell in cells:
+        labels = cell.pop("labels")
+        report.append({**cell, "oracle": oracle_vote(labels, truth),
+                       "seed_rule": seed_rule(labels, truth)})
+    return report

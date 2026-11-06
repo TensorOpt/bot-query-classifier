@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T3.
+**Next task:** M5.T3 (validation).
 
 ### Order constraints
 
@@ -2295,7 +2295,19 @@ Sign-off: pending.
 - **Tests:** tiny config end to end; report round-trips through `json`; missing raw file;
   two runs identical apart from the timestamp (11.18).
 - **Depends on:** M2.T8, M5.T2.
-- **Status:** todo
+- **Status:** done
+
+  Implementation notes (`sonnet`): `cli._cluster` / `build_cluster_report` compose the strings
+  (real queries, then 20 per template of A-D from `token_occurrences(real)`, rule 4 through
+  `_screen` with `real_queries` and `part_numbers` as drop lists); `cluster.grid_report(texts,
+  truth)` runs `run_grid(texts)` and only then `oracle_vote` / `seed_rule` per cell. Report body:
+  `rows`, `positives_dropped`, `shortfall` (sum), `grid` (n_components, min_cluster_size,
+  n_clusters, noise_fraction, `oracle`, `seed_rule` with its per-draw lists). The per-cell
+  `labels` arrays are not written (9.2 asks for metrics, not assignments). Parameters hold
+  families, per_template, the grid, seed ks and draws. `registry` and `per_template` are
+  test-only arguments of `_cluster`; tests patch `GRID_*` to a tiny grid. Mutation pass in an
+  isolated copy: 17 mutants, all killed (one needed a retarget of my own replace). Full suite:
+  847 tests OK. Real run: see the report to the caller.
 
 ---
 

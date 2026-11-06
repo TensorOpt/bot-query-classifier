@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from bqc import SEED
+from bqc import SEED, cluster
 from bqc.evaluate import (
     ARMS,
     COMPARISON,
@@ -84,13 +84,15 @@ MLP_FIT_LIMIT_SECONDS = 300
 
 
 class CommandError(Exception):
-    """`generate` or `evaluate` can't finish; the message holds no sanity or removed text."""
+    """`generate`, `evaluate` or `cluster` can't finish; the message holds no sanity or removed text."""
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bqc")
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
     commands.add_parser("fetch", help="download WANDS query.csv and product.csv into data/raw/")
+    commands.add_parser(
+        "cluster", help="run the HDBSCAN label-discovery experiment and write a report to results/")
     generate = commands.add_parser(
         "generate", help="build the default training set and write a report to results/")
     generate.add_argument(
@@ -489,6 +491,87 @@ def _evaluate(
     return 0
 
 
+def build_cluster_report(
+    query_path: Path,
+    product_path: Path,
+    checksums_path: Path,
+    sanity_path: Path,
+    registry: Registry = REGISTRY,
+    per_template: int = QUOTA,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build everything of `cluster` (9) and return (parameters, report body).
+
+    The strings are the real queries (truth 0) and `per_template` positives per template of
+    A-D rendered from the real queries' token occurrences (truth 1): no family E, no part
+    numbers (a drop list only), no product spans. The per-cell cluster labels are not kept.
+    Raises CommandError, WandsError or SanityError; no message holds sanity text.
+    """
+    queries, _, sanity = _load_inputs(query_path, product_path, checksums_path, sanity_path)
+    real = [q.query for q in queries]
+    sanity_texts = [q.query for q in sanity.queries]
+    vocabulary = token_occurrences(real)
+    p_texts = [s.text for s in _part_numbers(vocabulary, real, sanity_texts)]
+
+    wanted = [(f, t.template_id) for f in TRAINING_FAMILIES for t in registry.templates(f)]
+    rendered, shortfall = registry.render(vocabulary, SEED, wanted, per_template)
+    kept, dropped = _screen(
+        rendered, {"real_queries": real, "part_numbers": p_texts}, sanity_texts)
+    texts = real + [s.text for s in kept]
+    truth = [0] * len(real) + [1] * len(kept)
+
+    parameters = {
+        "families": list(TRAINING_FAMILIES),
+        "per_template": per_template,
+        "grid": {"n_components": list(cluster.GRID_N_COMPONENTS),
+                 "min_cluster_size": list(cluster.GRID_MIN_CLUSTER_SIZE)},
+        "seed_ks": list(cluster.SEED_KS),
+        "seed_draws": cluster.N_DRAWS,
+    }
+    body = {
+        "rows": {"real": len(real), "positives": len(kept), "total": len(texts)},
+        "positives_dropped": dropped,
+        "shortfall": sum(shortfall.values()),
+        "grid": cluster.grid_report(texts, truth),
+    }
+    return parameters, body
+
+
+def _cluster(
+    query_path: Path = RAW_PATH,
+    product_path: Path = PRODUCT_PATH,
+    checksums_path: Path = CHECKSUMS_PATH,
+    sanity_path: Path = SANITY_PATH,
+    results_dir: Path = RESULTS_DIR,
+    registry: Registry = REGISTRY,
+    per_template: int = QUOTA,
+) -> int:
+    """Run `cluster`, write the report and print the headline; 1 with a message on failure.
+
+    `registry` and `per_template` are for tests."""
+    started = time.monotonic()
+    try:
+        parameters, body = build_cluster_report(
+            query_path, product_path, checksums_path, sanity_path, registry, per_template)
+        path = write_report(results_dir, "cluster", parameters, body)
+    except SanityError:
+        # The loader's message can quote a query; keep sanity text out of the output.
+        print(f"bqc cluster: {sanity_path} is invalid (details withheld)", file=sys.stderr)
+        return 1
+    except (CommandError, WandsError, OSError) as e:
+        print(f"bqc cluster: {e}", file=sys.stderr)
+        return 1
+    print(f"wrote {path}")
+    rows = body["rows"]
+    print(f"rows: {rows['total']} ({rows['real']} real, {rows['positives']} positives); "
+          f"positives dropped: {body['positives_dropped']}")
+    for cell in body["grid"]:
+        print(f"n_components={cell['n_components']} min_cluster_size={cell['min_cluster_size']}: "
+              f"clusters {cell['n_clusters']}, noise {cell['noise_fraction']:.3f}, "
+              f"oracle ARI {cell['oracle']['ari']}")
+    print(f"seconds: {time.monotonic() - started:.1f}")
+    return 0
+
+
 def _fetch() -> int:
     try:
         for target, url in ((RAW_PATH, URL), (PRODUCT_PATH, PRODUCT_URL)):
@@ -536,4 +619,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.negatives, args.negatives_size, args.models, args.target_fpr,
             _section_models(args.lofo, args.models),
             _section_models(args.catalogue_gap, args.models))
+    if args.command == "cluster":
+        return _cluster()
     raise AssertionError(f"unhandled command {args.command!r}")  # required=True prevents it

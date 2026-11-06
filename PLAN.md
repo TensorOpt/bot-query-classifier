@@ -2260,6 +2260,16 @@ Sign-off: pending.
 
   Corrections (`sonnet`): items 1 and 2 done in a `test(M5.T2)` commit after `0fd1926`.
 
+  Re-validation (`opus`, after `201b723`): CHANGES REQUESTED. Both items are addressed and both
+  mutants are now caught: `statistics.median` for `fmean` fails
+  `SeedRuleTest.test_draw_indices_and_k_grid`; `dict.fromkeys` for `sorted(set(...))` fails
+  `OracleVoteTest.test_clusters_listed_in_ascending_id_order`. Suite: 822 tests, OK.
+
+  1. `tests/test_cluster_labels.py:256`: the comment says the median of `i**2` for 0..19 is
+     110.5. It is 90.5 (mean of 81 and 100; `statistics.median` confirms). The comment is there
+     to show why the fixture tells mean from median, so the wrong number misleads. Fix: change
+     110.5 to 90.5. Comment only; no other change.
+
 ### M5.T3: `bqc cluster`
 
 - **Goal:** run the experiment from the command line and write its JSON.

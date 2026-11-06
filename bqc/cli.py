@@ -12,6 +12,8 @@ from bqc import SEED
 from bqc.evaluate import (
     ARMS,
     COMPARISON,
+    LR,
+    MLP,
     PRIMARY,
     FoldError,
     NonFiniteScoreError,
@@ -73,9 +75,8 @@ MIN_DISTINCT_SHARE = 0.5  # a template under this share of distinct strings is a
 
 TRAINING_TEMPLATE_COUNT = 24  # templates of A-D: positives per template are n // 24
 
-MLP = "mlp"
 MODEL_FACTORIES: dict[str, Callable[[], Scorer]] = {
-    "lr": LogisticRegressionScorer, MLP: MLPScorer, "trivial": TrivialScorer}
+    LR: LogisticRegressionScorer, MLP: MLPScorer, "trivial": TrivialScorer}
 DEFAULT_TARGET_FPR = 0.01
 # Section 10: above this per fit, the M6 invocation leaves the MLP out of --lofo and
 # --catalogue-gap. `evaluate` only reports a fit over it; it applies no rule.

@@ -2025,7 +2025,15 @@ Sign-off: pending.
   - The sign is primary minus comparison, and MLP minus LR.
   - No `arm_comparison` with one arm; no `model_comparison` unless both models ran.
 - **Depends on:** M4.T4.
-- **Status:** todo
+- **Status:** done
+  - `paired_comparison(first, second)` in `bqc/evaluate.py` over two `compute_metrics` `folds` lists;
+    returns `folds`, `recall`/`fpr`/`roc_auc` (`differences`, `mean`, `sd`, `se`, `wins`), `justified`,
+    `worse`, `fpr_gate` (`holds`, `mean`, `sd`, `sign` -1/0/1) and `roc_auc.justified`/`.worse`. Raises
+    ValueError on mismatched or duplicate (repeat, fold) pairs and on fewer than two folds (sd undefined;
+    no verdict is better than a silent False). `build_run_report` adds top-level `arm_comparison`
+    (per model) with both arms and `model_comparison` under each arm when `lr` and `mlp` both ran; the
+    names are `LR`/`MLP` constants in `evaluate.py`, which `cli.py` now imports for `MODEL_FACTORIES`.
+    Three existing run-report assertions on the body's key set now include `arm_comparison`.
 
 ---
 

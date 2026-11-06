@@ -9,6 +9,7 @@ non-finite score, and `run_primary_fold` cross-fits one fold of the primary arm.
 """
 import math
 import pickle
+import statistics
 import warnings
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -1065,3 +1066,39 @@ def sanity_section(
                 if flag != bool(label)],
         }
     return {"status": "scored", "models": models}
+
+
+def part_number_section(
+    part_numbers: Sequence[Sample], finals: Sequence[FinalModel]
+) -> dict[str, Any]:
+    """The `part_number_diagnostic` section of the run JSON (8.6 item 4, 8.7, 11.30).
+
+    Scores the part-number samples (M2.T9) with every final model and returns `{"models":
+    {arm: {model: {"threshold", "n", "flagged_fraction", "per_shape": {template_id: {"n",
+    "flagged_fraction"}}, "min", "median", "max"}}}}`, flagged by `is_illegitimate` at that
+    model's threshold. Reported only: nothing is fitted or selected on these scores.
+    Raises ValueError on no samples and NonFiniteScoreError (score set "part-number
+    scores") on a non-finite score.
+    """
+    if not part_numbers:
+        raise ValueError("part-number diagnostic needs samples, got none")
+    texts = [p.text for p in part_numbers]
+    models: dict[str, dict[str, Any]] = {arm: {} for arm in dict.fromkeys(f.arm for f in finals)}
+    for final in finals:
+        scores = check_finite(
+            final.scorer.score(texts), None, None, final.arm, final.model, "part-number scores")
+        flagged = [is_illegitimate(s, final.threshold.threshold) for s in scores]
+        per_shape: dict[str, list[bool]] = {}
+        for p, flag in zip(part_numbers, flagged):
+            per_shape.setdefault(p.template_id, []).append(flag)
+        models[final.arm][final.model] = {
+            "threshold": final.threshold.threshold,
+            "n": len(texts),
+            "flagged_fraction": sum(flagged) / len(flagged),
+            "per_shape": {shape: {"n": len(flags), "flagged_fraction": sum(flags) / len(flags)}
+                          for shape, flags in per_shape.items()},
+            "min": float(scores.min()),
+            "median": float(statistics.median(scores.tolist())),
+            "max": float(scores.max()),
+        }
+    return {"models": models}

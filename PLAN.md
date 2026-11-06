@@ -1661,7 +1661,11 @@ Sign-off: pending.
   - Hand-computed fraction, overall and per shape, min, median and max.
   - The other sections of the report are unchanged with and without the diagnostic.
 - **Depends on:** M2.T9, M3.T8, M3.T10.
-- **Status:** todo
+- **Status:** done
+  - `part_number_section(part_numbers, finals)` in `bqc/evaluate.py` returns the `part_number_diagnostic` body
+    section; separate from `build_run_report` (as `sanity_section`) and not wired into the CLI. Form:
+    `{"models": {arm: {model: {"threshold", "n", "flagged_fraction", "per_shape": {template_id: {"n",
+    "flagged_fraction"}}, "min", "median", "max"}}}}`. Score-set name "part-number scores".
 
 ---
 

@@ -1474,6 +1474,7 @@ Sign-off: pending.
      fixture class has surrounding whitespace, so mutant `row[2].strip()` survives. Fix: add a temp-file test
      (same pattern as item 2, the shared fixture stays unchanged) with a class cell ` Rugs ` and assert
      `query_class == " Rugs "`.
+  - Corrections 1-3 addressed by `sonnet` in the `fix(M3.T16)` commit following `d1ffea3`.
   - Process deviation, as at M3.T14: `386bf88` carries the `fable` co-author trailer and sets the status in
     `PLAN.md`; neither changes the code under review.
 

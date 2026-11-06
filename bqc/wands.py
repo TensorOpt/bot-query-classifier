@@ -35,7 +35,7 @@ PRODUCT_HEADER = [
 class WandsQuery(NamedTuple):
     query_id: int
     query: str
-    query_class: str = ""  # the raw cell; "" when empty (11.15, 11.28)
+    query_class: str  # the raw cell; "" when empty (11.15, 11.28)
 
 
 class WandsProduct(NamedTuple):

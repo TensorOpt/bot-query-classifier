@@ -1935,7 +1935,8 @@ Sign-off: pending.
 - **Status:** done
   - **Implementation (sonnet, 2026-11-06):** `_evaluate` in `bqc/cli.py` composes `build_run_report`,
     one `fit_final_model` per arm and model, `sanity_section` and `part_number_section` into one
-    `write_report` call (pickles first, so a failure leaves neither). `build_run_report` gained
+    `write_report` call (pickles first; a failure before the writes leaves nothing, a
+    `write_report` failure leaves the pickles). `build_run_report` gained
     `lofo_not_run` and `gap_not_run` (arm -> model -> reason); the CLI builds them, including the
     comparison-arm MLP rule. Real run, defaults, primary arm: 12 min 1 s, one MLP fit 39.7 s (under
     5 minutes), sanity `scored`; recorded in 13.9. `tests/test_cli_generate.py` fixture: query classes
@@ -1978,6 +1979,7 @@ Sign-off: pending.
     JSON), and `lofo_models` / `catalogue_gap_models` belong in `parameters` (M3.T8 criterion 1, all
     parameters); sanity text appears only in `sanity.disagreements` of the real run JSON, as 8.6.1 asks;
     13.9 has the date, versions and core count, and the 5-minute rule did not trigger (39.7 s).
+  - **Corrections (sonnet, 2026-11-06):** items 1-7 addressed in the `fix(M4.T4)` commit after `c35c96d`.
 
 ### M4.T8: MLP-vs-LR and between-arm paired comparisons
 

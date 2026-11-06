@@ -77,10 +77,12 @@ MLP = "mlp"
 MODEL_FACTORIES: dict[str, Callable[[], Scorer]] = {
     "lr": LogisticRegressionScorer, MLP: MLPScorer, "trivial": TrivialScorer}
 DEFAULT_TARGET_FPR = 0.01
-MLP_FIT_LIMIT_SECONDS = 300  # section 10: above this per fit, leave mlp out of the sections
+# Section 10: above this per fit, the M6 invocation leaves the MLP out of --lofo and
+# --catalogue-gap. `evaluate` only reports a fit over it; it applies no rule.
+MLP_FIT_LIMIT_SECONDS = 300
 
 
-class GenerateError(Exception):
+class CommandError(Exception):
     """`generate` or `evaluate` can't finish; the message holds no sanity or removed text."""
 
 
@@ -183,7 +185,7 @@ def _screen(
     try:
         return screen_samples(samples, others, sanity)
     except SanityCollision as e:
-        raise GenerateError(
+        raise CommandError(
             f"a positive of template {e.family}/{e.template_id} equals a sanity query "
             "(text withheld); fix the template"
         ) from None
@@ -214,11 +216,11 @@ def _load_inputs(
 ) -> tuple[list[WandsQuery], list[WandsProduct], SanitySet]:
     """The WANDS queries and products and the sanity set, for `generate` and `evaluate`.
 
-    Raises GenerateError (a raw file is missing; the message points at `fetch`), WandsError or
+    Raises CommandError (a raw file is missing; the message points at `fetch`), WandsError or
     SanityError."""
     for path in (query_path, product_path):
         if not path.exists():
-            raise GenerateError(f"missing {path}; run `python -m bqc fetch` first")
+            raise CommandError(f"missing {path}; run `python -m bqc fetch` first")
     queries = load_queries(query_path, checksums_path)
     products = load_products(product_path, checksums_path)
     return queries, products, load_sanity(sanity_path, queries)
@@ -227,11 +229,11 @@ def _load_inputs(
 def _part_numbers(
     real_vocabulary: Sequence[str], real: Sequence[str], sanity_texts: Sequence[str]
 ) -> list[Sample]:
-    """The 100 part-number strings (8.6 item 4); GenerateError, text withheld, on a collision."""
+    """The 100 part-number strings (8.6 item 4); CommandError, text withheld, on a collision."""
     try:
         return generate_part_numbers(real_vocabulary, SEED, real, sanity_texts)
     except AuditError:
-        raise GenerateError(
+        raise CommandError(
             "a part-number string equals a real or sanity query (text withheld)") from None
 
 
@@ -244,7 +246,7 @@ def build_generate_report(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build everything of `generate` (3.2, 4, 10) and return (parameters, report body).
 
-    Raises GenerateError, WandsError, SanityError or PoolExhausted; none of the messages
+    Raises CommandError, WandsError, SanityError or PoolExhausted; none of the messages
     holds sanity text.
     """
     queries, products, sanity = _load_inputs(query_path, product_path, checksums_path, sanity_path)
@@ -354,7 +356,7 @@ def _generate(
         # The loader's message can quote a query; keep sanity text out of the output.
         print(f"bqc generate: {sanity_path} is invalid (details withheld)", file=sys.stderr)
         return 1
-    except (GenerateError, WandsError, PoolExhausted, OSError) as e:
+    except (CommandError, WandsError, PoolExhausted, OSError) as e:
         print(f"bqc generate: {e}", file=sys.stderr)
         return 1
     print(f"wrote {path}")
@@ -473,7 +475,7 @@ def _evaluate(
         # The loader's message can quote a query; keep sanity text out of the output.
         print(f"bqc evaluate: {sanity_path} is invalid (details withheld)", file=sys.stderr)
         return 1
-    except (GenerateError, WandsError, PoolExhausted, FoldError, NonFiniteScoreError,
+    except (CommandError, WandsError, PoolExhausted, FoldError, NonFiniteScoreError,
             OSError) as e:
         print(f"bqc evaluate: {e}", file=sys.stderr)
         return 1

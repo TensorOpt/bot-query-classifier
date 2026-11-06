@@ -55,6 +55,10 @@ class ClockedScorer(VariedScorer):
         ClockedScorer.clock += 5.0
         return super().fit(texts, y)
 
+    def score(self, texts):
+        ClockedScorer.clock += 3.0  # time outside the fit, inside `fit_final_model`
+        return super().score(texts)
+
 
 class EvaluateTestCase(DataTestCase):
     def setUp(self):
@@ -78,6 +82,11 @@ class EvaluateTestCase(DataTestCase):
                 checksums_path=self.checksums, sanity_path=self.sanity_path,
                 results_dir=self.results, **config)
         return code, out.getvalue(), err.getvalue()
+
+    @staticmethod
+    def fake_mlp():
+        """For tests that pin a name-based rule: the real MLP fit would only cost time."""
+        return mock.patch.dict(cli.MODEL_FACTORIES, {"mlp": VariedScorer})
 
     def report(self, **kw):
         for path in self.results.glob("*") if self.results.exists() else ():
@@ -170,7 +179,7 @@ class FitTimeTest(EvaluateTestCase):
             return real(arm, make_scorer, target_fpr, model, *a, **kw)
 
         with mock.patch.object(cli.time, "perf_counter", counter), \
-                mock.patch.object(cli, "fit_final_model", wrapped):
+                mock.patch.object(cli, "fit_final_model", wrapped), self.fake_mlp():
             r = self.report(negatives=(PRIMARY, COMPARISON))
         self.assertEqual(r["timing"]["mlp_final_fit_seconds"], 7.5)
         self.assertIn((PRIMARY, "mlp"), calls)
@@ -182,16 +191,18 @@ class FitTimeTest(EvaluateTestCase):
         self.assertIs(type(load_final_model(path).scorer), MLPScorer)
 
     def test_the_time_surrounds_the_fit_alone(self):
-        ClockedScorer.clock = 0.0  # a fake clock the fit advances by 5 s; nothing else moves it
+        ClockedScorer.clock = 0.0  # a fake clock: the fit adds 5 s, each `score` call 3 s
         with mock.patch.object(cli.time, "perf_counter", lambda: ClockedScorer.clock), \
                 mock.patch.dict(cli.MODEL_FACTORIES, {"mlp": ClockedScorer}):
             r = self.report(models=["mlp"])
+        self.assertGreater(ClockedScorer.clock, 5.0)  # the clock moved outside the fit too
         self.assertEqual(r["timing"]["mlp_final_fit_seconds"], 5.0)
 
     def test_no_time_without_the_mlp_or_without_the_primary_arm(self):
-        self.assertIsNone(self.report(models=["lr"])["timing"]["mlp_final_fit_seconds"])
-        self.assertIsNone(
-            self.report(negatives=(COMPARISON,))["timing"]["mlp_final_fit_seconds"])
+        with self.fake_mlp():
+            self.assertIsNone(self.report(models=["lr"])["timing"]["mlp_final_fit_seconds"])
+            self.assertIsNone(
+                self.report(negatives=(COMPARISON,))["timing"]["mlp_final_fit_seconds"])
 
     def test_a_fit_over_five_minutes_is_said_in_the_output(self):
         ticks = iter([0.0, 301.0])
@@ -213,6 +224,33 @@ class SectionsTest(EvaluateTestCase):
             self.assertEqual(set(r[arm]["lofo"]), {"lr", "trivial"})
             self.assertEqual(set(r[arm]["lofo"]["lr"]), {"A", "B", "C", "D"})
         self.assertTrue(r["config"]["parameters"]["lofo"])
+
+    def test_the_section_models_are_in_the_run_parameters(self):
+        params = self.report(models=["lr", "trivial"])["config"]["parameters"]
+        self.assertIsNone(params["lofo_models"])
+        self.assertIsNone(params["catalogue_gap_models"])
+        params = self.report(models=["lr", "trivial"], lofo=["lr"],
+                             catalogue_gap=["trivial"])["config"]["parameters"]
+        self.assertEqual(params["lofo_models"], ["lr"])
+        self.assertEqual(params["catalogue_gap_models"], ["trivial"])
+
+    def test_a_bare_flag_records_all_of_models_in_the_run_parameters(self):
+        real = cli._evaluate
+
+        def with_paths(*args):
+            return real(*args, query_path=self.query_path, product_path=self.product_path,
+                        checksums_path=self.checksums, sanity_path=self.sanity_path,
+                        results_dir=self.results, registry=build_registry(), **TINY)
+
+        with mock.patch.object(cli, "_evaluate", side_effect=with_paths), \
+                contextlib.redirect_stdout(io.StringIO()):
+            code = main(["evaluate", "--negatives-size", str(N), "--target-fpr", "0.5",
+                         "--models", "lr,trivial", "--lofo", "--catalogue-gap"])
+        self.assertEqual(code, 0)
+        params = json.loads(next(self.results.glob("evaluate-*.json")).read_text())[
+            "config"]["parameters"]
+        self.assertEqual(params["lofo_models"], ["lr", "trivial"])
+        self.assertEqual(params["catalogue_gap_models"], ["lr", "trivial"])
 
     def test_no_lofo_or_gap_section_by_default(self):
         r = self.report()
@@ -280,7 +318,8 @@ class ModelSubsetTest(EvaluateTestCase):
         self.assertEqual(len(names), len(arms))
 
     def test_lofo_never_runs_the_mlp_in_the_comparison_arm_even_when_named(self):
-        r = self.report(negatives=(PRIMARY, COMPARISON), lofo=ALL_MODELS)
+        with self.fake_mlp():
+            r = self.report(negatives=(PRIMARY, COMPARISON), lofo=ALL_MODELS)
         self.assertEqual(set(r[PRIMARY]["lofo"]["mlp"]), {"A", "B", "C", "D"})
         self.assert_not_run(r[COMPARISON]["lofo"]["mlp"], "comparison", "8.6")
         for model in ("lr", "trivial"):
@@ -288,14 +327,16 @@ class ModelSubsetTest(EvaluateTestCase):
         self.assert_main_and_final_present(r, (PRIMARY, COMPARISON))
 
     def test_lofo_without_mlp_reports_its_rows_as_not_run_in_both_arms(self):
-        r = self.report(negatives=(PRIMARY, COMPARISON), lofo=["lr", "trivial"])
+        with self.fake_mlp():
+            r = self.report(negatives=(PRIMARY, COMPARISON), lofo=["lr", "trivial"])
         for arm in (PRIMARY, COMPARISON):
             self.assert_not_run(r[arm]["lofo"]["mlp"], "--lofo")
             self.assertEqual(set(r[arm]["lofo"]["lr"]), {"A", "B", "C", "D"})
         self.assert_main_and_final_present(r, (PRIMARY, COMPARISON))
 
     def test_catalogue_gap_without_mlp_reports_its_rows_as_not_run(self):
-        r = self.report(negatives=(PRIMARY, COMPARISON), catalogue_gap=["lr", "trivial"])
+        with self.fake_mlp():
+            r = self.report(negatives=(PRIMARY, COMPARISON), catalogue_gap=["lr", "trivial"])
         for arm in (PRIMARY, COMPARISON):
             gap = r[arm]["catalogue_gap"]["models"]
             self.assert_not_run(gap["mlp"], "--catalogue-gap")
@@ -304,9 +345,10 @@ class ModelSubsetTest(EvaluateTestCase):
         self.assert_main_and_final_present(r, (PRIMARY, COMPARISON))
 
     def test_catalogue_gap_runs_the_mlp_in_both_arms_when_asked(self):
-        r = self.report(negatives=(COMPARISON,), models=["mlp"], catalogue_gap=["mlp"])
-        self.assertIn("fpr", r[COMPARISON]["catalogue_gap"]["models"]["mlp"])
-        r = self.report(models=["mlp"], catalogue_gap=["mlp"])
+        with self.fake_mlp():
+            r = self.report(negatives=(COMPARISON,), models=["mlp"], catalogue_gap=["mlp"])
+            self.assertIn("fpr", r[COMPARISON]["catalogue_gap"]["models"]["mlp"])
+            r = self.report(models=["mlp"], catalogue_gap=["mlp"])
         self.assertIn("fpr", r[PRIMARY]["catalogue_gap"]["models"]["mlp"])
 
     def test_the_two_sections_take_their_own_subsets(self):
@@ -356,7 +398,9 @@ class DeterminismTest(EvaluateTestCase):
 
 class UsageErrorTest(EvaluateTestCase):
     def assert_usage_error(self, argv):
-        code, err = self.run_main(argv)
+        with mock.patch.object(cli, "_evaluate") as ev:  # never a real run if a check breaks
+            code, err = self.run_main(argv)
+        ev.assert_not_called()
         self.assertEqual(code, 2)
         self.assertIn("usage", err.lower())
         return err
@@ -517,6 +561,11 @@ class FailureTest(EvaluateTestCase):
             err = self.assert_failed_cleanly(models=["lr"])
         self.assertIn("non-finite", err.lower())
         self.assertIn("sanity", err)
+
+    def test_a_save_failure_exits_non_zero_and_writes_no_run_json(self):
+        with mock.patch.object(cli, "save_final_model", side_effect=OSError("disk full")):
+            err = self.assert_failed_cleanly(models=["lr"])
+        self.assertIn("disk full", err)
 
     def test_a_fold_error_exits_non_zero(self):
         with mock.patch.object(cli, "build_run_report", side_effect=FoldError("bad fold")):

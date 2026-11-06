@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T8.
+**Next task:** M4.T8 corrections.
 
 ### Order constraints
 
@@ -1998,7 +1998,8 @@ Sign-off: pending.
 - **Goal:** compute the paired differences M6 reports: MLP against LR, and primary against comparison
   arm.
 - **Design refs:** `DESIGN.md` `b025fde`: 6.2, 7, 8.2, 12.1 (items 13, 17).
-- **Files:** `bqc/evaluate.py`, `tests/test_paired_comparison.py`.
+- **Files:** `bqc/evaluate.py`, `bqc/cli.py` (imports the `LR`/`MLP` names), `tests/test_paired_comparison.py`,
+  `tests/test_run_report.py` (body key sets).
 - **Acceptance criteria:**
   1. One function computes, for each of headline recall, achieved FPR and ROC-AUC: the list of per-fold
      paired differences, first-named minus second-named (15 in a real run), their mean, sample standard
@@ -2034,6 +2035,39 @@ Sign-off: pending.
     (per model) with both arms and `model_comparison` under each arm when `lr` and `mlp` both ran; the
     names are `LR`/`MLP` constants in `evaluate.py`, which `cli.py` now imports for `MODEL_FACTORIES`.
     Three existing run-report assertions on the body's key set now include `arm_comparison`.
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 767 OK in 178 s. Criteria 1-6 are met by
+    reading: one `paired_comparison`, first-named minus second-named, `statistics.stdev`/`fmean` (stdlib,
+    no new dependency), `se = sd / sqrt(folds)`, strict `>` against twice the se for `justified`, `worse`,
+    the ROC-AUC pair and the FPR gate, the gate in `justified` only, `fpr_gate` with `holds`/`mean`/`sd`/
+    strict `sign`; `arm_comparison` only with both arms, `model_comparison` (MLP minus LR) only with both;
+    no `smote` key, no cross-file command. `LR`/`MLP` have one home in `evaluate.py`; `evaluate.py` imports
+    nothing from `cli.py`. Hand checks redone: `[0.5, 0.25, 0.0, 0.25]` gives ss 0.125, sd sqrt(0.125/3),
+    se sd/2, 3 wins; `[0.625, 0.125, 0.125, 0.125]` gives mean 0.25, ss 0.1875, sd 0.25, 2 se 0.25 exactly
+    (dyadic, exact in floats), so neither boolean, and the gate holds at the bound. Mutation pass, one
+    mutant per isolated copy, `test_paired_comparison`: 13 mutants, 10 killed (se from `pstdev` with sd
+    sample; wins on the second side; gate sign from the mean of absolute values; `arm_comparison` over
+    `lr`/`mlp` only, so `trivial` dropped; `worse` at `>=`; median for mean; gate on ROC-AUC; model
+    comparison in the first arm only; gate `sd` set to se; `folds` off by one), 1 equivalent (minimum
+    lowered to one fold: `statistics.stdev` then raises `StatisticsError`, a `ValueError` subclass, probed
+    on Python 3.12), 2 survivors, items 1-2.
+    1. `tests/test_paired_comparison.py:44-49`: the ROC-AUC differences `[0.125, -0.125, 0.0]` are
+       symmetric, so inverting the ROC-AUC win direction (`d < 0`, `bqc/evaluate.py:768`) still counts 1
+       and survives. Use asymmetric differences (for example `[0.125, 0.0625, -0.125, 0.0]`: 2 wins, 1 if
+       inverted).
+    2. `tests/test_paired_comparison.py:119` and `:155`: no test has the FPR gate failing while ROC-AUC is
+       justified, so `"justified": better and (gate["holds"] or roc_auc["justified"])`
+       (`bqc/evaluate.py:775`) survives. Add a case: recall beyond noise, FPR rise beyond noise, ROC-AUC
+       justified; assert `justified` false and `fpr_gate.holds` false.
+    Rulings: (F1) TDD order slipped again, recorded as process deviation F1; the tests are hand-computed
+    and with items 1-2 the mutation evidence is sufficient, so no rework beyond them. Fewer than two
+    folds raising `ValueError` is accepted: the run always has at least 2 x 2 folds, so it is a
+    programming error, and section 11 fails loudly rather than reporting a misleading verdict.
+    Top-level `justified`/`worse` (recall), nested `roc_auc.justified`/`.worse` and `fpr_gate`
+    {`holds`, `mean`, `sd`, `sign`} match section 7 and 8.2 ("one `justified` and one `worse` boolean
+    for the comparison and the FPR gate"; ROC-AUC's pair informational). Top-level `arm_comparison`
+    keyed by model, `trivial` included, matches 8.2 ("each arm under its own key plus an
+    `arm_comparison` section"); `model_comparison` under each arm matches 8.2 ("inside a run"). The
+    `tests/test_run_report.py` key-set changes are accepted and added to Files with `bqc/cli.py`.
 
 ---
 

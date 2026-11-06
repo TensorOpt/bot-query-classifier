@@ -2111,7 +2111,33 @@ Follow-ups:
 
 ## M5: HDBSCAN experiment
 
-Sign-off: pending.
+**Sign-off: 2026-11-06, `fable`, verdict POSITIVE** (audited at `30221fe`; `DESIGN.md` `f8855ca`).
+
+- Suite: `.venv/bin/python -m unittest discover -s tests`, 849 tests, OK in 138 s, run by `fable` on a
+  clean tree (the in-place mutant of the M5.T3 re-validation was reverted; `bqc/cli.py:533` holds
+  the sum).
+- Diff read: the whole of `bqc/cluster.py`, `grid_report`, and the `cluster` parts of `bqc/cli.py`
+  (`build_cluster_report`, `_cluster`), plus every M5 review record. Invariants: labels reach no
+  clustering step (`run_grid` takes texts only, the truth is applied after it returns); the
+  experiment shares only `normalise` and `make_vectoriser` with the pipeline and imports neither
+  `bqc.evaluate` nor `bqc.models`; the pipeline is exactly 9.1 with `random_state=SEED` and
+  `copy=True`; both 9.2 rules resolve ties and noise to legitimate; the oracle metrics are on
+  non-noise rows and the seed rule over all rows; seeds come from `random.Random(SEED + i)`; the
+  960 strings are the real queries and 20 per A-D template from their occurrences, screened by
+  rule 4; one JSON through `write_report`; tests never download or read `data/raw/`.
+- Probes recorded: 13.5 (`copy`), the module docstring of `bqc/cluster.py` (SVD and HDBSCAN size
+  limits, the sklearn metrics on degenerate and empty input).
+
+Follow-ups:
+
+- **F14 (for the user, via M6.T1):** the first real `cluster` run (6 s, file under `results/`, from
+  the tree one commit before `cc7dc12`): at the default cell (50, 15) 2 clusters, 1.5% noise, ARI
+  0.002, seed-rule accuracy 0.493 / FPR 0.45 / recall 0.435 at k=20; the best ARI, 0.895 at
+  (100, 30), comes with 84% noise, i.e. the fail-open label for most rows. Read: the two classes
+  are not discoverable by clustering at this feature set. M6.T1 reruns it at the signed-off commit
+  and reports it; nothing acts on it before the user reads it.
+- **F15 (noted):** `cluster` loads and hash-checks `product.csv` through the shared loader although
+  it never uses it; harmless (the file is already fetched for `evaluate`).
 
 ### M5.T1: Clustering pipeline and grid
 

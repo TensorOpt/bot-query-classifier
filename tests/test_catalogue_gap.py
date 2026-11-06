@@ -80,7 +80,7 @@ class FixtureTest(unittest.TestCase):
 
 
 class PrimaryRemovalTest(unittest.TestCase):
-    def recorded_builds(self):
+    def recorded_builds(self, **kw):
         calls = []
 
         def spy(products, n, seed, *args):
@@ -89,7 +89,7 @@ class PrimaryRemovalTest(unittest.TestCase):
             return spans, removals
 
         with mock.patch("bqc.evaluate.build_spans", side_effect=spy):
-            data = gap_data(arms=(PRIMARY,))
+            data = gap_data(arms=(PRIMARY,), **kw)
         return calls, data
 
     def test_no_product_of_a_test_side_class_is_in_a_folds_pool_or_spans(self):
@@ -113,8 +113,8 @@ class PrimaryRemovalTest(unittest.TestCase):
             self.assertTrue(all(product_id not in ids for ids in ids_by_fold))
 
     def test_the_repeat_seed_is_kept(self):
-        calls, _ = self.recorded_builds()
-        self.assertEqual({seed for _, _, seed in calls}, {SEED})
+        calls, _ = self.recorded_builds(repeats=2)
+        self.assertEqual([seed for _, _, seed in calls], [SEED] * 3 + [SEED + 1] * 3)
 
     def test_removal_differs_per_fold_and_the_report_counts_it(self):
         calls, data = self.recorded_builds()
@@ -416,7 +416,7 @@ class ReportTest(unittest.TestCase):
     def test_a_failed_gap_does_not_stop_the_run_or_change_anything_else(self):
         _, body = build(target_fpr=0.0001, catalogue_gap=True)
         for arm in (PRIMARY, COMPARISON):
-            self.assertIn("gap_failed", body[arm]["catalogue_gap"]["models"]["lr"])
+            self.assertIs(body[arm]["catalogue_gap"]["models"]["lr"]["gap_failed"], True)
 
     def test_fit_counts(self):
         factory = Factory(cls=LengthScorer)

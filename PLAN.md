@@ -1405,6 +1405,7 @@ Sign-off: pending.
      asserts only that the key exists. The fixture does fail today (`opus` checked: lower bound 0.161 against
      0.0001 in both arms), but the test would pass vacuously if it stopped failing. Fix: assert
      `gap_failed` is `True` in both arms.
+  - Corrections addressed in the `fix(M3.T14)` commit that follows `e7157d7`.
 
 ### M3.T16: Query classes in the loader
 

@@ -1125,8 +1125,8 @@ Sign-off: pending.
 - **Files:** `bqc/evaluate.py`, `tests/test_metrics.py`.
 - **Acceptance criteria:**
   1. Per repeat and pooled: headline recall and achieved FPR, Wilson 95% CI (standard
-     library `math` only), confusion matrix, macro F1, precision, recall, ROC-AUC as mean and
-     sd over folds and pooled.
+     library `math` only), confusion matrix, macro F1, precision and recall. ROC-AUC is given both ways,
+     as mean and sd over folds and pooled (8.5).
   2. **FPR intervals (8.5):** a repeat's interval uses `k_r` at `n = 480`. The pooled point
      estimate is the total over all repeats divided by 1440, and the pooled interval uses
      `k = total / 3` at `n = 480`; `k` need not be an integer. Never `n = 1440`. No recall interval
@@ -1169,6 +1169,32 @@ Sign-off: pending.
   - A single-class input to ROC-AUC raises rather than reporting a number.
 - **Depends on:** M3.T5, M3.T15 (schedule order only).
 - **Status:** done
+- **Status note:** implemented in `bba4137`. Criterion 1 is met: 8.5 asks for mean and sd over folds on
+  ROC-AUC only, and the criterion's wording, which could be read otherwise, is corrected above. Widening
+  the M3.T5 guard to `sklearn.metrics` is fine: the check is on the exact set, and estimator imports in
+  each form still fail it. Equal negatives per repeat hold on the real data (480), so that error can't fire
+  there. Real run by `opus`, all 15 folds, scratch logistic regression at the M4.T1 settings, pooled: primary
+  recall 77.0%, FPR 0.49% (7 of 1,440), AUC .9711, one-word 2.33 mean per repeat; comparison 70.4%, 1.04%,
+  .9552, 3.00. That's plausible against 13.22's T arm (79.7%, 0.69%, .9723) and 13.19's BASE (71.0%, 0.62%,
+  .9603), with fewer false positives and less recall in the primary arm, but not a match. Family E totals
+  600 per repeat, A-D 1,799-1,800 pooled, no `target_unmet`.
+- **Changes requested:**
+  1. `bqc/evaluate.py:514`: the runners give a `numpy.float64` threshold, so `is_illegitimate` returns
+     `numpy.bool_`, and `caught`, `false_positives` and `flagged` become `numpy.int64`: `json.dumps` raises on
+     real results, against the docstring's "JSON-ready". The tests only use a Python float threshold. Convert
+     with `float(...)` there, and add a round-trip test with a `numpy.float64` threshold next to
+     `tests/test_metrics.py:230`.
+  2. `bqc/evaluate.py:602`: pooled `one_word.flagged` is the union over repeats (primary 3, comparison 6),
+     which isn't comparable with the probes' mean per repeat (2.33, 3.00 here) or the FPR's `total / repeats`.
+     Keep the union and its words, and add `flagged_mean_per_repeat`, with a hand-computed test next to
+     `tests/test_metrics.py:226`.
+  3. `bqc/evaluate.py:598`: `templates` has 30 rows on real data, and criterion 4 and 8.5 say 24. E has its
+     family row. Leave E out, and change `tests/test_metrics.py:207`.
+  4. `tests/test_metrics.py:161`: the fixture's matrix is symmetric, so plain F1 equals macro F1 and that
+     mutant passes (on real data, far from equal). Add a hand-computed asymmetric case.
+  5. `tests/test_metrics.py:226`: no test has two repeats with different folds, so mixing the same fold number
+     across repeats, or using every repeat's folds for a repeat's ROC-AUC mean, passes. Add one asserting the
+     fold entries and each repeat's `fold_mean`.
 
 ### M3.T8: Run report JSON
 
@@ -1209,7 +1235,8 @@ Sign-off: pending.
      every fit and from threshold selection.
   3. The test side is the same strings as the main run for that fold: the test-side queries, and F's
      test-side templates at their 100 renders. A fold with none of F's templates on the test side
-     still fits and counts towards FPR, with `null` recall on F for that fold.
+     still fits and counts towards FPR, with `null` recall on F for that fold. Such a fold has one class, so
+     `compute_metrics` raises on it (ROC-AUC, M3.T7): LOFO rows are computed without that function's ROC-AUC.
   4. Each row reports recall on F, the achieved FPR at that threshold, and the paired difference to the
      main run's recall on F.
   5. Results go in the run JSON as their own section, under each arm, separate from the headline.
@@ -1583,7 +1610,8 @@ Sign-off: pending.
      shape, and the min, median and max score, next to the model's result on the three part-number rows of the
      sanity set (ids 16, 39, 43). It states these so the user can answer Q12. The answer isn't
      needed for `done`.
-  6. **One-word false positives:** per model, the count flagged out of 23, and the words (8.5).
+  6. **One-word false positives:** per model, the count flagged out of 23, as mean per repeat and as the union
+     over repeats, and the words (8.5).
   7. **Catalogue-gap check:** for each arm, pooled FPR with CI, recall, the flagged queries, and whether
      it failed the rule of 8.6 item 5. A failure is reported for the user to decide; this task doesn't
      act on it.

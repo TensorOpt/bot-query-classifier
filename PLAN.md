@@ -294,6 +294,8 @@ Follow-ups:
   - an empty `query_class` (11.15);
   - a double-space query kept as is.
   Failure paths: wrong hash; missing file; wrong header.
+- **Annotation (M3.T14 review):** stands as validated and signed off, with `query_class` ignored. M4.T4 adds the
+  field, because the catalogue-gap check needs it.
 - **Depends on:** M1.T2.
 - **Status:** signed off
 
@@ -1312,6 +1314,31 @@ Sign-off: pending.
   - An exhausted pool raises.
 - **Depends on:** M2.T12, M3.T8.
 - **Status:** done
+- **Status note:** implemented in `1ad1062`. Real run by `opus`, all 15 folds of both arms, 5,000 spans, scratch
+  logistic regression, 253 s beside other work (main pass 123 s, gap pass 130 s, so the extra span builds are
+  cheap and the repeat-level build stays): 19,695-22,500 products removed, 2,852 unclassified, no exhausted pool.
+  Primary FPR 1.25% [0.57, 2.70], recall 78.3%, passes, not above target by the CI, point estimate above target;
+  comparison 0.69% [0.25, 1.92], recall 67.5%. That's below 13.22's T (1.81% [0.94, 3.43], 82.2%) and 13.19
+  (1.67%, 86.3%; comparison 0.90%, 66.2%), with overlapping intervals. Threshold sets 192-223. No query of a gap
+  class in a threshold set or comparison fit, and classes come from test-side queries only. `opus`'s ruling on
+  `sonnet`'s question: the gap test side needn't equal the main run's. 8.2 pairs the arms, 8.6 item 5 pairs the
+  gap results of the arms, and only LOFO (item 1) asks for the main run's strings. Both arms share one test side
+  (15 of 15), and on real data it equals the main run's in 30 of 30. Under the gap the comparison arm trains on
+  380-400 positives to 192-223 negatives: 8.6 item 5 removes queries and leaves 8.2's 20 per template.
+- **Changes requested:**
+  1. `bqc/evaluate.py:912`: the gap section drops each fold's `target_unmet`, threshold warning and fit warnings,
+     which 11.10, 11.11 and 11.12 require in the report, and the counts 3.2 requires in the run JSON. Add a `folds`
+     list to the section: each gap fold's `data.report`, and per model each fold's threshold, `target_unmet`,
+     `threshold_warning` and `fit_warnings`, with tests next to `tests/test_catalogue_gap.py:364`.
+  2. `tests/test_catalogue_gap.py:364`: `catalogue_gap_section` fed the main run's results instead of the gap
+     pass's passes every test, as the fake ignores the fit. Add a case where removal changes the threshold, and
+     assert the section's numbers are the gap folds'.
+  3. `tests/test_catalogue_gap.py:415`: `lofo=lofo` in the gap pass (`bqc/evaluate.py:899`) passes, and LOFO fits
+     would enter the gap results. M6 runs both flags: test them together.
+  4. `tests/test_catalogue_gap.py:211`: rendering comparison positives from the removed queries' vocabulary
+     (`bqc/evaluate.py:288`) passes. Assert the vocabulary comes from the kept queries only.
+  5. `tests/test_catalogue_gap.py:284`: dropping the repeat's spans from the test screen (`bqc/evaluate.py:272`)
+     passes. Assert them too, as they keep the gap's test strings within the main run's.
 
 ### M3.T10: Final models
 
@@ -1452,8 +1479,8 @@ Sign-off: pending.
 ### M4.T4: `bqc evaluate` command
 
 - **Goal:** run the harness with the real models from the command line, in either arm.
-- **Design refs:** `DESIGN.md` `0386ca8`: 8.2, 8.4, 8.5, 8.6, 10, 13.9, 13.22.
-- **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`, `DESIGN.md` (section 13.9, the measurement only).
+- **Design refs:** `DESIGN.md` `0386ca8`: 8.2, 8.4, 8.5, 8.6, 10, 11.15, 11.28, 13.9, 13.22.
+- **Files:** `bqc/cli.py`, `bqc/wands.py`, `tests/test_cli_evaluate.py`, `tests/test_wands.py`, `DESIGN.md` (section 13.9, the measurement only).
 - **Acceptance criteria:**
   1. `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
      [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo [MODELS]] [--catalogue-gap [MODELS]]` runs the chosen models
@@ -1471,6 +1498,11 @@ Sign-off: pending.
      model always cover every model in `--models`. A model left out has its rows reported as not run,
      with the reason. `--lofo` never runs the MLP in the comparison arm (8.6 item 1). `--catalogue-gap`
      is valid with either arm.
+  6. **Query classes:** `WandsQuery` gains `query_class: str`, default `""`, read by `load_queries` in its one
+     verified read, so the hash check still runs first and no file is read twice. An empty class stays `""`
+     (11.15, 11.28). The command passes `[q.query_class for q in queries]` as `query_classes` with
+     `--catalogue-gap`. Tests: the fixture's classes come through, including an empty one; a wrong hash still
+     raises before parsing; the real file's values are not asserted in tests, which don't read `data/raw/`.
   5. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records it in the
      run JSON and, with date and versions, in 13.9. The task report says if it exceeds 5 minutes. For
      scale, 13.22 measured a median of 17 s, about 25 minutes for the primary arm's 91 MLP fits, so the

@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T11.
+**Next task:** M3.T12.
 
 ### Order constraints
 
@@ -1592,7 +1592,13 @@ Sign-off: pending.
   - Fit inputs contain no sanity text.
   - Duplicate raises (11.21).
 - **Depends on:** M1.T6, M3.T8, M3.T10.
-- **Status:** todo
+- **Status:** done
+  - `sanity_section(path, wands, finals)` in `bqc/evaluate.py` returns the `sanity` body section; it is
+    separate from `build_run_report` (the finals are fitted by `fit_final_model`, M3.T10) and not wired
+    into the CLI. Scored form: `{"status": "scored", "models": {arm: {model: {"threshold",
+    "confusion_matrix" [[tn, fp], [fn, tp]] by user label x flagged, "disagreements"}}}}`. Scores use
+    score-set name "sanity scores". `SanityError` (in `bqc/sanity.py`, one small edit outside the Files
+    list) gained `query_id`; `sanity_section` re-raises a duplicate without the query text.
 
 ### M3.T12: Part-number diagnostic
 

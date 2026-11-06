@@ -32,6 +32,7 @@ from bqc.negatives import (
 )
 from bqc.preprocess import normalise
 from bqc.report import write_report
+from bqc.sanity import SanityError, load_sanity
 from bqc.synth.audit import SanityCollision, screen_samples
 from bqc.synth.registry import (
     ALL_FAMILIES,
@@ -42,7 +43,7 @@ from bqc.synth.registry import (
     Registry,
     Sample,
 )
-from bqc.wands import WandsProduct
+from bqc.wands import WandsProduct, WandsQuery
 
 PRIMARY = "product"
 COMPARISON = "real"
@@ -1017,3 +1018,50 @@ def load_final_model(path: Path) -> FinalModel:
     """Load a pickle written by `save_final_model`."""
     with path.open("rb") as f:
         return pickle.load(f)
+
+
+def sanity_section(
+    path: Path, wands: Sequence[WandsQuery], finals: Sequence[FinalModel]
+) -> dict[str, Any]:
+    """The `sanity` section of the run JSON (8.6.1, 11.20, 11.21, 11.30).
+
+    Not scorable (blank, partial or bad labels): prints the loader's message and returns
+    `{"status": "skipped", "unlabelled": n}`. Fully labelled: `{"status": "scored", "models":
+    {arm: {model: {"threshold", "confusion_matrix", "disagreements"}}}}` for every final
+    model, flagged by `is_illegitimate` at that model's threshold. `confusion_matrix` is
+    raw counts `[[tn, fp], [fn, tp]]` (rows: the user's label 0/1; columns: not flagged,
+    flagged); `disagreements` lists `{"id", "query", "label", "score"}` for every row whose
+    flag differs from the label. No rate, F1, AUC or interval. The sanity queries are only
+    scored here, never fitted on or used for a threshold.
+    Raises ValueError on no `wands` queries (the duplicate check would be empty) and
+    SanityError, without the query text, naming the `id` of a duplicate of a WANDS query;
+    NonFiniteScoreError on a non-finite score.
+    """
+    if not wands:
+        raise ValueError("sanity needs the WANDS queries of the run, got none")
+    try:
+        loaded = load_sanity(path, wands)
+    except SanityError as e:
+        if e.query_id is None:
+            raise
+        raise SanityError(
+            f"sanity query id {e.query_id} in {path} equals a WANDS query", e.query_id
+        ) from None
+    if loaded.labels is None:
+        print(loaded.message)
+        return {"status": "skipped", "unlabelled": loaded.invalid}
+    texts = [q.query for q in loaded.queries]
+    models: dict[str, dict[str, Any]] = {arm: {} for arm in dict.fromkeys(f.arm for f in finals)}
+    for final in finals:
+        scores = check_finite(
+            final.scorer.score(texts), None, None, final.arm, final.model, "sanity scores")
+        flagged = [is_illegitimate(s, final.threshold.threshold) for s in scores]
+        models[final.arm][final.model] = {
+            "threshold": final.threshold.threshold,
+            "confusion_matrix": confusion_matrix(loaded.labels, flagged, labels=[0, 1]).tolist(),
+            "disagreements": [
+                {"id": q.id, "query": q.query, "label": label, "score": float(score)}
+                for q, label, score, flag in zip(loaded.queries, loaded.labels, scores, flagged)
+                if flag != bool(label)],
+        }
+    return {"status": "scored", "models": models}

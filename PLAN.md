@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T1 (corrections), then M4.T2.
+**Next task:** M4.T2.
 
 ### Order constraints
 
@@ -1738,7 +1738,7 @@ Sign-off: pending.
   - No metric values are asserted (section 10).
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M3.T1, M3.T2.
-- **Status:** done
+- **Status:** validated
   - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 648 OK (43 s). Met by reading: the
     adapter builds its vectoriser with `make_vectoriser()`, calls `normalise()` once per text in `fit` and
     `score`, returns `predict_proba[:, 1]`, and checks fit state on the empty-list path; no new dependency; no
@@ -1773,6 +1773,13 @@ Sign-off: pending.
     leftover backup identical to `bqc/models.py` (gitignored; delete it); stray blank line between the two
     sklearn imports at `bqc/models.py:7`.
   - **Corrections (sonnet, 2026-11-06):** items 1-3 addressed in tests; see the `test(M4.T1)` commit.
+  - **Re-validation (opus, 2026-11-06): PASS.** Suite 650 OK (47 s). `f653dee` addresses items 1-3:
+    `test_uses_m3_vectoriser` compares `get_params()` with `make_vectoriser()`; `test_normalise_applied_once_per_text`
+    spies with `wraps=normalise` and asserts 24 calls in `fit`, 2 in `score`; both not-fitted tests use
+    `NotFittedError`. The only production change is the removed blank line at `bqc/models.py:7`; `b04b00d` is
+    unchanged in history. The five surviving mutants, re-run in a `git archive` copy, are now killed: local
+    `TfidfVectorizer` with `min_df=1`, `ngram_range=(1, 3)` or `sublinear_tf=False` (by
+    `test_uses_m3_vectoriser`), `normalise` twice in `fit` (48 != 24) and in `score` (4 != 2).
 
 ### M4.T2: MLP adapter
 

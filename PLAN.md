@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T4 corrections (items 1-7 under the task).
+**Next task:** M4.T8.
 
 ### Order constraints
 
@@ -1932,7 +1932,7 @@ Sign-off: pending.
   missing raw file; a stub model returning `NaN` exits non-zero and writes no run JSON;
   **real model and fold determinism end to end** (11.18).
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M3.T16, M4.T1, M4.T2, M4.T3.
-- **Status:** done
+- **Status:** validated
   - **Implementation (sonnet, 2026-11-06):** `_evaluate` in `bqc/cli.py` composes `build_run_report`,
     one `fit_final_model` per arm and model, `sanity_section` and `part_number_section` into one
     `write_report` call (pickles first; a failure before the writes leaves nothing, a
@@ -1980,6 +1980,18 @@ Sign-off: pending.
     parameters); sanity text appears only in `sanity.disagreements` of the real run JSON, as 8.6.1 asks;
     13.9 has the date, versions and core count, and the 5-minute rule did not trigger (39.7 s).
   - **Corrections (sonnet, 2026-11-06):** items 1-7 addressed in the `fix(M4.T4)` commit after `c35c96d`.
+  - **Correction validation (opus, 2026-11-06): PASS.** `182ea3b` touches only `bqc/cli.py`,
+    `tests/test_cli_evaluate.py` and this note, and addresses items 1-7 and nothing else; `c93a92f`
+    is unchanged. Suite 743 OK in 124 s (125 s wall; was 162 s). The five survivors plus a disabled
+    parser check, one per isolated copy, are all killed: timer around the whole `fit_final_model` by
+    `test_the_time_surrounds_the_fit_alone`; `lofo_models` or `catalogue_gap_models` dropped by
+    `test_the_section_models_are_in_the_run_parameters` and
+    `test_a_bare_flag_records_all_of_models_in_the_run_parameters`; `OSError` removed and run JSON
+    before the pickles by `test_a_save_failure_exits_non_zero_and_writes_no_run_json`; early return
+    in `_check_evaluate_args` by four `UsageErrorTest` tests in 0.09 s with `_evaluate` never
+    started. `GenerateError` survives only in the item-6 quote above. Lines within 100 columns.
+    Optional: the over-five-minutes pair (`:207`, `:214`) keys on the model name and the patched
+    `perf_counter`, so a fake MLP would pin it equally and save the two real fits.
 
 ### M4.T8: MLP-vs-LR and between-arm paired comparisons
 

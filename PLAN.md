@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T3 corrections (item 1 of its validation).
+**Next task:** M4.T4.
 
 ### Order constraints
 
@@ -1858,7 +1858,7 @@ Sign-off: pending.
   zero (11.1); scores in `[0, 1]`; pickle round trip of a fitted adapter (module-level class,
   M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
-- **Status:** done (item 1 addressed in the `test(M4.T3)` correction commit)
+- **Status:** validated
   - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 682 OK (43 s). Met by reading and by test:
     exactly three features in the documented order (`test_hand_computed`, `(0, 3)` for no texts); the ratio
     counts spaces and is 0.0 for `""` (11.1); length, ratio and normalise-before-features pinned by
@@ -1891,6 +1891,12 @@ Sign-off: pending.
     fit warning (`simplefilter("always")`, `bqc/evaluate.py:433-435`), so a `ConvergenceWarning` would be
     visible per fold. Re-probed (scikit-learn 1.9.1) on 10,000 synthetic rows, lengths up to 512: no warning,
     `n_iter_` 29. 6.3 needs nothing more.
+  - **Re-validation (opus, 2026-11-06): PASS.** Correction `f017dbf`: item 1 met. The new assertion
+    `m.score(["sofa \u200b bed"]) == m.score(["sofa bed"])` is in
+    `test_features_are_computed_on_normalised_text`. The surviving mutant (word count from the raw text,
+    length and ratio from the normalised text), re-run in a `git archive` copy: killed by exactly that test
+    (1 of 16 in `tests.test_models_trivial`); with the pre-correction test file it still survives (16 OK).
+    `bqc/models.py` change is docstring only (the optional note). Suite 682 OK (43 s); no line over 100 columns.
 
 ### M4.T4: `bqc evaluate` command
 

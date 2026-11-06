@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T3 (corrections).
+**Next task:** M5 sign-off by `fable`, then M6.T1.
 
 ### Order constraints
 
@@ -2295,7 +2295,7 @@ Sign-off: pending.
 - **Tests:** tiny config end to end; report round-trips through `json`; missing raw file;
   two runs identical apart from the timestamp (11.18).
 - **Depends on:** M2.T8, M5.T2.
-- **Status:** done
+- **Status:** validated
 
   Implementation notes (`sonnet`): `cli._cluster` / `build_cluster_report` compose the strings
   (real queries, then 20 per template of A-D from `token_occurrences(real)`, rule 4 through
@@ -2341,6 +2341,13 @@ Sign-off: pending.
      it was not called, so the check must come before any clustering.
 
   Corrections (`sonnet`): items 1-3 done in a `test(M5.T3)` commit after `8e16655`.
+
+  Re-validation (`opus`, 2026-11-06, `6617968`): PASS. Tests only; items 1-3 addressed. The
+  extra zero-shortfall test is accepted (cheap, pins the no-drop case). Survivors now caught:
+  `"shortfall": 0` by `ShortfallTest.test_the_reported_shortfall_is_the_sum_over_templates`;
+  `"seed_ks": [10]` and `"seed_draws": 5` by `EndToEndTest.test_parameters_are_recorded`; the
+  `grid_report` length check removed by `GridReportTest.test_the_inputs_must_be_equally_long`.
+  Suite: 849 tests OK (139 s).
 
   Rulings: `grid_report` in `bqc/cluster.py` (texts and truth in, JSON-ready metrics out,
   clustering before scoring) with the string composition in `bqc/cli.py` is accepted: it

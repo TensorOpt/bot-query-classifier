@@ -1540,9 +1540,9 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
   from 987 s at 20,000 / 20,000; the SVD probe measured 9-29 s, median 17 s (13.22).
   The first full run re-records it in the run JSON.
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
-- No WANDS `query_class` contains `|` (section 3 calls it one category). The
-  catalogue-gap check compares the whole string (M3.T14); M6.T1 checks this on the
-  real file and records the result here.
+- (Closed 2026-11-06.) No WANDS `query_class` contains `|`: checked by `fable` with
+  `grep -c '|'` on a `query.csv` whose SHA-256 matches `data/CHECKSUMS`, 0 lines.
+  The catalogue-gap check's whole-string comparison (M3.T14) is therefore exact.
 
 These are the unverified assumptions left. Of the three items this section held
 in v1.1, the imblearn `Pipeline` behaviour and the Wilson reference values were

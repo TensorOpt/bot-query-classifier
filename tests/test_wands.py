@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bqc.wands import WandsError, load_queries
+from bqc.wands import WandsError, WandsQuery, load_queries
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TSV = FIXTURES / "query.tsv"
@@ -120,6 +120,25 @@ class LoadQueriesTest(unittest.TestCase):
         with self.assertRaises(WandsError) as cm:
             load_queries(p, self.checksums_for("query.tsv", digest))
         self.assertIn(str(p), str(cm.exception))
+
+    def test_row_without_query_class_cell_raises_naming_path(self):
+        p = self.tmp / "query.tsv"
+        p.write_bytes(b"query_id\tquery\tquery_class\n0\tfoo\n")
+        digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        with self.assertRaises(WandsError) as cm:
+            load_queries(p, self.checksums_for("query.tsv", digest))
+        self.assertIn(str(p), str(cm.exception))
+
+    def test_query_class_is_not_stripped(self):
+        p = self.tmp / "query.tsv"
+        p.write_bytes(b"query_id\tquery\tquery_class\n0\tfoo\t Rugs \n")
+        digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        rows = load_queries(p, self.checksums_for("query.tsv", digest))
+        self.assertEqual(rows[0].query_class, " Rugs ")
+
+    def test_query_class_is_required(self):
+        with self.assertRaises(TypeError):
+            WandsQuery(0, "x")
 
 
 if __name__ == "__main__":

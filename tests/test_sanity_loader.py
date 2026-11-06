@@ -8,7 +8,7 @@ from bqc.sanity import SANITY_PATH, SanityError, load_sanity
 from bqc.wands import WandsQuery
 
 FIXTURES = Path(__file__).parent / "fixtures"
-WANDS = [WandsQuery(0, "smoky mountain tray"), WandsQuery(3, "area rug")]
+WANDS = [WandsQuery(0, "smoky mountain tray", ""), WandsQuery(3, "area rug", "")]
 
 
 def load(name):
@@ -71,7 +71,7 @@ class QueryHandlingTest(unittest.TestCase):
         self.assertIn("id 7", str(cm.exception))
 
     def test_wands_duplicate_raises_even_when_unlabelled(self):
-        wands = [WandsQuery(0, "OAK  DESK")]
+        wands = [WandsQuery(0, "OAK  DESK", "")]
         with self.assertRaises(SanityError) as cm:
             load_sanity(FIXTURES / "sanity_blank.csv", wands)
         self.assertIn("id 1", str(cm.exception))

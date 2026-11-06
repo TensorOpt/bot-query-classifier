@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T4.
+**Next task:** M4.T4 corrections (items 1-7 under the task).
 
 ### Order constraints
 
@@ -1902,7 +1902,7 @@ Sign-off: pending.
 
 - **Goal:** run the harness with the real models from the command line, in either arm.
 - **Design refs:** `DESIGN.md` `0386ca8`: 8.2, 8.4, 8.5, 8.6, 10, 13.9, 13.22.
-- **Files:** `bqc/cli.py`, `tests/test_cli_evaluate.py`, `DESIGN.md` (section 13.9, the measurement only).
+- **Files:** `bqc/cli.py`, `bqc/evaluate.py` (`lofo_not_run`, `gap_not_run` on `build_run_report`), `tests/test_cli_evaluate.py`, `tests/test_cli_generate.py` (shared fixture: query classes `C0`-`C7`), `DESIGN.md` (section 13.9, the measurement only).
 - **Acceptance criteria:**
   1. `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
      [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo [MODELS]] [--catalogue-gap [MODELS]]` runs the chosen models
@@ -1941,6 +1941,43 @@ Sign-off: pending.
     5 minutes), sanity `scored`; recorded in 13.9. `tests/test_cli_generate.py` fixture: query classes
     `C0`-`C7` instead of `C` (the gap pass needs several classes). Parameters in the run JSON also
     carry `lofo_models` and `catalogue_gap_models`.
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 740 OK in 162 s. Criteria 1-5 are met;
+    the gaps are in what the tests pin. Mutation pass in isolated copies, one mutant each, `test_cli_evaluate`
+    and `test_run_report`: 39 mutants, 33 killed, 1 equivalent (`query_classes` passed with the gap off,
+    ignored by `build_run_report`), 5 survivors, items 1-3 below.
+    1. `tests/test_cli_evaluate.py:51` and `:184`: `ClockedScorer` advances the clock only in `fit`, so a
+       timer around the whole `fit_final_model` call (spans, renders, threshold scores) still reads 5.0 and
+       survives; `:159` survives it too (two `perf_counter` calls either way). Make the fake clock also move
+       outside the fit (for example in `score`, or in a patched `build_spans`) and assert the fit's 5.0 alone.
+    2. `bqc/cli.py:454`: `lofo_models` and `catalogue_gap_models` in `parameters` are untested; dropping
+       either survives. Assert both in the run JSON: `None` when the flag is absent, the named list, and all
+       of `--models` for a bare flag (through `_section_models`).
+    3. `bqc/cli.py:469-478`: no test reaches the `OSError` branch or the save-before-write order; removing
+       `OSError` from the `except` and writing the run JSON before the pickles both survive. Add a test
+       where `save_final_model` raises an `OSError`: exit 1, the message on stderr, no `evaluate-*.json`.
+       The status note's "a failure leaves neither" holds for every failure before the writes; a
+       `write_report` failure after the pickles leaves the pickles (accepted, no run JSON refers to them).
+       Reword the note's claim when you record the correction.
+    4. `tests/test_cli_evaluate.py:358`: `assert_usage_error` calls `main` with the real `_evaluate`. If a
+       parser check breaks, the test falls through to a real run on `data/raw/` writing to `results/`
+       (12 minutes on this machine) instead of failing. Patch `cli._evaluate` there, as
+       `test_a_usage_error_runs_nothing` does, and assert it was not called.
+    5. Suite time (43 s to 162 s; this file is 120 s). Tests that pin a name-based rule fit the real MLP
+       where a fake pins the same thing: `:282` (14 s), `:290` (9 s), `:297` (8 s), `:306` (8 s), `:159`
+       (7 s, all three models in both arms), `:191` (6 s). Patch `cli.MODEL_FACTORIES["mlp"]` with a
+       fake (as `:184` does) in these. Keep the real MLP in the primary end-to-end test, the
+       saved-scorer test and `DeterminismTest` (11.18 needs the real models).
+    6. `bqc/cli.py:83`: `GenerateError` is now raised by the shared `_load_inputs` and `_part_numbers` for
+       both commands; a shared error named after one command misleads. Rename it (for example
+       `CommandError`) with its docstring; no test imports it.
+    7. `bqc/cli.py:80`: the comment says the constant leaves the MLP out of the sections above 5 minutes;
+       the code only reports it (the M6 invocation applies the rule, section 10). Say that.
+    Rulings on the disclosed points: `--negatives-size` below 24 as a usage error matches M2.T8 (accepted);
+    the `tests/test_cli_generate.py` fixture change is accepted and added to Files, as is `bqc/evaluate.py`;
+    `timing` is excluded from the 11.18 comparison by necessity (section 10 puts a wall-clock time in the run
+    JSON), and `lofo_models` / `catalogue_gap_models` belong in `parameters` (M3.T8 criterion 1, all
+    parameters); sanity text appears only in `sanity.disagreements` of the real run JSON, as 8.6.1 asks;
+    13.9 has the date, versions and core count, and the 5-minute rule did not trigger (39.7 s).
 
 ### M4.T8: MLP-vs-LR and between-arm paired comparisons
 

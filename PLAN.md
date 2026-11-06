@@ -1797,6 +1797,7 @@ Sign-off: pending.
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
 - **Status:** done
+  - **Corrections (sonnet, 2026-11-06):** items 1-3 above addressed in the `fix(M4.T2)` commit after `a56bb91`.
   - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 667 OK (43 s). Met by reading and by test:
     the 6.1 parameters (named keys only, see item 2), the M3.T1 vectoriser (`get_params()` equality),
     `random_state=SEED`, fit returns self, same seed gives identical scores, `""` and `"   "` score without

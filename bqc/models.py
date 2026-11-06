@@ -73,8 +73,8 @@ class MLPScorer(_VectorisedScorer):
     ValueError); max_iter=1 emits ConvergenceWarning and fit still returns.
     """
 
-    def __init__(self, seed: int = SEED) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self._classifier = MLPClassifier(
             hidden_layer_sizes=(64,), activation="relu", solver="adam", alpha=1e-3,
-            early_stopping=True, validation_fraction=0.2, max_iter=500, random_state=seed)
+            early_stopping=True, validation_fraction=0.2, max_iter=500, random_state=SEED)

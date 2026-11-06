@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T3.
+**Next task:** M5.T2 (corrections), then M5.T3.
 
 ### Order constraints
 
@@ -2226,6 +2226,37 @@ Sign-off: pending.
   one cluster, one class or empty input, and return 1.0 on empty input, hence the explicit
   `None` for zero non-noise rows. Mutation pass in an isolated copy: 19 mutants, all killed.
   Full suite: 821 tests OK.
+
+  Validation (`opus`, 2026-11-06): CHANGES REQUESTED. Suite: 821 tests OK (152 s). Criteria
+  1-5 are met, and checked by hand: ARI 12/37 (contingency [[2,1],[0,3]]); one draw 12/14,
+  1/9, 4/5; noise moved recall 4/5 to 4/9, FPR 1/9 to 1/5. `draw_seeds` matches 9.2. Both
+  rules resolve ties to legitimate. No-seed clusters and noise fail open. All-noise output
+  follows 11.17. No `bqc.evaluate` or `bqc.models` import, no new dependency, and the probe
+  is recorded. Mutants run in an isolated copy, 14 in total. Killed: seed majority `>=`,
+  oracle `>=`, oracle label from the minority, purity from the minority, `draws` reversed,
+  AMI `average_method` geometric and max, `non_noise` with `>= -1`, `clusters`
+  reverse-sorted, noise seeds voting, metric arguments swapped. Three survived:
+  1. `tests/test_cluster_labels.py:239-251`: the mean over draws isn't pinned. The fake
+     returns accuracy 0..19, which is symmetric, so `statistics.median` also gives 9.5 and
+     survives (criterion 2, "20 draws averaged"). Fix: make the fake's values asymmetric,
+     for example `float(draw_index ** 2)`, and assert the mean 123.5 (the median is 110.5).
+  2. `bqc/cluster.py:119`: nothing pins ascending cluster-id order. Every test lists cluster
+     ids in ascending order of appearance, so iterating `dict.fromkeys(...)` (first
+     appearance) survives. HDBSCAN ids don't appear in order. Fix: add an `oracle_vote` test
+     whose ids appear out of order, for example `[1, 1, 0, 0, 0]`, and assert that
+     `[c["cluster"] for c in r["clusters"]] == [0, 1]` with the matching sizes.
+  3. `non_noise` counted with `clusters >= 0` survives, but it is equivalent: HDBSCAN on
+     dense, finite input gives only ids >= -1. No change is needed.
+
+  Rulings: `k` larger than the row count raising from `random.sample`, and empty or
+  mismatched input raising `ValueError`, are accepted as tested failure paths. FPR or recall
+  `None` with no negatives or positives, and the mean staying `None`, are accepted: the value
+  is undefined, and 11.17 only fixes FPR 0 and recall 0 for all-noise with both classes
+  present, which is tested. All-noise accuracy equals the legitimate share, 0.5 on a
+  balanced set, which is what predicting everything legitimate means. The per-draw list
+  is accepted: 60 dicts of three floats is about 5 KB per call, which is fine in the run
+  JSON. If M5.T3 calls `seed_rule` for each of the 9 grid cells, that is about 45 KB, still
+  fine. The "Next task" line read M5.T3. It is now M5.T2 (corrections), then M5.T3.
 
 ### M5.T3: `bqc cluster`
 

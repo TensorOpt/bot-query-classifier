@@ -2258,6 +2258,8 @@ Sign-off: pending.
   JSON. If M5.T3 calls `seed_rule` for each of the 9 grid cells, that is about 45 KB, still
   fine. The "Next task" line read M5.T3. It is now M5.T2 (corrections), then M5.T3.
 
+  Corrections (`sonnet`): items 1 and 2 done in a `test(M5.T2)` commit after `0fd1926`.
+
 ### M5.T3: `bqc cluster`
 
 - **Goal:** run the experiment from the command line and write its JSON.

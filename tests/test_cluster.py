@@ -99,9 +99,35 @@ class ClusterLabelsTest(unittest.TestCase):
         self.assertEqual(params["n_components"].default, 50)
         self.assertEqual(params["min_cluster_size"].default, 15)
 
-    def test_no_labels_parameter(self):
+    def test_signatures_take_texts_only(self):
+        # exact names: a `labels=None` parameter anywhere would let labels reach a step
+        for fn, names in [(cluster_labels, ["texts", "n_components", "min_cluster_size"]),
+                          (make_pipeline, ["n_components", "min_cluster_size"]),
+                          (run_grid, ["texts"])]:
+            self.assertEqual(list(inspect.signature(fn).parameters), names, fn.__name__)
+
+    def test_extra_positional_labels_rejected(self):
         with self.assertRaises(TypeError):
             cluster_labels(TEXTS, 5, 5, [0] * len(TEXTS))
+
+    def test_every_step_fitted_on_all_rows(self):
+        # the halves use different alphabets, so a half-fit vectoriser or SVD differs
+        captured = []
+
+        def capture(*args, **kwargs):
+            captured.append(make_pipeline(*args, **kwargs))
+            return captured[-1]
+
+        with mock.patch("bqc.cluster.make_pipeline", side_effect=capture):
+            labels = cluster_labels(TEXTS, 5, 5)
+        ref = make_pipeline(5, 5).fit([normalise(t) for t in TEXTS])
+        got = captured[0]
+        self.assertEqual(got.named_steps["vectoriser"].vocabulary_,
+                         ref.named_steps["vectoriser"].vocabulary_)
+        np.testing.assert_allclose(got.named_steps["svd"].components_,
+                                   ref.named_steps["svd"].components_)
+        self.assertEqual(len(got.named_steps["hdbscan"].labels_), len(TEXTS))
+        self.assertEqual(labels.tolist(), got.named_steps["hdbscan"].labels_.tolist())
 
 
 class SummariseTest(unittest.TestCase):

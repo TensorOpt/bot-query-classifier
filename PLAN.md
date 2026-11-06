@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T1 corrections by `sonnet` (CHANGES REQUESTED), then M5.T2.
+**Next task:** M5.T2.
 
 ### Order constraints
 
@@ -2166,6 +2166,7 @@ Sign-off: pending.
      `svd.components_` equal those of a reference `make_pipeline(5, 5)` fitted on all
      normalised texts, and that `len(hdbscan.labels_) == len(TEXTS)`. `TEXTS` halves use
      disjoint alphabets, so a half-fit vocabulary differs.
+  - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M5.T1)` commit.
 
   Rulings: rows below `min_cluster_size` raising sklearn's `ValueError` is accepted, because
   11.17 is about the all-noise result, which is tested, and that case is documented and

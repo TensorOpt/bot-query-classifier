@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** the M3.T10 corrections (listed under that task, `fix(M3.T10)`), then M3.T11.
+**Next task:** M3.T11.
 
 ### Order constraints
 
@@ -1512,7 +1512,7 @@ Sign-off: pending.
   - Comparison: 960-equivalent fit input with no E; the threshold comes from out-of-fold scores.
   - Pickle round trip gives identical scores for both arms.
 - **Depends on:** M3.T5, M3.T13.
-- **Status:** done
+- **Status:** validated
   - `fit_final_model` / `save_final_model` / `load_final_model` in `bqc/evaluate.py`; `FinalModel` (arm, model,
     scorer, threshold, fit_warnings, report) is what is pickled, as `final-<arm>-<model>-<UTC stamp>.pkl`, never
     overwritten. `check_finite` takes `repeat=None` (and `fold=None`) for a final model: the message says
@@ -1538,7 +1538,8 @@ Sign-off: pending.
        section 10 make `SEED` the final model's seed. Required: a test that the primary fit's positives equal the
        screened kept samples of `registry.render(vocabulary, SEED, templates, n // 24)` with the span
        vocabulary (or an equivalent pin that fails under `SEED + 1`).
-    Corrections addressed in the `test(M3.T10)` commit that follows `f2424dd` (tests only, no production change).
+    Corrections addressed in `4682cf4` (`test(M3.T10)`, after `f2424dd`; tests only, no production
+    change).
     Disclosed points, accepted: the `_inner_out_of_fold` extraction is behaviour-preserving (same groups,
     `SEED + repeat`, `leave_out`; all M3.T13 tests pass) and belongs in this commit since the final model is
     its second caller (DRY). `check_finite(repeat=None)` saying "final model" meets criterion 5 and 11.30.
@@ -1547,6 +1548,21 @@ Sign-off: pending.
     the code that depends on it (allowed by `CLAUDE.md`); its consequence for M4 is now an acceptance
     criterion of M4.T1, M4.T2 and M4.T3. No `check_fold` on the final fit's input: not required, and the
     comparison arm's inner folds are checked.
+  - **Re-validation (opus, 2026-11-06): PASS.** Suite 605 OK. `4682cf4` touches only
+    `tests/test_final_model.py` and `PLAN.md`; `84b4a33` is untouched (`git diff 84b4a33 HEAD` lists
+    no `bqc/` file). The three surviving mutants, each run alone in a copy and reverted: `n // 23`
+    fails `test_quota_is_n_floor_24_per_template`; `real_queries[:-5]` and
+    `out_of_fold[:len(negatives) - 5]` fail
+    `test_threshold_covers_every_real_query_with_distinct_scores` in `PrimaryTest` and
+    `ComparisonTest`; `SEED + 1` in the primary render fails
+    `test_positives_are_rendered_with_seed_from_the_span_vocabulary`. `Threshold(0.925, 0.1, False,
+    None)` checked by hand against M3.T4: scores 1/40..40/40, four flagged at 37/40 gives FPR 0.1
+    within target, five gives 0.125, and 0.1 is not below 1/40, so no warning; over 35 scores it
+    would be 33/40 at 3/35. Process notes: the render-seed test filters by raw equality with `REAL`
+    and the spans instead of `screen_samples` (which compares after `normalise`); accepted, since
+    the fixtures have no sanity or part-number lists and a normalised-only collision would make the
+    test fail loudly, not pass falsely. The `Threshold` import sits out of alphabetical order
+    (cosmetic; no linter is configured).
 
 ### M3.T11: Sanity section of the run
 

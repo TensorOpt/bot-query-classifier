@@ -1630,6 +1630,7 @@ Sign-off: pending.
     the rest proceeds. (4) The `threshold` key is kept: criterion 2 names "the threshold of M3.T10", and a
     disagreement's score is unreadable without it; it is a cut-off, not a rate. It must be pinned (item 1).
     (5) `in progress` was not set (process); the "Next task" line now reads M3.T11 (corrections), then M3.T12.
+  - **Corrections (sonnet, 2026-11-06):** items 1 and 2 addressed in tests only; see the `test(M3.T11)` commit.
 
 ### M3.T12: Part-number diagnostic
 

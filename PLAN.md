@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T2.
+**Next task:** M5.T3.
 
 ### Order constraints
 
@@ -2212,7 +2212,20 @@ Sign-off: pending.
   - A seed drawn on a noise point counts as a draw but labels nothing.
   - Same `draw_index` gives the same draw; different ones differ.
 - **Depends on:** M5.T1.
-- **Status:** todo
+- **Status:** done
+
+  Implementation notes (`sonnet`): `oracle_vote(clusters, truth)`, `draw_seeds(n_rows, k,
+  draw_index)` (= `random.Random(SEED + draw_index).sample(range(n_rows), k)`),
+  `seed_draw(clusters, truth, k, draw_index)` and `seed_rule(clusters, truth)` (k in
+  `SEED_KS`, `N_DRAWS` = 20; mean plus per-draw values) in `bqc/cluster.py`. Inputs: 1 =
+  illegitimate. Decisions: `k` > rows raises `ValueError` (from `random.sample`); a draw with
+  no seed in any cluster predicts all legitimate; FPR with no true negatives and recall with
+  no true positives are `None` (a mean stays `None`); empty or unequal-length input raises
+  `ValueError`; oracle purity is majority count over cluster size (0.5 on a tie). Probes
+  (2026-11-06) in the `bqc/cluster.py` docstring: sklearn's four metrics never raise or warn on
+  one cluster, one class or empty input, and return 1.0 on empty input, hence the explicit
+  `None` for zero non-noise rows. Mutation pass in an isolated copy: 19 mutants, all killed.
+  Full suite: 821 tests OK.
 
 ### M5.T3: `bqc cluster`
 

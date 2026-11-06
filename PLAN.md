@@ -16,7 +16,7 @@ fails on import because tests import each other as top-level modules; only the `
 |-----------|---------|-------|
 | M1 | Sanity set, scaffold, preprocessing, WANDS, sanity loader, fetch hardening, product file | 8 |
 | M2 | Synthetic generators, audit, part-number set, render helper, product-name spans, `generate` | 13 |
-| M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check, SMOTE dependency removal | 14 |
+| M3 | Features and evaluation harness against a fake `Scorer`, both arms, catalogue-gap check, query classes in the loader, SMOTE dependency removal | 15 |
 | M4 | Real models, `evaluate` command, paired comparisons | 5 |
 | M5 | HDBSCAN experiment (unchanged by v2.0) | 3 |
 | M6 | Full run on real data | 1 |
@@ -26,12 +26,15 @@ Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, and `M4.T6` and `M4.
 `M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
 appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
 order: M2.T9, M2.T10, M2.T11 and M2.T12 come before M2.T8, M3.T13 comes after M3.T5, M3.T15 comes
-after M3.T13, and M3.T14 comes after M3.T9.
+after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
-M2.T11), and earlier entries keep their statuses and the design version they were validated against.
+M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T9.
+**Next task:** the M3.T14 corrections (listed under that task, `fix(M3.T14)`), then M3.T16. M3.T16 is
+scheduled before M3.T10: it completes the catalogue-gap check end to end (without it the check can't
+run on real data), touches only `bqc/wands.py` and its tests, so it can't collide with the M3.T14
+corrections, and 11.15 is fresh. Nothing in M3 depends on it; M4.T4 does.
 
 ### Order constraints
 
@@ -1353,6 +1356,82 @@ Sign-off: pending.
   - An exhausted pool raises.
 - **Depends on:** M2.T12, M3.T8.
 - **Status:** done
+- **Status note:** implemented in `98af9bb`. `iter_fold_data(query_classes=...)` is the gap pass: per fold,
+  products with a test-side class leave the pool, spans are built from the rest with seed `SEED + repeat`,
+  and the training-side queries of those classes leave the primary threshold set and the comparison
+  training negatives; the runners take `gap=True` (`catalogue gap <name>`); `catalogue_gap_section` builds
+  the per-model result from `compute_metrics(...)["pooled"]`; `build_run_report(catalogue_gap=True,
+  query_classes=...)` adds `body[arm]["catalogue_gap"]`, with `folds` (`products_removed`) and
+  `unclassified_products` in the primary arm, and records `catalogue_gap` in `parameters`. `fable`'s
+  ruling `352f9b5` (11.15) makes `query_classes` a sequence parallel to the real queries, as built; the
+  loader change is M3.T16.
+- **Validation (`opus`, `98af9bb` against `352f9b5`): CHANGES REQUESTED.** Suite: 579 tests, OK (41 s).
+  Criteria 1-7 are met. Points raised by `sonnet`: (1) spans per fold are the only reading of 8.6 item 5
+  ("per outer fold ... remove ... before building the training negatives"), and `SEED + repeat` is 3.2's
+  seed; the normal run's spans are provably unaffected, since the gap pass is a separate
+  `iter_fold_data` call and the `query_classes is None` branch is unchanged (pinned by
+  `test_the_main_sections_are_unchanged_by_the_gap_pass` and `AllEmptyClassesTest`). The gap pass screens
+  test positives against its own spans, so its test side can differ from the main run's by a few drops;
+  the criteria pair the two arms, not the gap with the main run, and the arms share one test side.
+  (2) `gap` beside `leave_out` is acceptable: no caller combines them, and a guard would be speculative;
+  revisit only if a task ever runs LOFO under a gap. (3) the Wilson interval is right: the gap pass keeps
+  every test-side query, so `compute_metrics` sees 480 negatives per repeat and `k = total / 3`;
+  `SectionTest` uses 96 per fold and pins `wilson_interval(4, 480)` against `wilson_interval(12, 1440)`.
+  (4) criterion 4 and 8.6 item 5 ask for products removed and the unclassified count only; removed
+  training queries aren't needed. (5) the `ValueError` without `query_classes` is right and tested. No
+  leakage, no download, no new runtime assumption to probe (`mock.patch` of `build_spans` only).
+  Mutation run by `opus`, 20 mutants, each in its own copy of `bqc/` and `tests/` (the copies lack
+  `data/sanity.csv`, so `RealSanityFileTest` errors in each, the unmutated copy included; that error is
+  discounted): 19 caught. `sonnet`'s 8 re-run, all caught (classes as a subset instead of an intersection,
+  no query filter, `>=` and the point estimate in `gap_failed`, `""` in the removal set, unfiltered
+  comparison negatives, unfiltered primary threshold set, runner without `gap=True`). Also caught:
+  empty-class products removed, `products_removed` as `len(kept_products)` and as `len(gone)`, gap results
+  appended to the main `models`, gap reports appended to the main `folds`, `point_estimate_above_target`
+  true on a failure, E rows dropped from the gap test side, gap seed `+ fold` and `+ 1`, the unclassified
+  count inverted, `catalogue_gap` on by default. One survives, item 1.
+  1. `tests/test_catalogue_gap.py:30` and `:115-117`: every gap test runs one repeat, so the repeat part of
+     the seed is unpinned. Mutant: at `bqc/evaluate.py:270` pass `seed` instead of `render_seed`; the whole
+     suite still passes, though every repeat's gap spans would then share `SEED` (3.2 says `SEED +
+     repeat`). Fix: run the `build_spans` spy with `repeats=2` and assert the seeds of the six builds are
+     `[SEED] * 3 + [SEED + 1] * 3`, in repeat order.
+  2. `bqc/evaluate.py:748-752`, `:764-769`, `:776-781`: the same twelve-argument `iter_fold_data` call is
+     now written three times (main run, LOFO, gap), differing in one keyword. A run option threaded into
+     one copy and not another would give the gap or LOFO pass a different config, and no test pins every
+     option reaching the gap pass. Fix: bind the shared arguments once in `build_run_report` (for example
+     `fold_data = functools.partial(iter_fold_data, real_queries=..., vocabulary_cap=vocabulary_cap)`)
+     and call `fold_data()`, `fold_data(leave_out=family)` and `fold_data(query_classes=query_classes)`.
+     No behaviour change; the suite stays green.
+  3. `tests/test_catalogue_gap.py:416-419`: `test_a_failed_gap_does_not_stop_the_run_or_change_anything_else`
+     asserts only that the key exists. The fixture does fail today (`opus` checked: lower bound 0.161 against
+     0.0001 in both arms), but the test would pass vacuously if it stopped failing. Fix: assert
+     `gap_failed` is `True` in both arms.
+
+### M3.T16: Query classes in the loader
+
+- **Goal:** carry each real query's `query_class` from `load_queries`, so the catalogue-gap check can run
+  on real data (11.15).
+- **Design refs:** `DESIGN.md` `352f9b5`: 3, 8.6 (item 5), 11.15, 11.28.
+- **Files:** `bqc/wands.py`, `tests/test_wands.py`.
+- **Brief:** a change to validated M1.T4 code, made here rather than by reopening M1.T4. Section 3's
+  sentence that `query_class` "is not used by this project" predates 11.15; 11.15 rules.
+- **Acceptance criteria:**
+  1. `WandsQuery` gains `query_class: str`, after `query_id` and `query`. The value is the raw cell, not
+     normalised, stripped or split; an empty cell gives `""` and is not an error (11.15, 11.28).
+  2. Everything else `load_queries` does is unchanged: the hash check before parsing, the header check,
+     file order, the `query` text as stored.
+  3. Existing callers keep working unchanged (`bqc/cli.py` reads `.query` only).
+  4. `[q.query_class for q in load_queries(...)]` is the sequence `build_run_report` takes as
+     `query_classes` (M3.T14), parallel to `[q.query for q in ...]`; M4.T4 passes it when
+     `--catalogue-gap` is given.
+- **Tests** (on the existing 10-row fixture):
+  - The classes of all ten rows, in file order, hand-read from the fixture (`Wall Art`, ..., `Outdoor`).
+  - The two empty-class rows (`drudge report`, `kisner`) give `""`.
+  - A class with a space (`Wall Art`) is kept whole and as stored.
+  - `_fields` is `("query_id", "query", "query_class")`; this replaces `test_query_class_is_not_returned`,
+    the M1.T4 test that pinned the drop.
+  - The hash, missing-file and header failure paths still raise as before (existing tests, unchanged).
+- **Depends on:** M1.T4, M3.T14.
+- **Status:** todo
 
 ### M3.T10: Final models
 
@@ -1510,7 +1589,7 @@ Sign-off: pending.
      naming or omitting `mlp` there is the request (section 10). The main fits and the final
      model always cover every model in `--models`. A model left out has its rows reported as not run,
      with the reason. `--lofo` never runs the MLP in the comparison arm (8.6 item 1). `--catalogue-gap`
-     is valid with either arm.
+     is valid with either arm, and passes the loader's classes (M3.T16) as `query_classes` (11.15).
   5. **Runtime (section 10):** the real run measures one MLP fit at 5,000 / 5,000, and records it in the
      run JSON and, with date and versions, in 13.9. The task report says if it exceeds 5 minutes. For
      scale, 13.22 measured a median of 17 s, about 25 minutes for the primary arm's 91 MLP fits, so the
@@ -1523,7 +1602,7 @@ Sign-off: pending.
   trivial baseline's report row is present; `--catalogue-gap` adds its section; each usage error, including `--target-fpr nan` (`select_threshold` would flag every query with `target_unmet` false); each
   missing raw file; a stub model returning `NaN` exits non-zero and writes no run JSON;
   **real model and fold determinism end to end** (11.18).
-- **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M4.T1, M4.T2, M4.T3.
+- **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M3.T16, M4.T1, M4.T2, M4.T3.
 - **Status:** todo
 
 ### M4.T8: MLP-vs-LR and between-arm paired comparisons

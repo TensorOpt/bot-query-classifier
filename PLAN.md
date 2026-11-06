@@ -1796,7 +1796,7 @@ Sign-off: pending.
   - A forced `max_iter=1` fit emits `ConvergenceWarning`, and the fit still returns (11.12).
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M4.T3: Trivial baseline adapter
 

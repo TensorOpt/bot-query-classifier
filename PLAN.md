@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T3 (validation).
+**Next task:** M5.T3 (corrections).
 
 ### Order constraints
 
@@ -2308,6 +2308,55 @@ Sign-off: pending.
   test-only arguments of `_cluster`; tests patch `GRID_*` to a tiny grid. Mutation pass in an
   isolated copy: 17 mutants, all killed (one needed a retarget of my own replace). Full suite:
   847 tests OK. Real run: see the report to the caller.
+
+  Validation (`opus`, 2026-11-06, `cc7dc12`): CHANGES REQUESTED. Suite: 847 tests OK (147 s).
+  Criteria met and pinned: real queries first, then the A-D positives rendered with `SEED` from
+  `token_occurrences(real)` (exact texts compared); no E, P or span text; `per_template` and
+  `registry` defaults are `QUOTA` and `REGISTRY`; rule 4 (sanity collision exits 1 with no text
+  and no file; real-query and P matches dropped after `normalise()` and counted); one file via
+  `write_report` from `bqc/report.py`; `bqc/cluster.py` doesn't import `bqc.cli` (AST test); no
+  `evaluate` state is used; a missing raw file exits 1 naming `fetch` and the file; two runs give
+  equal JSON (11.18); truth `[0]*real + [1]*positives` reaches `oracle_vote` and `seed_rule`
+  only after the single `run_grid(texts)` call; `labels` aren't written; the parser tests patch
+  `_cluster`; no downloads. Mutation pass in an isolated copy: 24 mutants, 20 killed (positives
+  from the product names' vocabulary, both `per_template` defaults, truth offset by one row
+  either way, truth reversed, `seed_rule` k=40 row or key dropped, `rows.total` +1 or nominal,
+  `rows.positives` from the rendered list, a partial file then `OSError` in place of
+  `write_report`, a non-serialisable body value, positives before real, `real_queries` drop list
+  removed, sanity bypassed, E rendered, `SEED + 1`, `labels` kept, fetch message, oracle
+  stubbed). Four survived:
+  1. `bqc/cli.py:533`: `"shortfall": 0` survives; the reported shortfall is never checked. On
+     the real data it is the only signal that a template fell short of the nominal 20. Fix: in
+     `tests/test_cli_cluster.py`, add a test that wraps `self.registry.render` (as
+     `replace_first` does) to drop the first 3 samples of one template and the first 2 of
+     another and to return a shortfall dict with those two keys set to 3 and 2; assert
+     `r["shortfall"] == 5` and `r["rows"]["positives"] == POSITIVES - 5`.
+  2. `bqc/cli.py:527-528`: `"seed_ks": [10]` and `"seed_draws": 5` survive;
+     `tests/test_cli_cluster.py:126-130` checks only three of the five parameters. Fix: assert
+     the whole dict, with `"seed_ks": [10, 20, 40]` and `"seed_draws": 20` written as the 9.2
+     values (not read back from `cluster`).
+  3. `tests/test_cli_cluster.py:318-321`: the test passes without the check at
+     `bqc/cluster.py:189`, because `run_grid` on two rows raises sklearn's `ValueError` anyway
+     (rows below `min_cluster_size`, M5.T1). Fix: patch `cluster.run_grid` with a spy and assert
+     it was not called, so the check must come before any clustering.
+
+  Rulings: `grid_report` in `bqc/cluster.py` (texts and truth in, JSON-ready metrics out,
+  clustering before scoring) with the string composition in `bqc/cli.py` is accepted: it
+  matches `generate`, keeps the experiment free of the command layer (10), and `write_report`
+  is still imported from `bqc/report.py`. `registry` and `per_template` as test-only
+  arguments are accepted (M4.T4 precedent); the defaults are pinned. The per-draw lists are
+  accepted (M5.T2); the real file is 66 KB. Reusing `_load_inputs` means `cluster` also needs
+  and hash-checks `product.csv`, which it doesn't use; accepted for DRY, since `fetch` gets
+  both files and the run takes 6 s. A failure inside `json.dump` leaves a partial file: that is
+  `write_report` (M1), not this task, and the body is fully built before the write; noted, no
+  change.
+
+  Real run for `fable` (not acted on): `results/cluster-f74b9197dfe4-20261106T164127978984Z.json`,
+  960 rows (480 + 480), nothing dropped, shortfall 0. Default cell (50, 15): 2 clusters, 1.5%
+  noise, ARI 0.002, seed rule k=20 accuracy 0.493, FPR 0.45, recall 0.435. Best ARI 0.895 at
+  (100, 30) with 84.4% noise (seed rule k=20: accuracy 0.533, FPR 0.009, recall 0.074). The file
+  records `git_commit` `62ede06`, the parent of `cc7dc12`: the run came from the uncommitted
+  tree; M6 reruns it.
 
 ---
 

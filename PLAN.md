@@ -2069,12 +2069,13 @@ Sign-off: pending.
     `arm_comparison` section"); `model_comparison` under each arm matches 8.2 ("inside a run"). The
     `tests/test_run_report.py` key-set changes are accepted and added to Files with `bqc/cli.py`.
   - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M4.T8)` commit.
-  - **Validation of corrections (opus, 2026-11-06): PASS.** `e7bd2e8` touches tests and PLAN.md only.
-    Item 1: ROC-AUC differences `[0.125, 0.0625, -0.125, 0.0]`, 2 wins (1 if inverted), mean 0.015625.
-    Item 2: new `test_roc_auc_justified_does_not_override_a_failed_fpr_gate`; hand check: recall mean
-    0.5 > 2 se 0.102; FPR mean 0.140625 > 2 se 0.03125 (ss 3/1024, sd 1/32, exact); ROC-AUC the same,
-    so `roc_auc.justified` true, gate fails, `justified` false. Both survivors now killed in an isolated
-    copy: `d < 0` for ROC-AUC fails `test_roc_auc_higher_is_a_win`; `gate["holds"] or
+  - **Validation of corrections (opus, 2026-11-06): PASS.** `e7bd2e8` touches tests and
+    PLAN.md only. Item 1: ROC-AUC differences `[0.125, 0.0625, -0.125, 0.0]`, 2 wins (1 if
+    inverted), mean 0.015625. Item 2: new
+    `test_roc_auc_justified_does_not_override_a_failed_fpr_gate`; hand check: recall mean 0.5 >
+    2 se 0.102; FPR mean 0.140625 > 2 se 0.03125 (ss 3/1024, sd 1/32, exact); ROC-AUC the same,
+    so `roc_auc.justified` true, gate fails, `justified` false. Both survivors now killed in an
+    isolated copy: `d < 0` for ROC-AUC fails `test_roc_auc_higher_is_a_win`; `gate["holds"] or
     roc_auc["justified"]` fails the new test. Full suite: 768 tests OK. Lines within 100 columns.
 
 ---

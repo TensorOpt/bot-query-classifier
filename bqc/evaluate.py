@@ -12,6 +12,7 @@ import warnings
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -745,11 +746,12 @@ def build_run_report(
     results: dict[str, dict[str, list[FoldResult]]] = {
         arm: {model: [] for model in models} for arm in arms}
     mixes: dict[int, dict[str, Any]] = {}
-    for data in iter_fold_data(
-            real_queries=real_queries, products=products, part_numbers=part_numbers,
-            sanity=sanity, arms=arms, n=n, registry=registry,
-            n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
-            eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap):
+    fold_data = partial(
+        iter_fold_data, real_queries=real_queries, products=products, part_numbers=part_numbers,
+        sanity=sanity, arms=arms, n=n, registry=registry, n_splits=n_splits, repeats=repeats,
+        seed=SEED, test_per_template=test_per_template, eval_per_template=eval_per_template,
+        vocabulary_cap=vocabulary_cap)
+    for data in fold_data():
         report = dict(data.report)
         if "span_lengths" in report:  # the same for every fold of a repeat: kept once
             mixes[data.repeat] = length_mix(report.pop("span_lengths"))
@@ -761,24 +763,14 @@ def build_run_report(
         arm: {family: {model: [] for model in models} for family in TRAINING_FAMILIES}
         for arm in arms}
     for family in TRAINING_FAMILIES if lofo else ():
-        for data in iter_fold_data(
-                real_queries=real_queries, products=products, part_numbers=part_numbers,
-                sanity=sanity, arms=arms, n=n, registry=registry,
-                n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
-                eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap,
-                leave_out=family):
+        for data in fold_data(leave_out=family):
             for model, make_scorer in models.items():
                 lofo_results[data.arm][family][model].append(
                     runners[data.arm](data, make_scorer, target_fpr, model, leave_out=family))
     gap_results: dict[str, dict[str, list[FoldResult]]] = {
         arm: {model: [] for model in models} for arm in arms}
     products_removed: list[dict[str, int]] = []
-    for data in iter_fold_data(
-            real_queries=real_queries, products=products, part_numbers=part_numbers,
-            sanity=sanity, arms=arms, n=n, registry=registry,
-            n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
-            eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap,
-            query_classes=query_classes) if catalogue_gap else ():
+    for data in fold_data(query_classes=query_classes) if catalogue_gap else ():
         if "products_removed" in data.report:
             products_removed.append({"repeat": data.repeat, "fold": data.fold,
                                      "products_removed": data.report["products_removed"]})

@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T12.
+**Next task:** M3.T11 (corrections), then M3.T12.
 
 ### Order constraints
 
@@ -1569,7 +1569,7 @@ Sign-off: pending.
 - **Goal:** score the sanity set with the final models when it's fully labelled, and skip
   it otherwise.
 - **Design refs:** 8.6.1, 11.20, 11.21, 11.30.
-- **Files:** `bqc/evaluate.py`, `tests/test_sanity_section.py`.
+- **Files:** `bqc/evaluate.py`, `bqc/sanity.py` (`SanityError.query_id`, criterion 3), `tests/test_sanity_section.py`.
 - **Acceptance criteria:**
   1. **Blank or partial file:** the message is printed, the run JSON records
      `"sanity": {"status": "skipped", "unlabelled": n}`, and everything else proceeds.
@@ -1599,6 +1599,37 @@ Sign-off: pending.
     "confusion_matrix" [[tn, fp], [fn, tp]] by user label x flagged, "disagreements"}}}}`. Scores use
     score-set name "sanity scores". `SanityError` (in `bqc/sanity.py`, one small edit outside the Files
     list) gained `query_id`; `sanity_section` re-raises a duplicate without the query text.
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 624 OK. Mutation pass, each mutant alone in a
+    fresh copy of `bqc/`, `tests/`, `data/`, run against `test_sanity_section`, `test_sanity_loader` and
+    `test_final_model`: 26 of 28 killed (matrix transposed, `confusion_matrix` arguments swapped, disagreement
+    `score` from the reversed row, `label` as a string, loader labels left as strings, flagging at another
+    model's threshold, `>` for `>=`, `check_finite` removed, score-set name changed, duplicate text in the
+    message, original duplicate re-raised, loader given `wands[:1]`, `wands[1:]` or `[]`, empty-wands guard
+    removed, `unlabelled` as the row count, print removed, disagreements narrowed to FPs or widened to all,
+    a refit on the sanity set, `query_id` not passed by the loader, one model per arm overwriting another,
+    an `fp_rate` key added, the query text altered, sanity texts appended to either arm's negatives). The
+    real `data/sanity.csv` is read by no test of this task (`SANITY_PATH` appears only in the M1.T6
+    structure test, which asserts no label). Two survive:
+    1. `tests/test_sanity_section.py:98`: the test named "...own entry and threshold" never asserts
+       `threshold`, so reporting `finals[0].threshold.threshold` for every model (`bqc/evaluate.py:1060`)
+       passes the suite (mutant run: OK). Required: assert `models[PRIMARY]["mlp"]["threshold"] == 0.15` and
+       `models[COMPARISON]["lr"]["threshold"] == 0.85` (and `0.5` for the primary `lr`) in that test.
+    2. `tests/test_sanity_section.py:198`: criterion 4's test is vacuous for the primary arm's span screen.
+       No `PRODUCTS` span equals a `sanity_full.csv` query, so passing `[]` instead of `sanity` to
+       `build_spans` in `fit_final_model` (`bqc/evaluate.py:969`) passes the full suite (624 OK). Required:
+       make the sanity list hold a string the primary fit would otherwise contain (e.g. a negative taken from
+       a `fit_final_model(..., sanity=[], ...)` fit; `pwhhaj pwhhba` at `n=120` with `build_registry()`), then
+       assert it is absent from every fit input and `report["span_removals"]["sanity"] >= 1` (checked by
+       hand: 1). Keep the fixture queries in the list too.
+    Disclosed points: (1) TDD order slipped, recorded as process deviation F1; with the mutation passes above
+    the tests are shown to bite except for items 1-2, so no re-run of the order is required. (2) The
+    `bqc/sanity.py` edit is minimal (an optional `query_id` constructor argument, defaulting to None, and one
+    call-site argument); accepted and added to the Files line. (3) `sanity_section` as a separate call is
+    accepted: M4.T4 criterion 1 assembles the run JSON "including the sanity section or its skip record",
+    and the M3.T11 skip test composes it with a `build_run_report` body through `write_report`, which shows
+    the rest proceeds. (4) The `threshold` key is kept: criterion 2 names "the threshold of M3.T10", and a
+    disagreement's score is unreadable without it; it is a cut-off, not a rate. It must be pinned (item 1).
+    (5) `in progress` was not set (process); the "Next task" line now reads M3.T11 (corrections), then M3.T12.
 
 ### M3.T12: Part-number diagnostic
 

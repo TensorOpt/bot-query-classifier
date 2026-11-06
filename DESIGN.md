@@ -1518,6 +1518,11 @@ queries contain no bot traffic. Mitigation: the FP list (8.5) is reviewed by eye
 - `early_stopping=True, validation_fraction=0.2` fits fine on sparse input (stopped
   at iteration 23 on the probe data). The validation split is drawn from the data
   passed to `fit`, so inside a CV training fold it does not touch the test fold.
+- (2026-11-06, scikit-learn 1.9.1, M4.T2 probe, re-run by `opus`.) With
+  `validation_fraction=0.2` the fit needs at least 3 rows of each class: 4 or 5
+  balanced rows raise `ValueError` (the validation split would hold fewer rows than
+  classes), 6 rows fit. Tiny-config tests that fit the MLP (11.18) need fixtures of
+  at least that size. `max_iter=1` emits `ConvergenceWarning` and the fit returns.
 
 ### 13.7 StratifiedGroupKFold (2026-11-05, scikit-learn 1.9.1)
 

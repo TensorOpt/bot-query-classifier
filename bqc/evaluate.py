@@ -49,6 +49,8 @@ from bqc.wands import WandsProduct, WandsQuery
 PRIMARY = "product"
 COMPARISON = "real"
 ARMS = (PRIMARY, COMPARISON)
+LR = "lr"  # the model names of 6.1 and 6.2; the CLI's MODEL_FACTORIES keys
+MLP = "mlp"
 N_SPLITS = 5
 REPEATS = 3
 TEST_PER_TEMPLATE = 100
@@ -717,6 +719,62 @@ def length_mix(counts: Mapping[int, int]) -> dict[str, Any]:
     }
 
 
+def _differences(
+    first: Sequence[Mapping[str, Any]],
+    second: Sequence[Mapping[str, Any]],
+    value: Callable[[Mapping[str, Any]], float],
+    better: Callable[[float], bool],
+) -> dict[str, Any]:
+    """Per-fold `first - second` of `value`, their mean, sample sd, standard error and the
+    count of folds where `better(difference)` (a tie is never better). Both are aligned."""
+    differences = [value(a) - value(b) for a, b in zip(first, second)]
+    sd = statistics.stdev(differences)
+    return {"differences": differences, "mean": statistics.fmean(differences), "sd": sd,
+            "se": sd / math.sqrt(len(differences)),
+            "wins": sum(better(d) for d in differences)}
+
+
+def _beyond_noise(block: Mapping[str, Any]) -> tuple[bool, bool]:
+    """(mean positive and beyond twice its standard error, mean negative and beyond it)."""
+    bound = 2 * block["se"]
+    return block["mean"] > bound, -block["mean"] > bound
+
+
+def paired_comparison(
+    first: Sequence[Mapping[str, Any]],
+    second: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """The paired comparison of 7, 8.2 and 12.1 item 13 between two (arm, model) pairs,
+    from their `compute_metrics` `folds` entries, first-named minus second-named.
+
+    Returns `{"folds", "recall", "fpr", "roc_auc"}` (each `differences` in (repeat, fold)
+    order, `mean`, `sd` with `ddof=1`, `se` = `sd / sqrt(folds)`, `wins`: folds where the
+    first is better, i.e. higher recall or ROC-AUC, lower FPR), then `justified` (mean recall
+    difference positive beyond 2 se and `fpr_gate["holds"]`), `worse` (negative beyond 2 se),
+    `fpr_gate` (`holds`: the mean FPR difference is not positive beyond 2 se; `mean`, `sd`
+    and `sign`, -1/0/1 of the strict mean) and, in `roc_auc`, the same `justified`/`worse`
+    without a gate (informational). Raises ValueError if the sides do not hold the same
+    (repeat, fold) pairs once each, or fewer than two folds (sd is undefined).
+    """
+    keys = [[(f["repeat"], f["fold"]) for f in side] for side in (first, second)]
+    if any(len(set(k)) != len(k) for k in keys) or set(keys[0]) != set(keys[1]):
+        raise ValueError("the two sides must hold the same (repeat, fold) pairs, once each")
+    if len(keys[0]) < 2:
+        raise ValueError("a paired comparison needs at least two folds")
+    a, b = ([f for _, f in sorted(zip(k, side), key=lambda kf: kf[0])]
+            for k, side in zip(keys, (first, second)))
+    recall = _differences(a, b, lambda f: f["recall"]["recall"], lambda d: d > 0)
+    fpr = _differences(a, b, lambda f: f["fpr"]["point"], lambda d: d < 0)
+    roc_auc = _differences(a, b, lambda f: f["roc_auc"], lambda d: d > 0)
+    roc_auc["justified"], roc_auc["worse"] = _beyond_noise(roc_auc)
+    rise, _ = _beyond_noise(fpr)
+    gate = {"holds": not rise, "mean": fpr["mean"], "sd": fpr["sd"],
+            "sign": (fpr["mean"] > 0) - (fpr["mean"] < 0)}
+    better, worse = _beyond_noise(recall)
+    return {"folds": len(a), "recall": recall, "fpr": fpr, "roc_auc": roc_auc,
+            "justified": better and gate["holds"], "worse": worse, "fpr_gate": gate}
+
+
 def build_run_report(
     real_queries: Sequence[str],
     products: Sequence[WandsProduct],
@@ -745,6 +803,9 @@ def build_run_report(
     (repeat, fold), once per arm), `models` (per model: `compute_metrics` plus, on each
     fold entry, `target_unmet`, `threshold_warning` and `fit_warnings`) and, in the
     primary arm only, `span_lengths`: the realised mix per repeat next to the target.
+    A run with both arms adds `arm_comparison` (per model, `paired_comparison` of the primary
+    arm minus the comparison arm); a run with `lr` and `mlp` adds `model_comparison` under each
+    arm (MLP minus LR). No comparison is made across run files (8.2).
     With `lofo` (off by default; 8.6 item 1) each arm also has `lofo`: per model, the
     `lofo_section` rows, run on the same folds with each family of A-D left out in turn.
     With `catalogue_gap` (off by default; 8.6 item 5; needs `query_classes`, the `query_class`
@@ -827,6 +888,16 @@ def build_run_report(
             body[PRIMARY]["catalogue_gap"].update(
                 folds=products_removed,
                 unclassified_products=sum(1 for p in products if not p.classes))
+    folds_of = {arm: {model: entry["folds"] for model, entry in body[arm]["models"].items()}
+                for arm in arms}
+    if PRIMARY in arms and COMPARISON in arms:
+        body["arm_comparison"] = {
+            model: paired_comparison(folds_of[PRIMARY][model], folds_of[COMPARISON][model])
+            for model in models}
+    if LR in models and MLP in models:
+        for arm in arms:
+            body[arm]["model_comparison"] = paired_comparison(
+                folds_of[arm][MLP], folds_of[arm][LR])
     if PRIMARY in arms:
         body[PRIMARY]["span_lengths"] = {
             "target": length_mix(LENGTH_COUNTS),

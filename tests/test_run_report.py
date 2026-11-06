@@ -82,7 +82,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(self.body)), self.body)
 
     def test_both_arms_under_their_own_keys(self):
-        self.assertEqual(set(self.body), set(ARMS))
+        self.assertEqual(set(self.body), {*ARMS, "arm_comparison"})
         for arm in ARMS:
             self.assertEqual(set(self.body[arm]["models"]), {"lr", "mlp"})
             self.assertEqual(self.body[arm]["models"]["lr"]["arm"], arm)
@@ -336,7 +336,7 @@ class DeterminismAndWriterTest(unittest.TestCase):
             self.assertIn(key, config)
         self.assertEqual(config["parameters"]["negatives_size"], 120)
         self.assertEqual(config["parameters"]["vocabulary_cap"], 10_000)
-        self.assertEqual(set(data) - {"config"}, set(ARMS))
+        self.assertEqual(set(data) - {"config"}, {*ARMS, "arm_comparison"})
         self.assertEqual(json.loads(json.dumps(data)), data)
 
     def test_written_through_the_one_writer(self):
@@ -347,7 +347,7 @@ class DeterminismAndWriterTest(unittest.TestCase):
         self.assertEqual(path, Path("x"))
         args = writer.call_args.args
         self.assertEqual(args[1], "evaluate")
-        self.assertEqual(set(args[3]), set(ARMS))
+        self.assertEqual(set(args[3]), {*ARMS, "arm_comparison"})
 
     def test_evaluate_does_not_import_the_command_layer_or_write_json(self):
         tree = ast.parse((ROOT / "evaluate.py").read_text())

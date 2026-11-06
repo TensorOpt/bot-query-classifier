@@ -2397,7 +2397,56 @@ Follow-ups:
 
 ## M6: Full run
 
-Sign-off: pending.
+**Sign-off: 2026-11-06, `fable`, verdict POSITIVE for the run** (audited at `9ba84da`; runs at
+`a20073f`; `DESIGN.md` 13.9 updated with the wall times). The decisions it raises are the user's
+(12.1 item 13, 12.2, 8.6 items 2 and 5) and are listed below, not taken.
+
+- Checked by `fable` against `evaluate-250d3c345ade-20261106T184818872494Z.json` in the M6 clone:
+  every headline recall, FPR and CI in the report, both `model_comparison` verdicts, all three
+  `arm_comparison` verdicts, every `catalogue_gap` verdict, the primary-arm LR family-B and
+  `B.template` recall, the sanity confusion matrix, the LOFO D row and the MLP fit time match.
+- Suite at the audited commit: 849 tests, OK (M5 sign-off; M6.T1 changes `PLAN.md` only).
+- Criterion 1: all four commands completed from a clean clone with a fresh venv; the MLP ran
+  everywhere the design allows (fit 38.4 s, under the 5-minute rule). The run was restarted once
+  after a container restart; the recorded run is the complete one.
+
+Findings and the decisions they need:
+
+1. **LR or MLP (12.1 item 13).** Primary arm: `model_comparison` is within noise on recall
+   (-0.77 pp, se 0.93) and the MLP fails the FPR gate (+0.69 pp, se 0.26, point estimate 1.18%
+   against the 1% target). Comparison arm: the MLP is `worse`. Recommendation under 6.2 and
+   section 7: **logistic regression**. User decides.
+2. **Arm (Q13 confirmed).** `arm_comparison`: LR `justified` (+6.63 pp recall, gate holds),
+   trivial `justified`; the MLP's +9.74 pp is not `justified` because its FPR gate fails. The
+   product-span arm stands as the headline.
+3. **Generators are too easy on held-out B and D (8.6 items 1 and 2).** LOFO recall for LR drops
+   to 34.1% on B (-30.6 pp) and 29.7% on D (-52.3 pp), and the trivial baseline beats LR and MLP
+   on held-out B and D. On the headline the trivial baseline is 15 pp behind, so the in-family
+   numbers are not inflated by artefacts, but the out-of-family numbers say the B and D
+   templates share surface cues that the length-and-punctuation features capture. Rework of B
+   and D is a design change: `fable` recommends it as the next piece of work (section 14 entry
+   to be written), **after** the user confirms.
+4. **The 13.22 recall drop is confirmed and deeper.** Primary-arm LR: overall 77.0% (probe 81.7
+   to 79.7), family B 64.6% (74.4 to 67.3), `B.template` 47.7% (92 to 60); the comparison arm's
+   LR gets `B.template` 100%, so the loss is specific to span negatives. Cause isolation stays a
+   section 14 follow-up.
+5. **Catalogue gap (8.6 item 5): passes in every arm and model.** Primary LR 1.25% (CI 0.57 to
+   2.70), MLP 1.39%: point estimates above target, lower bounds below it, so
+   `point_estimate_above_target` and no failure. No decision needed; reported.
+6. **Q12, part numbers (12.2).** LR flags 85% of the 100 synthetic part-number strings in both
+   arms, the MLP 76 to 81%, trivial 2 to 3%; on the sanity set LR flags all three part-number
+   rows (16, 39, 43) and the two `SKU...` rows (39, 43) are flagged by every LR and MLP run
+   though labelled legitimate. The user decides whether to add synthetic part-number negatives.
+7. **Sanity set.** Primary LR over all 50 rows `[[33, 4], [3, 10]]`; ids 8, 47, 49 are missed by
+   every LR and MLP run; the Jaccard-excluded ids 5, 7, 28 are all true positives caught by every
+   model. Family E recall is 16 to 19% for LR and MLP: off-topic natural language is not caught,
+   as the design expects (E is evaluation-only).
+8. **Clustering (section 9, F14).** At the default cell the two classes are not discoverable
+   (ARI 0.002, seed rule at chance); the high-ARI cells label 84% of rows noise. Finding, no
+   decision: the no-label scenario is not served by this feature set.
+
+Open after this sign-off: the user's answers to 1, 3 and 6; the push (blocked all session by
+GitHub access, 67+ commits local); section 14 entries for 3 and 4.
 
 ### M6.T1: Run everything on real data and report
 

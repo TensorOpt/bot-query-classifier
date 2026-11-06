@@ -2340,6 +2340,8 @@ Sign-off: pending.
      (rows below `min_cluster_size`, M5.T1). Fix: patch `cluster.run_grid` with a spy and assert
      it was not called, so the check must come before any clustering.
 
+  Corrections (`sonnet`): items 1-3 done in a `test(M5.T3)` commit after `8e16655`.
+
   Rulings: `grid_report` in `bqc/cluster.py` (texts and truth in, JSON-ready metrics out,
   clustering before scoring) with the string composition in `bqc/cli.py` is accepted: it
   matches `generate`, keeps the experiment free of the command layer (10), and `write_report`

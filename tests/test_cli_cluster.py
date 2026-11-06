@@ -125,9 +125,13 @@ class EndToEndTest(ClusterTestCase):
 
     def test_parameters_are_recorded(self):
         p = self.report()["config"]["parameters"]
-        self.assertEqual(p["per_template"], PER_TEMPLATE)
-        self.assertEqual(p["families"], list(TRAINING_FAMILIES))
-        self.assertEqual(p["grid"], {"n_components": list(GRID), "min_cluster_size": list(GRID)})
+        self.assertEqual(p, {
+            "families": list(TRAINING_FAMILIES),
+            "per_template": PER_TEMPLATE,
+            "grid": {"n_components": list(GRID), "min_cluster_size": list(GRID)},
+            "seed_ks": [10, 20, 40],  # 9.2
+            "seed_draws": 20,  # 9.2
+        })
 
 
 class StringsTest(ClusterTestCase):
@@ -169,6 +173,27 @@ class StringsTest(ClusterTestCase):
         self.assertEqual((seen["seed"], seen["per_template"]), (SEED, QUOTA))
         self.assertEqual(len(seen["templates"]), 24)
         self.assertEqual({f for f, _ in seen["templates"]}, set(TRAINING_FAMILIES))
+
+
+class ShortfallTest(ClusterTestCase):
+    def test_the_reported_shortfall_is_the_sum_over_templates(self):
+        real = self.registry.render
+
+        def render(vocabulary, seed, templates, per_template):
+            samples, _ = real(vocabulary, seed, templates, per_template)
+            (fa, ta), (fb, tb) = templates[0], templates[1]
+            drop = ([s for s in samples if (s.family, s.template_id) == (fa, ta)][:3]
+                    + [s for s in samples if (s.family, s.template_id) == (fb, tb)][:2])
+            kept = [s for s in samples if not any(s is d for d in drop)]
+            return kept, {(fa, ta): 3, (fb, tb): 2}
+
+        with mock.patch.object(self.registry, "render", render):
+            r = self.report()
+        self.assertEqual(r["shortfall"], 5)
+        self.assertEqual(r["rows"]["positives"], POSITIVES - 5)
+
+    def test_no_shortfall_is_reported_as_zero(self):
+        self.assertEqual(self.report()["shortfall"], 0)
 
 
 class LabelsTest(ClusterTestCase):
@@ -317,8 +342,9 @@ class ModuleBoundaryTest(unittest.TestCase):
 
 class GridReportTest(unittest.TestCase):
     def test_the_inputs_must_be_equally_long(self):
-        with self.assertRaises(ValueError):
+        with mock.patch.object(cluster, "run_grid") as grid, self.assertRaises(ValueError):
             cluster.grid_report(["a b", "c d"], [0])
+        grid.assert_not_called()  # the check comes before any clustering
 
 
 if __name__ == "__main__":

@@ -8,10 +8,11 @@ non-finite score, and `run_primary_fold` cross-fits one fold of the primary arm.
 `compute_metrics` turns fold results into the numbers of 8.5.
 """
 import math
+import pickle
 import warnings
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -369,21 +370,22 @@ class NonFiniteScoreError(ValueError):
 
 def check_finite(
     scores: Sequence[float],
-    repeat: int,
-    fold: int,
+    repeat: int | None,
+    fold: int | None,
     arm: str,
     model: str,
     score_set: str,
 ) -> np.ndarray:
     """Return `scores` as an array; raise NonFiniteScoreError on any NaN or inf (11.30).
 
-    The message names the repeat, fold, arm, model and score set.
+    The message names the repeat, fold, arm, model and score set. A final model (8.7) has
+    no outer fold: `repeat=None` makes the message say "final model" instead.
     """
     array = np.asarray(scores, dtype=float)
     if not np.isfinite(array).all():
+        where = "final model" if repeat is None else f"repeat {repeat}, fold {fold}"
         raise NonFiniteScoreError(
-            f"non-finite score in {score_set} (repeat {repeat}, fold {fold}, arm {arm}, "
-            f"model {model})")
+            f"non-finite score in {score_set} ({where}, arm {arm}, model {model})")
     return array
 
 
@@ -470,6 +472,32 @@ def _test_result(
         list(data.test_groups), fit_warnings)
 
 
+def _inner_out_of_fold(
+    texts: Sequence[str],
+    y: Sequence[int],
+    families: Sequence[str | None],
+    groups: Sequence[tuple[str, str] | None],
+    make_scorer: Callable[[], Scorer],
+    seed: int,
+    leave_out: str | None = None,
+) -> np.ndarray:
+    """Out-of-fold scores of every row from the inner `StratifiedGroupKFold` (8.2): a real
+    query (None in `groups`) is its own group, a template's rows share one. Each inner
+    training fold passes `check_fold` for the families left after `leave_out`."""
+    group_ids: dict[Any, int] = {}
+    codes = [group_ids.setdefault(g if g is not None else ("row", i), len(group_ids))
+             for i, g in enumerate(groups)]
+    expected = [f for f in TRAINING_FAMILIES if f != leave_out]
+    splitter = StratifiedGroupKFold(n_splits=N_SPLITS, shuffle=True, random_state=seed)
+    out_of_fold = np.full(len(texts), np.nan)
+    for train, held_out in splitter.split(texts, y, codes):
+        check_fold([y[i] for i in train], [families[i] for i in train],
+                   [y[i] for i in held_out], expected)
+        scorer = make_scorer().fit([texts[i] for i in train], [y[i] for i in train])
+        out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
+    return out_of_fold
+
+
 def run_comparison_fold(
     data: FoldData,
     make_scorer: Callable[[], Scorer],
@@ -491,22 +519,11 @@ def run_comparison_fold(
     if data.arm != COMPARISON:
         raise ValueError(f"run_comparison_fold needs the {COMPARISON!r} arm, got {data.arm!r}")
     context = dict(repeat=data.repeat, fold=data.fold, arm=data.arm, model=model)
-    # a real query is its own group (None in train_groups); a template's rows share one
-    group_ids: dict[Any, int] = {}
-    codes = [group_ids.setdefault(g if g is not None else ("row", i), len(group_ids))
-             for i, g in enumerate(data.train_groups)]
     texts, y, families = data.train_texts, data.train_y, data.train_families
-    expected = [f for f in TRAINING_FAMILIES if f != leave_out]
-    splitter = StratifiedGroupKFold(
-        n_splits=N_SPLITS, shuffle=True, random_state=SEED + data.repeat)
-    out_of_fold = np.full(len(texts), np.nan)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        for train, held_out in splitter.split(texts, y, codes):
-            check_fold([y[i] for i in train], [families[i] for i in train],
-                       [y[i] for i in held_out], expected)
-            scorer = make_scorer().fit([texts[i] for i in train], [y[i] for i in train])
-            out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
+        out_of_fold = _inner_out_of_fold(
+            texts, y, families, data.train_groups, make_scorer, SEED + data.repeat, leave_out)
         scorer = make_scorer().fit(texts, y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
     out_of_fold = check_finite(
@@ -902,3 +919,101 @@ def run_report(
     `evaluate`; returns the path. `now` is for tests."""
     parameters, body = build_run_report(**options)
     return write_report(results_dir, "evaluate", parameters, body, now)
+
+
+class FinalModel(NamedTuple):
+    """A model fitted for inspection (8.7): the scorer, its threshold, and the run's counts.
+
+    `report` holds the fit's negatives, positives per family, rule-4 drops and shortfalls
+    (counts only). `fit_warnings` are as in `FoldResult`.
+    """
+    arm: str
+    model: str
+    scorer: Scorer
+    threshold: Threshold
+    fit_warnings: list[str]
+    report: dict[str, Any]
+
+
+def fit_final_model(
+    arm: str,
+    make_scorer: Callable[[], Scorer],
+    target_fpr: float,
+    model: str,
+    real_queries: Sequence[str],
+    products: Sequence[WandsProduct],
+    part_numbers: Sequence[str],
+    sanity: Sequence[str],
+    n: int = DEFAULT_N,
+    registry: Registry = REGISTRY,
+    vocabulary_cap: int = VOCABULARY_CAP,
+) -> FinalModel:
+    """Fit the final model of one arm (8.7); family E is not rendered.
+
+    Primary: `n` spans with seed `SEED`, positives from all A-D templates at `n // 24`
+    each from the spans' token occurrences, one fit, and `t` from the 8.4 rule over all
+    the real queries (none was trained on). Comparison: the real queries as negatives,
+    `QUOTA` positives per template from their token occurrences, `t` from the inner
+    out-of-fold pass (as `run_comparison_fold`, seed `SEED`), then a fit on every row.
+    Rule 4 as in `iter_fold_data`: a positive equal to a sanity query raises FoldError,
+    one equal to a training negative, a real query or a part-number string is dropped and
+    counted in `report["dropped"]`. Every score array goes through `check_finite` with no
+    fold. `FoldError` and `ValueError` as there; an unknown `arm` raises ValueError.
+    """
+    if arm not in ARMS:
+        raise ValueError(f"unknown arm {arm!r}")
+    context = dict(repeat=None, fold=None, arm=arm, model=model)
+    templates = [(f, t.template_id) for f in TRAINING_FAMILIES for t in registry.templates(f)]
+    if arm == PRIMARY:
+        spans, removals = build_spans(products, n, SEED, real_queries, part_numbers, sanity)
+        negatives = [s.text for s in spans]
+        vocabulary = token_occurrences(negatives, cap=vocabulary_cap)
+        per_template = n // len(templates)
+    else:
+        removals = None
+        negatives = list(real_queries)
+        vocabulary = token_occurrences(negatives)
+        per_template = QUOTA
+    drop = {"training_negatives": negatives, "real_queries": real_queries,
+            "part_numbers": part_numbers}
+    train = _side(negatives, [_render_screened(
+        registry, vocabulary, SEED, templates, per_template, sanity, drop)], per_template)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if arm == PRIMARY:
+            scorer = make_scorer().fit(train.texts, train.y)
+            real_scores = check_finite(
+                scorer.score(real_queries), **context,
+                score_set=_score_set("threshold queries", None))
+        else:
+            out_of_fold = _inner_out_of_fold(
+                train.texts, train.y, train.families, train.groups, make_scorer, SEED)
+            real_scores = check_finite(
+                out_of_fold, **context, score_set=_score_set("out-of-fold scores", None)
+            )[:len(negatives)]
+            scorer = make_scorer().fit(train.texts, train.y)
+    fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
+    report = {**train.report, **({"span_removals": removals} if removals else {})}
+    return FinalModel(
+        arm, model, scorer, select_threshold(real_scores, target_fpr), fit_warnings, report)
+
+
+def save_final_model(final: FinalModel, results_dir: Path, now: datetime | None = None) -> Path:
+    """Pickle `final` (scorer and threshold included) to
+    `<results_dir>/final-<arm>-<model>-<UTC timestamp>.pkl`, creating `results_dir`, and return
+    the path. An existing file is never overwritten: FileExistsError. `now` is for tests.
+    Not a deployment artefact (8.7); load only pickles you wrote. The scorer's class must be
+    importable at module level (probed 2026-11-06, Python stdlib pickle: `FakeScorer` and its
+    numpy state round-trip, a class defined inside a function does not pickle)."""
+    stamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    path = results_dir / f"final-{final.arm}-{final.model}-{stamp.strftime('%Y%m%dT%H%M%S%fZ')}.pkl"
+    with path.open("xb") as f:  # "x": never overwrite
+        pickle.dump(final, f)
+    return path
+
+
+def load_final_model(path: Path) -> FinalModel:
+    """Load a pickle written by `save_final_model`."""
+    with path.open("rb") as f:
+        return pickle.load(f)

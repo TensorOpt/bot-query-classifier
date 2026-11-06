@@ -1243,7 +1243,8 @@ Each item names the component and the designed behaviour.
 17. **All-noise HDBSCAN result.** Reported as 0 clusters, 100% noise; the seed rule
     then labels everything legitimate (FPR 0, recall 0). Not an error.
 18. **Non-determinism.** Two runs with the same config and seed must produce
-    identical JSON apart from the timestamp; this is a test on a tiny config.
+    identical JSON apart from the timestamp and the `timing` section (the measured
+    MLP fit time of section 10, M4.T4); this is a test on a tiny config.
 19. **Scores exactly at the threshold.** Decision is `score >= t` is illegitimate;
     stated once in `evaluate.py` and tested.
 20. **Sanity set unlabelled, partially labelled, or with a bad label** (`2`, `yes`,

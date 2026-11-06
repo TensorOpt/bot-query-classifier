@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.base import ClassifierMixin
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils.validation import check_is_fitted
 
 from bqc import SEED
@@ -78,3 +79,34 @@ class MLPScorer(_VectorisedScorer):
         self._classifier = MLPClassifier(
             hidden_layer_sizes=(64,), activation="relu", solver="adam", alpha=1e-3,
             early_stopping=True, validation_fraction=0.2, max_iter=500, random_state=SEED)
+
+
+def _hand_features(texts: Sequence[str]) -> np.ndarray:
+    """Rows of [character length, word count, non-alphanumeric ratio] for normalised texts.
+
+    The ratio is the count of characters with `not c.isalnum()` over the character length, so
+    spaces and punctuation count as non-alphanumeric; it is 0.0 for the empty string (11.1).
+    """
+    return np.array(
+        [[len(t), len(t.split()), sum(not c.isalnum() for c in t) / len(t) if t else 0.0]
+         for t in texts],
+        dtype=float).reshape(len(texts), 3)
+
+
+class TrivialScorer(_VectorisedScorer):
+    """Artefact detector: LogisticRegression on three hand features (DESIGN.md 6.3).
+
+    Features, on normalised text: character length, word count, non-alphanumeric ratio (see
+    `_hand_features`). Reported next to the real models, never selected: nothing in the code
+    chooses a model by this scorer's results.
+
+    Shares the base's normalise-once, predict_proba[:, 1] and not-fitted steps; the stateless
+    FunctionTransformer takes the place of the TF-IDF vectoriser. Plain LogisticRegression()
+    defaults, as 6.3 names no settings. Probe 2026-11-06 (scikit-learn 1.9.1): on unscaled
+    features (length up to 512) lbfgs at max_iter=100 emitted no ConvergenceWarning on
+    40 random rows or on a 6-row fit; if it does on real data the runner captures it (11.12).
+    """
+
+    def __init__(self) -> None:
+        self._vectoriser = FunctionTransformer(_hand_features)
+        self._classifier = LogisticRegression()

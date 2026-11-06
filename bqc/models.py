@@ -6,7 +6,7 @@ import numpy as np
 
 
 class Scorer(Protocol):
-    """Wraps vectoriser -> [SMOTE] -> estimator; evaluation code sees only this."""
+    """Wraps vectoriser -> estimator; evaluation code sees only this."""
 
     def fit(self, texts: Sequence[str], y: Sequence[int]) -> "Scorer":
         """Fit on training texts and labels (1 = illegitimate); return self."""

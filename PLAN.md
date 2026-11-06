@@ -1118,7 +1118,7 @@ Sign-off: pending.
 - **Tests:** in `tests/test_report.py`, `config["libraries"]` has exactly the keys `python`, `numpy` and
   `scikit-learn`. No other new tests.
 - **Depends on:** M2.T8, M3.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T7: Metrics and aggregation
 

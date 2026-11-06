@@ -13,7 +13,7 @@ from bqc import SEED
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = ROOT / "results"
-LIBRARIES = ("numpy", "scikit-learn", "imbalanced-learn")
+LIBRARIES = ("numpy", "scikit-learn")
 
 
 def write_report(

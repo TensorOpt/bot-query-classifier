@@ -29,8 +29,7 @@ class WriteReportTest(unittest.TestCase):
         self.assertEqual(config["seed"], SEED)
         self.assertIsInstance(config["git_commit"], str)
         self.assertTrue(config["git_commit"])
-        self.assertIn("scikit-learn", config["libraries"])
-        self.assertIn("python", config["libraries"])
+        self.assertEqual(set(config["libraries"]), {"python", "numpy", "scikit-learn"})
         self.assertEqual(len(config["config_hash"]), 64)
         self.assertEqual(data["x"], [1])
 

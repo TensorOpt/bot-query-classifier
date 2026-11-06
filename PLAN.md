@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3 sign-off by `fable`, then M4.T1.
+**Next task:** M4.T1 (corrections), then M4.T2.
 
 ### Order constraints
 
@@ -1739,6 +1739,39 @@ Sign-off: pending.
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M3.T1, M3.T2.
 - **Status:** done
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 648 OK (43 s). Met by reading: the
+    adapter builds its vectoriser with `make_vectoriser()`, calls `normalise()` once per text in `fit` and
+    `score`, returns `predict_proba[:, 1]`, and checks fit state on the empty-list path; no new dependency; no
+    metric value asserted. Mutation pass (`bqc/models.py` alone in a `git archive` copy, `tests.test_models_lr`
+    run per mutant), 20 mutants: killed are column 0, labels inverted, `C=100`, `max_iter=100` and `=5`,
+    `char_wb` analyser, vectoriser refitted in `score` (`fit_transform`), `check_is_fitted` dropped, `[]`
+    returned for empty input, `fit` returning None. Equivalent and accepted: labels cast to `bool` or `str`
+    (`classes_` sorts the same, column 1 is still label 1), `C=1` int, `random_state=0` added (lbfgs ignores
+    it), `float32` output. Gaps:
+    1. `tests/test_models_lr.py:62`: criterion 1 ("on the M3.T1 vectoriser") is not pinned. Replacing
+       `make_vectoriser()` at `bqc/models.py:34` with a locally built `TfidfVectorizer` with one parameter
+       changed survives for `min_df=1`, `ngram_range=(1, 3)` and `sublinear_tf=False` (all OK). Required: in
+       `test_configuration`, assert `s._vectoriser.get_params() == make_vectoriser().get_params()`, or patch
+       `bqc.models.make_vectoriser` and assert the adapter's vectoriser is the object it returned.
+    2. `tests/test_models_lr.py:36-45`: the criterion says `normalise()` runs once per text, and
+       `normalise(normalise(t))` in `fit` (`bqc/models.py:39`) or `score` (`:51`) survives because
+       `normalise` is idempotent. Required: one test that patches `bqc.models.normalise` with
+       `unittest.mock.patch(..., wraps=normalise)` and asserts `call_count == len(texts)` after `fit` and,
+       reset, after `score`.
+    3. `tests/test_models_lr.py:55` and `:59`: `assertRaises(Exception)` passes for any error (a `TypeError`
+       from a broken `score` would satisfy it). The designed error is sklearn's `NotFittedError` (docstring at
+       `bqc/models.py:45`; probed now, sklearn 1.9.1: the non-empty path raises it from the vectoriser, the
+       empty path from `check_is_fitted`). Required: `assertRaises(NotFittedError)` in both tests.
+    Weighed and accepted: (a) no `random_state`: 6.2 names only `C` and `max_iter`, lbfgs does not use
+    `random_state`, and `test_refit_is_deterministic` pins it; section 10's seed rule covers estimators that
+    take one. (b) Single-class training raises sklearn's `ValueError` unhandled: the `Scorer` port does not
+    promise more, and 11.x puts the both-classes guard on the folds (`check_fold`), not on the adapter.
+    (c) `np.empty(0)` (float64, shape `(0,)`) after `check_is_fitted` matches the port's 1-D float array and
+    avoids sklearn's 0-sample `ValueError` (re-probed). (d) Probe findings as comments next to the code
+    (`bqc/models.py:36`, `:46-48`, `:50`) satisfy `CLAUDE.md` ("in DESIGN.md section 13 or in a comment next to
+    the code that depends on it"); re-run now, same results. Notes, not required: `scratch/models.orig` is a
+    leftover backup identical to `bqc/models.py` (gitignored; delete it); stray blank line between the two
+    sklearn imports at `bqc/models.py:7`.
 
 ### M4.T2: MLP adapter
 

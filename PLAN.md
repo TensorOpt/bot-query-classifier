@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T2.
+**Next task:** M4.T2 (corrections), then M4.T3.
 
 ### Order constraints
 
@@ -1797,6 +1797,43 @@ Sign-off: pending.
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
 - **Status:** done
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 667 OK (43 s). Met by reading and by test:
+    the 6.1 parameters (named keys only, see item 2), the M3.T1 vectoriser (`get_params()` equality),
+    `random_state=SEED`, fit returns self, same seed gives identical scores, `""` and `"   "` score without
+    raising, `max_iter=1` warns and fit returns, pickle round trip, `NotFittedError` on both paths; no metric
+    asserted; no new dependency; the committed `bqc/models.py` has no stray import (all eleven imports used).
+    Mutation pass (`git archive` copy, `tests.test_models_mlp` + `tests.test_models_lr` per mutant), 26
+    mutants, 22 killed: every 6.1 parameter changed, `early_stopping=False`, `validation_fraction` 0.1 and
+    0.25, `n_iter_no_change=5`, `batch_size=32`, `random_state` `seed + 1`, `0`, dropped, or moved to the
+    vectoriser, `normalise` dropped in `fit` only and in `score` only, column 0, `check_is_fitted` dropped, `fit`
+    returning None, LR `C=10` and `max_iter=100`, LR with a local vectoriser. Equivalent: `warnings.filterwarnings
+    ("once", ConvergenceWarning)` in `fit` (probed, Python 3.13.18: re-registering a filter clears the once
+    registry, so each fit still warns inside the runner's `catch_warnings`). Survivors:
+    1. `tests/test_models_mlp.py:94-101`: `warnings.simplefilter("ignore", ConvergenceWarning)` in
+       `MLPScorer.__init__` survives, because the test builds the scorer at `:95`, outside its
+       `catch_warnings` block, so its own `simplefilter("always")` overrides the mutant. The runner builds the
+       scorer inside the block (`bqc/evaluate.py:433-435`, `make_scorer().fit(...)`), where the mutant would
+       hide the warning (11.12). Required: construct the scorer (and set `max_iter=1`) inside the
+       `with warnings.catch_warnings(record=True)` block.
+    2. `tests/test_models_mlp.py:83-88`: "exact parameters of 6.1" is pinned only for the named keys; adding
+       `tol=1e-2` survives. Required: assert `MLPScorer()._classifier.get_params() ==
+       MLPClassifier(<6.1 parameters>, random_state=SEED).get_params()`. Same gap in the LR class this commit
+       rewrote: `class_weight="balanced"` survives `tests/test_models_lr.py:74-76`; required: the same full
+       `get_params()` comparison against `LogisticRegression(C=1.0, max_iter=1000)`. (Both checked to kill
+       their mutant in the copy.)
+    3. `bqc/models.py:76` and `:80`: `seed: int = SEED` is YAGNI. 6.1 fixes `random_state=SEED`; every caller
+       is a zero-argument factory (`Callable[[], Scorer]`, `bqc/evaluate.py:416`, `:482`, `:505`, `:725`,
+       `:942`); `SEED + repeat` (8.2, section 10) seeds splits and spans, not the estimator. Required: drop the
+       argument and pass `random_state=SEED`; in the tests drop the `seed` parameter of `fitted()` (`:23`) and
+       `test_seed_is_passed_through` (`:35-37`); `test_configuration` already pins `SEED`.
+    Weighed and accepted: (a) the `_VectorisedScorer` base class in the feature commit: DRY says to extract on
+    the second occurrence, which is this task, and TDD step 5 puts the refactor inside the task; it can't be
+    split now without rewriting history. The untouched LR tests pass and kill LR mutants on `C`, `max_iter`, the
+    vectoriser and `normalise`; item 2 closes the one LR gap found. (b) `max_iter=1` set on the private
+    `_classifier` in the test: no option added to production code, the tests already read `_classifier`.
+    (c) Probe findings in the `MLPScorer` docstring and the fixture comment satisfy `CLAUDE.md`; re-checked
+    (3 + 3 rows is the smallest balanced fit). For `fable`, not required: 13.6 could carry the minimum-rows
+    finding, since the 11.18 tiny-config determinism test will fit the MLP on small data.
 
 ### M4.T3: Trivial baseline adapter
 

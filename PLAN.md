@@ -31,7 +31,7 @@ after M3.T13, and M3.T14 comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T7.
+**Next task:** M3.T8.
 
 ### Order constraints
 
@@ -1168,7 +1168,7 @@ Sign-off: pending.
     space.
   - A single-class input to ROC-AUC raises rather than reporting a number.
 - **Depends on:** M3.T5, M3.T15 (schedule order only).
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `bba4137`. Criterion 1 is met: 8.5 asks for mean and sd over folds on
   ROC-AUC only, and the criterion's wording, which could be read otherwise, is corrected above. Widening
   the M3.T5 guard to `sklearn.metrics` is fine: the check is on the exact set, and estimator imports in
@@ -1177,30 +1177,18 @@ Sign-off: pending.
   recall 77.0%, FPR 0.49% (7 of 1,440), AUC .9711, one-word 2.33 mean per repeat; comparison 70.4%, 1.04%,
   .9552, 3.00. That's plausible against 13.22's T arm (79.7%, 0.69%, .9723) and 13.19's BASE (71.0%, 0.62%,
   .9603), with fewer false positives and less recall in the primary arm, but not a match. Family E totals
-  600 per repeat, A-D 1,799-1,800 pooled, no `target_unmet`.
-- **Changes requested:**
-  1. `bqc/evaluate.py:514`: the runners give a `numpy.float64` threshold, so `is_illegitimate` returns
-     `numpy.bool_`, and `caught`, `false_positives` and `flagged` become `numpy.int64`: `json.dumps` raises on
-     real results, against the docstring's "JSON-ready". The tests only use a Python float threshold. Convert
-     with `float(...)` there, and add a round-trip test with a `numpy.float64` threshold next to
-     `tests/test_metrics.py:230`.
-  2. `bqc/evaluate.py:602`: pooled `one_word.flagged` is the union over repeats (primary 3, comparison 6),
-     which isn't comparable with the probes' mean per repeat (2.33, 3.00 here) or the FPR's `total / repeats`.
-     Keep the union and its words, and add `flagged_mean_per_repeat`, with a hand-computed test next to
-     `tests/test_metrics.py:226`.
-  3. `bqc/evaluate.py:598`: `templates` has 30 rows on real data, and criterion 4 and 8.5 say 24. E has its
-     family row. Leave E out, and change `tests/test_metrics.py:207`.
-  4. `tests/test_metrics.py:161`: the fixture's matrix is symmetric, so plain F1 equals macro F1 and that
-     mutant passes (on real data, far from equal). Add a hand-computed asymmetric case.
-  5. `tests/test_metrics.py:226`: no test has two repeats with different folds, so mixing the same fold number
-     across repeats, or using every repeat's folds for a repeat's ROC-AUC mean, passes. Add one asserting the
-     fold entries and each repeat's `fold_mean`.
+  600 per repeat, A-D 1,799-1,800 pooled, no `target_unmet`. Corrected in `a74213e`, list in `e48a6fa`: no
+  numpy types in the metrics, `flagged_mean_per_repeat` added, E out of `templates`, and tests for macro F1 and
+  for two repeats. `opus`'s re-run of all 15 folds: `json.dumps` round-trips in both arms, with 24 template
+  rows and the same numbers. Process deviation (F1), disclosed: `sonnet` mistranscribed a timing in one mutant
+  block. Follow-up F7, carried by M3.T8: no test tells `flagged_mean_per_repeat` from the union over the
+  repeat count, as no test has one word flagged in two repeats. The real values are right (2.33, 3.00).
 
 ### M3.T8: Run report JSON
 
 - **Goal:** build one reproducible JSON report per run, written through `write_report`.
 - **Design refs:** `DESIGN.md` `5654502`: 3.2, 8.1, 10, 11.12, 11.18, 13.20.
-- **Files:** `bqc/evaluate.py`, `tests/test_run_report.py`.
+- **Files:** `bqc/evaluate.py`, `tests/test_run_report.py`, `tests/test_metrics.py` (F7).
 - **Acceptance criteria:**
   1. Contains config (all parameters, seed, git commit hash, library versions, arms, negatives size,
      vocabulary cap), and under each arm's own key (8.2): per-fold and pooled metrics, each fold's class
@@ -1219,6 +1207,8 @@ Sign-off: pending.
     present, and a run with both arms has both keys in one file.
   - A hand-checked span length mix sits next to the target; the comparison arm has none.
   - Removed span and positive text appears nowhere in the report.
+  - Follow-up F7, in `tests/test_metrics.py`: one word flagged in both of two repeats gives `flagged` 1 and
+    `flagged_mean_per_repeat` 1.0.
 - **Depends on:** M2.T8, M3.T7, M3.T13.
 - **Status:** todo
 

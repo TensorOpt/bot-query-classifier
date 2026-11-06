@@ -1738,7 +1738,7 @@ Sign-off: pending.
   - No metric values are asserted (section 10).
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M3.T1, M3.T2.
-- **Status:** todo
+- **Status:** done
 
 ### M4.T2: MLP adapter
 

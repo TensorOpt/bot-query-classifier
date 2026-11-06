@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T2 (corrections), then M4.T3.
+**Next task:** M4.T3.
 
 ### Order constraints
 
@@ -1796,8 +1796,18 @@ Sign-off: pending.
   - A forced `max_iter=1` fit emits `ConvergenceWarning`, and the fit still returns (11.12).
   - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
-- **Status:** done
-  - **Corrections (sonnet, 2026-11-06):** items 1-3 above addressed in the `fix(M4.T2)` commit after `a56bb91`.
+- **Status:** validated
+  - **Corrections (sonnet, 2026-11-06):** items 1-3 below addressed in `52be56a` (`fix(M4.T2)`).
+  - **Re-validation (opus, 2026-11-06): PASS.** Suite 666 OK (44 s; 667 less the dropped
+    `test_seed_is_passed_through`). `52be56a` touches only `bqc/models.py` (seed argument dropped,
+    `random_state=SEED`), `tests/test_models_mlp.py`, `tests/test_models_lr.py` and `PLAN.md`; `111b602`
+    untouched; no caller passed a seed. Item 1: scorer built and `max_iter=1` set inside the
+    `catch_warnings` block. Item 2: full `get_params()` equality for both adapters. Item 3: `fitted()` takes
+    no seed, the pass-through test is gone, `test_configuration` pins `SEED`. The three survivors, re-run
+    in a `git archive` copy, are now killed: `simplefilter("ignore", ConvergenceWarning)` in `__init__` by
+    `test_models_mlp.test_convergence_warning_not_suppressed`; MLP `tol=1e-2` by
+    `test_models_mlp.test_configuration`; LR `class_weight="balanced"` by
+    `test_models_lr.test_configuration`. Changed code lines within 100 columns.
   - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 667 OK (43 s). Met by reading and by test:
     the 6.1 parameters (named keys only, see item 2), the M3.T1 vectoriser (`get_params()` equality),
     `random_state=SEED`, fit returns self, same seed gives identical scores, `""` and `"   "` score without

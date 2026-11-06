@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T12.
+**Next task:** M3 sign-off by `fable`, then M4.T1.
 
 ### Order constraints
 
@@ -1661,11 +1661,30 @@ Sign-off: pending.
   - Hand-computed fraction, overall and per shape, min, median and max.
   - The other sections of the report are unchanged with and without the diagnostic.
 - **Depends on:** M2.T9, M3.T8, M3.T10.
-- **Status:** done
+- **Status:** validated
   - `part_number_section(part_numbers, finals)` in `bqc/evaluate.py` returns the `part_number_diagnostic` body
     section; separate from `build_run_report` (as `sanity_section`) and not wired into the CLI. Form:
     `{"models": {arm: {model: {"threshold", "n", "flagged_fraction", "per_shape": {template_id: {"n",
     "flagged_fraction"}}, "min", "median", "max"}}}}`. Score-set name "part-number scores".
+  - **Validation (opus, 2026-11-06): PASS.** Suite 636 OK. `7c9e244` adds `part_number_section` only
+    (no other `bqc/` change). Mutation pass, each mutant alone in a fresh copy of `bqc/`, `tests/`, `data/`,
+    full suite: 23 of 23 killed (`>` for `>=`; one-key grouping; mean for median; per-shape fraction over the
+    overall count; score-set name changed; min/max swapped; a fit on the part numbers; per-shape `n` as the
+    overall count and off by one; overall `n` off by one; another model's threshold for the flag, the key,
+    and both; a sample scored twice; a sample skipped; `check_finite` removed; `max` and `median` swapped;
+    `check_finite` given `repeat=0, fold=0` (loses "final model"); wrong model in the context; empty guard
+    removed; every arm collapsed to the first; overall fraction denominator changed; only the first final
+    scored). Criteria: (1) each final scored at its own threshold, 100 scores per model on the generated set;
+    (2) the section is a separate function, as `sanity_section`; `{"models": {arm: {model: ...}}}` gives
+    per model the overall and per-`template_id` fraction and min/median/max, which meets "per model" (arm
+    and model together identify a final, as in M3.T11); (3) `is_illegitimate`, exact-`t` test; (4) a
+    raising `fit` and fit-input checks over both arms, comparison inner folds included; (5) `check_finite`
+    with `repeat=None`, "part-number scores". Weighed: the `threshold` key per entry follows the accepted
+    M3.T11 ruling (a cut-off, not a rate). The P drop list was not mutated here; it is already pinned by
+    `tests/test_folds.py:404-420` (M3.T3) and `tests/test_final_model.py:199-205` (M3.T10, mutant "part
+    numbers not dropped" killed in its validation), so `NoLeakTest.test_fit_inputs_contain_no_part_number_text`
+    guards only the diagnostic's own fit-freedom, which is the M3.T12 concern. Note for M4.T4: the section is
+    not wired into the CLI yet, as with M3.T11.
 
 ---
 

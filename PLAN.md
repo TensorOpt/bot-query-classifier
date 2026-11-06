@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T3.
+**Next task:** M4.T3 corrections (item 1 of its validation).
 
 ### Order constraints
 
@@ -1859,6 +1859,38 @@ Sign-off: pending.
   M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
 - **Status:** done
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 682 OK (43 s). Met by reading and by test:
+    exactly three features in the documented order (`test_hand_computed`, `(0, 3)` for no texts); the ratio
+    counts spaces and is 0.0 for `""` (11.1); length, ratio and normalise-before-features pinned by
+    `test_features_are_computed_on_normalised_text` and `test_fit_normalises`; scores in `[0, 1]`; pickle round
+    trip; full `get_params()` against `LogisticRegression()`; `normalise` once per text (24 / 2);
+    `NotFittedError` on both paths; "reported, never selected" in the docstring, and no code references
+    `TrivialScorer` yet, so nothing selects on it; no metric asserted; no new dependency; probe in the docstring.
+    Mutation pass (`git archive` copy, `tests.test_models_trivial` + `_lr` + `_mlp` per mutant), 22 mutants,
+    17 killed: missing `.reshape(len(texts), 3)` (re-run: killed by `test_no_texts_gives_zero_by_three`), ratio
+    counting only punctuation (`and not c.isspace()`), `isalpha` for `isalnum`, ratio over `len + 1`, `""` ratio
+    1.0, length in UTF-8 bytes, `split(" ")`, columns swapped, a fourth feature (with and without the reshape
+    adjusted), features on raw text with `normalise` still called once, no `normalise`, `FunctionTransformer`
+    `validate=True`, LR `C=10`, `max_iter=1000`, `class_weight="balanced"`, base `score` using `fit_transform`
+    (killed by the LR and MLP tests; for this stateless transformer it is equivalent). Equivalent:
+    `/ max(len(t), 1)`; `FunctionTransformer` with `accept_sparse=True`, `check_inverse=False` or
+    `feature_names_out="one-to-one"` (no effect with `validate=False` and no inverse). Survivor:
+    1. `tests/test_models_trivial.py:61-65`: word count taken from the raw text (length and ratio still from
+       the normalised text) survives, because every input there has the same word count raw and normalised
+       (`str.split` already ignores the extra spaces). The criterion "computed on normalised text" is pinned for
+       two of the three features. Required: add an input whose word count changes under `normalise`, e.g.
+       `self.assertEqual(m.score(["sofa \u200b bed"]).tolist(), m.score(["sofa bed"]).tolist())` (U+200B is
+       Cf and not whitespace, so the raw text splits into 3 words and the normalised `"sofa bed"` into 2;
+       checked to kill the mutant in the copy).
+    Weighed and accepted: (a) `FunctionTransformer(_hand_features)` as `_vectoriser`: honest DRY. The base
+    owns normalise-once, `predict_proba[:, 1]` and the empty / not-fitted path, the knowledge 6.4 puts in one
+    place; a hand-feature transformer is a vectoriser in 6.4's `vectoriser -> estimator` sense. Skipping
+    `super().__init__()` avoids building an unused TF-IDF. Note, not required: the base docstring
+    (`bqc/models.py:33`) says "Subclasses set `_classifier`"; it could add "and may replace `_vectoriser`".
+    (b) `LogisticRegression()` defaults on unscaled features: 6.3 names no settings, the runner records every
+    fit warning (`simplefilter("always")`, `bqc/evaluate.py:433-435`), so a `ConvergenceWarning` would be
+    visible per fold. Re-probed (scikit-learn 1.9.1) on 10,000 synthetic rows, lengths up to 512: no warning,
+    `n_iter_` 29. 6.3 needs nothing more.
 
 ### M4.T4: `bqc evaluate` command
 

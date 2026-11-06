@@ -219,7 +219,9 @@ repository `LICENSE`, the repository README, and Wayfair's release blog post:
   distinct values with 8 gaps (154, 187, 192, 217, 299, 350, 450, 477); it is an
   identifier, not a row index (corrected 2026-11-05; the v1 draft said `0..479`).
 - `query_class` is a product category (`Wall Art`, `Accent Chairs`, ...); 6 rows have
-  an empty class. It is not used by this project.
+  an empty class. Its only use is the catalogue-gap check (8.6 item 5, 11.15), which
+  compares it, whole, against the `|`-split classes of `product.csv` (3.1); nothing
+  else reads it.
 - The queries are **real customer queries**: Wayfair's blog states they were obtained
   by "stratified-sampling of search queries from a pool of historical customer queries
   stored in the e-commerce customer behavior logs", stratified over on-site organic vs
@@ -1538,6 +1540,9 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
   from 987 s at 20,000 / 20,000; the SVD probe measured 9-29 s, median 17 s (13.22).
   The first full run re-records it in the run JSON.
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
+- No WANDS `query_class` contains `|` (section 3 calls it one category). The
+  catalogue-gap check compares the whole string (M3.T14); M6.T1 checks this on the
+  real file and records the result here.
 
 These are the unverified assumptions left. Of the three items this section held
 in v1.1, the imblearn `Pipeline` behaviour and the Wilson reference values were

@@ -31,7 +31,7 @@ after M3.T13, and M3.T14 comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T8.
+**Next task:** M3.T9.
 
 ### Order constraints
 
@@ -1210,7 +1210,7 @@ Sign-off: pending.
   - Follow-up F7, in `tests/test_metrics.py`: one word flagged in both of two repeats gives `flagged` 1 and
     `flagged_mean_per_repeat` 1.0.
 - **Depends on:** M2.T8, M3.T7, M3.T13.
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `3d6f709`, with F7. Real run by `opus`, all 15 folds of both arms, scratch
   logistic regression, twice in separate processes with different `PYTHONHASHSEED`: the two files are
   byte-identical, and their names differ only in the timestamp. In the file: no sanity or part-number string,
@@ -1218,17 +1218,12 @@ Sign-off: pending.
   positive is a WANDS query. The realised mix sits next to the target (mean 3.46-3.49 against 3.38), as in
   13.20. The seed is recorded by `write_report` from the same `SEED`, so criterion 1 holds with no argument.
   `config_hash` changes with each of the nine parameters. Process, disclosed: an empty heredoc against
-  `bqc/evaluate.py` that changed nothing, and the commit message through a heredoc.
-- **Changes requested:**
-  1. `bqc/evaluate.py:675`: `iter_fold_data` is called with 13 positional arguments, and the tests don't notice
-     `sanity` or `part_numbers` not being passed, `vocabulary_cap` replaced, or `test_per_template` and
-     `eval_per_template` swapped. The first would let a sanity query into a fit with no error (rule 4, 8.6.1).
-     The real run is right today. Pass them by keyword, and add a test through `build_run_report` next to
-     `tests/test_run_report.py:222` that each reaches `iter_fold_data`, including that a positive equal to a
-     sanity query raises `FoldError`.
-  2. `tests/test_run_report.py:242`: dropping `now` in `run_report` passes. Assert the given stamp in the name.
-  3. `tests/test_run_report.py:123`: every fold warns alike, so reading the wrong fold's warnings passes. Add
-     a scorer that warns in one fold only.
+  `bqc/evaluate.py` that changed nothing, and the commit message through a heredoc. Corrected in `5463bb2`,
+  list in `aeccc7f`: `iter_fold_data` is called by keyword, and tests pin each option, the stamp and a
+  warning on one fold. `opus` ran 17 mutants on it, each in isolation, all caught, `sanity=[]` and the
+  wrong-fold warnings included; the commit's `bqc/` changes only that call. Process, disclosed: during
+  `sonnet`'s mutation run a failed revert left one mutant in place for the next, so its run of that mutant
+  was not in isolation.
 
 ### M3.T9: Leave-one-family-out
 

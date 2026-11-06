@@ -1445,6 +1445,37 @@ Sign-off: pending.
   - The hash, missing-file and header failure paths still raise as before (existing tests, unchanged).
 - **Depends on:** M1.T4, M3.T14.
 - **Status:** done
+- **Validation (`opus`, `386bf88`): CHANGES REQUESTED.** Suite: 582 tests, OK (40 s). Criteria 2-4 are met:
+  `load_queries` changes only in reading `row[2]`, so the hash-before-parse, header, order and raw-query
+  tests pass unchanged; `bqc/cli.py:157-159` and `bqc/sanity.py:64` read `.query` only; the new field is
+  parallel to `.query` by construction. Probe by `opus` (2026-11-06, Python 3 `csv`): the real `query.csv`,
+  fetched into a scratch directory (SHA-256 matches `data/CHECKSUMS`), has 3 cells on all 481 lines, 6 empty
+  classes, no class with leading or trailing whitespace; the changed loader returns 480 rows, 6 with `""`,
+  189 distinct classes. So `sonnet`'s deviation 2 can't fire on the pinned file. Mutation run by `opus`,
+  11 mutants, each in its own copy (`test_wands`, `test_fetch`, `test_sanity_loader`, `test_cli_generate`;
+  the unmutated copy passes): 9 caught (class `""`, class from `row[1]`, `.lower()`, split on space,
+  `or None`, field dropped, field before `query`, first data row skipped, `query` whitespace-collapsed).
+  Two survive, items 2 and 3. Item 1 is `sonnet`'s deviation 1.
+  1. `bqc/wands.py:38`: `query_class: str = ""` makes the field optional, where criterion 1 asks for a
+     required field. Under 11.28 `""` means "defines no class", so a construction that forgets the class
+     silently drops that query from the gap removal instead of failing with `TypeError`. Criterion 3 is
+     about the production caller (`bqc/cli.py`), which never constructs `WandsQuery`; the only two-argument
+     constructions are in tests. Fix: drop the default (keep the comment), and pass a class in
+     `tests/test_sanity_loader.py:11` (`WandsQuery(0, "smoky mountain tray", "")`, likewise for id 3) and
+     `:74` (`WandsQuery(0, "OAK  DESK", "")`). The value is irrelevant there; `load_sanity` reads `.query`.
+     Touching `tests/test_sanity_loader.py` is authorised by this item.
+  2. `tests/test_wands.py:116-121`: a row with two cells now raises `WandsError` ("malformed row", via the
+     `IndexError` handler), where before it loaded; nothing pins this. Mutant `row[2] if len(row) > 2 else
+     ""` survives. The loader's failure paths are pinned (M1.T4), and this is a new one. Fix: add
+     `test_row_without_query_class_cell_raises_naming_path`, writing `query_id\tquery\tquery_class\n0\tfoo\n`
+     to a temp file with its own checksum (as `test_malformed_row_raises_naming_path` does) and asserting
+     `WandsError` naming the path.
+  3. `tests/test_wands.py:73-74`: criterion 1 says the cell is "not normalised, stripped or split", but no
+     fixture class has surrounding whitespace, so mutant `row[2].strip()` survives. Fix: add a temp-file test
+     (same pattern as item 2, the shared fixture stays unchanged) with a class cell ` Rugs ` and assert
+     `query_class == " Rugs "`.
+  - Process deviation, as at M3.T14: `386bf88` carries the `fable` co-author trailer and sets the status in
+    `PLAN.md`; neither changes the code under review.
 
 ### M3.T10: Final models
 

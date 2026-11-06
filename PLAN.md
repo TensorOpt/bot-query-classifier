@@ -31,7 +31,7 @@ after M3.T13, and M3.T14 comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T15.
+**Next task:** M3.T7.
 
 ### Order constraints
 
@@ -1118,7 +1118,11 @@ Sign-off: pending.
 - **Tests:** in `tests/test_report.py`, `config["libraries"]` has exactly the keys `python`, `numpy` and
   `scikit-learn`. No other new tests.
 - **Depends on:** M2.T8, M3.T2.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `5facb56`. The rebuilt `.venv` has numpy 2.5.4 and scikit-learn 1.9.1, as
+  the probes did, and no `imbalanced-learn`; the search finds nothing. Process deviation (F1), disclosed:
+  the failing block in `sonnet`'s report had `0.5s` retyped for `0.400s`. The test is confirmed to fail by
+  a mutation restoring the old library list.
 
 ### M3.T7: Metrics and aggregation
 

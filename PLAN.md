@@ -1444,7 +1444,7 @@ Sign-off: pending.
     the M1.T4 test that pinned the drop.
   - The hash, missing-file and header failure paths still raise as before (existing tests, unchanged).
 - **Depends on:** M1.T4, M3.T14.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T10: Final models
 

@@ -42,8 +42,36 @@ class LoadQueriesTest(unittest.TestCase):
         queries = [r.query for r in load_queries(TSV, CHECKSUMS)]
         self.assertEqual(queries[3], "area  rug")
 
-    def test_query_class_is_not_returned(self):
-        self.assertEqual(load_queries(TSV, CHECKSUMS)[0]._fields, ("query_id", "query"))
+    def test_fields_include_query_class_last(self):
+        self.assertEqual(
+            load_queries(TSV, CHECKSUMS)[0]._fields, ("query_id", "query", "query_class")
+        )
+
+    def test_query_classes_of_all_ten_rows_in_file_order(self):
+        classes = [r.query_class for r in load_queries(TSV, CHECKSUMS)]
+        self.assertEqual(
+            classes,
+            [
+                "Wall Art",
+                "Bathroom Vanities",
+                "",
+                "Rugs",
+                "Desks",
+                "",
+                "Sectionals",
+                "Cookware",
+                "Doors",
+                "Outdoor",
+            ],
+        )
+
+    def test_empty_query_class_cells_give_empty_string(self):
+        by_query = {r.query: r.query_class for r in load_queries(TSV, CHECKSUMS)}
+        self.assertEqual(by_query["drudge report"], "")
+        self.assertEqual(by_query["kisner"], "")
+
+    def test_query_class_with_space_is_kept_whole(self):
+        self.assertEqual(load_queries(TSV, CHECKSUMS)[0].query_class, "Wall Art")
 
     def test_wrong_hash_raises_naming_path(self):
         bad = self.checksums_for("query.tsv", "0" * 64)

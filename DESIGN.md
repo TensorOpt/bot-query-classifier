@@ -1220,7 +1220,13 @@ Each item names the component and the designed behaviour.
     and are standard-CSV quoted (`"fawkes 36"" blue vanity"`), so the `csv` module
     with `delimiter="\t"` and **default quoting** is correct and `QUOTE_NONE` would be
     wrong (13.8). The loader test uses a fixture with such a row.
-15. **Empty `query_class`.** Ignored; the loader does not require it.
+15. **Empty `query_class`.** Ignored; the loader does not require it. The loader
+    still has to carry the value (empty string allowed) once the catalogue-gap check
+    exists, because 8.6 item 5 reads it per real query: `build_run_report` takes the
+    classes as a sequence parallel to the real queries (M3.T14), and the `evaluate`
+    command gets them from the loader. Today `load_queries` drops the column, so
+    exposing it is its own small task before M4.T4 (a change to validated M1.T4
+    code). Ruled by `fable` on M3.T14, 2026-11-06.
 16. **Degenerate fold** (a family or group missing from a training fold).
     `StratifiedGroupKFold` stratifies on class, not family, so with few large
     template groups a family *can* land entirely in one test fold (probe 13.10: it

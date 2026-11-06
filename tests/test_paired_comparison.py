@@ -42,11 +42,11 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(fpr["wins"], 2)
 
     def test_roc_auc_higher_is_a_win(self):
-        a, b = sides([0.125, -0.125, 0.0], metric="auc")
+        a, b = sides([0.125, 0.0625, -0.125, 0.0], metric="auc")
         roc = paired_comparison(a, b)["roc_auc"]
-        self.assertEqual(roc["differences"], [0.125, -0.125, 0.0])
-        self.assertEqual(roc["wins"], 1)
-        self.assertEqual(roc["mean"], 0.0)
+        self.assertEqual(roc["differences"], [0.125, 0.0625, -0.125, 0.0])
+        self.assertEqual(roc["wins"], 2)  # asymmetric: an inverted direction would give 1
+        self.assertEqual(roc["mean"], 0.015625)
 
     def test_folds_are_aligned_by_repeat_and_fold_not_by_position(self):
         a, b = sides([0.5, 0.25, 0.0, 0.25], [0.0, 0.125, 0.25, 0.5])
@@ -146,6 +146,13 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(r["fpr_gate"]["sign"], -1)
         r = self.verdict([0.5, 0.5, 0.375, 0.625], fpr=[0.0] * 4)
         self.assertEqual(r["fpr_gate"]["sign"], 0)
+
+    def test_roc_auc_justified_does_not_override_a_failed_fpr_gate(self):
+        r = self.verdict([0.5, 0.5, 0.375, 0.625], fpr=[0.125, 0.125, 0.125, 0.1875],
+                         auc=[0.125, 0.125, 0.125, 0.1875])
+        self.assertTrue(r["roc_auc"]["justified"])
+        self.assertFalse(r["fpr_gate"]["holds"])
+        self.assertFalse(r["justified"])
 
     def test_fpr_gate_does_not_make_worse(self):
         r = self.verdict([-0.5, -0.5, -0.375, -0.625], fpr=[0.125] * 3 + [0.1875])

@@ -31,10 +31,9 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** the M3.T14 corrections (listed under that task, `fix(M3.T14)`), then M3.T16. M3.T16 is
-scheduled before M3.T10: it completes the catalogue-gap check end to end (without it the check can't
-run on real data), touches only `bqc/wands.py` and its tests, so it can't collide with the M3.T14
-corrections, and 11.15 is fresh. Nothing in M3 depends on it; M4.T4 does.
+**Next task:** M3.T16. It is scheduled before M3.T10: it completes the catalogue-gap check end to end
+(without it the check can't run on real data), touches only `bqc/wands.py` and its tests, and 11.15 is
+fresh. Nothing in M3 depends on it; M4.T4 does.
 
 ### Order constraints
 
@@ -1355,7 +1354,7 @@ Sign-off: pending.
   - Hand-computed pooled FPR uses `k = total / 3` at `n = 480`.
   - An exhausted pool raises.
 - **Depends on:** M2.T12, M3.T8.
-- **Status:** done
+- **Status:** validated
 - **Status note:** implemented in `98af9bb`. `iter_fold_data(query_classes=...)` is the gap pass: per fold,
   products with a test-side class leave the pool, spans are built from the rest with seed `SEED + repeat`,
   and the training-side queries of those classes leave the primary threshold set and the comparison
@@ -1406,6 +1405,19 @@ Sign-off: pending.
      0.0001 in both arms), but the test would pass vacuously if it stopped failing. Fix: assert
      `gap_failed` is `True` in both arms.
   - Corrections addressed in the `fix(M3.T14)` commit that follows `e7157d7`.
+- **Correction validation (`opus`, `a09e361` against `e7157d7`): PASS.** Suite: 579 tests, OK (40 s).
+  `a09e361` touches only the three items (plus the one-line pointer above); `98af9bb` is unchanged in
+  history (no amend). Item 1: `PrimaryRemovalTest.test_the_repeat_seed_is_kept` runs the `build_spans` spy
+  with `repeats=2` and asserts the build seeds in order, `[SEED] * 3 + [SEED + 1] * 3`. The surviving
+  mutant (`seed` instead of `render_seed` at the gap span build, `bqc/evaluate.py:271`) is now caught, by
+  that test alone (1 failure in 579); reverted (run in a scratch copy). Item 2: `build_run_report` binds the
+  shared `iter_fold_data` arguments once with `functools.partial` and calls `fold_data()`,
+  `fold_data(leave_out=family)` and `fold_data(query_classes=query_classes)`; the M3.T8 option-reaching
+  tests (`test_run_report`, "Every option of build_run_report must reach iter_fold_data") still pass.
+  Item 3: the failed-gap test asserts `gap_failed is True` in both arms. No line of `bqc/evaluate.py` or
+  `tests/test_catalogue_gap.py` exceeds 100 columns. Process deviations, as at M3.T9: the correction commit
+  carries the `fable` co-author trailer rather than `sonnet`'s, and it adds a line to `PLAN.md`, which
+  `opus` owns; neither changes the code under review.
 
 ### M3.T16: Query classes in the loader
 

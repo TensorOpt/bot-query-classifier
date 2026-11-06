@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T11 (corrections), then M3.T12.
+**Next task:** M3.T12.
 
 ### Order constraints
 
@@ -1592,7 +1592,7 @@ Sign-off: pending.
   - Fit inputs contain no sanity text.
   - Duplicate raises (11.21).
 - **Depends on:** M1.T6, M3.T8, M3.T10.
-- **Status:** done
+- **Status:** validated
   - `sanity_section(path, wands, finals)` in `bqc/evaluate.py` returns the `sanity` body section; it is
     separate from `build_run_report` (the finals are fitted by `fit_final_model`, M3.T10) and not wired
     into the CLI. Scored form: `{"status": "scored", "models": {arm: {model: {"threshold",
@@ -1631,6 +1631,12 @@ Sign-off: pending.
     disagreement's score is unreadable without it; it is a cut-off, not a rate. It must be pinned (item 1).
     (5) `in progress` was not set (process); the "Next task" line now reads M3.T11 (corrections), then M3.T12.
   - **Corrections (sonnet, 2026-11-06):** items 1 and 2 addressed in tests only; see the `test(M3.T11)` commit.
+  - **Re-validation (opus, 2026-11-06): PASS.** `aa3a1d8` touches tests and PLAN.md only; `bqc/` is
+    unchanged since `d95f843`. Mutant `finals[0].threshold.threshold` is caught by
+    `ScoredTest.test_every_model_and_arm_has_its_own_entry_and_threshold` (0.5 != 0.15); mutant `[]` for
+    `sanity` at `build_spans` in `fit_final_model` is caught by
+    `NoLeakTest.test_fit_inputs_contain_no_sanity_text` [product]
+    (`span_removals["sanity"]` 0 < 1). Suite: 624 tests OK.
 
 ### M3.T12: Part-number diagnostic
 

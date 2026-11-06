@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4 sign-off by `fable`; M5.T1 is done, next M5.T2.
+**Next task:** M5.T1 corrections by `sonnet` (CHANGES REQUESTED), then M5.T2.
 
 ### Order constraints
 
@@ -2141,6 +2141,40 @@ Sign-off: pending.
   feature count, not when it exceeds the row count; HDBSCAN raises ValueError when rows are
   fewer than min_cluster_size, so the all-noise test uses rows == min_cluster_size. Mutation
   pass in an isolated copy: 12 mutants, all killed. Full suite: 787 tests OK.
+
+  Validation (`opus`, 2026-11-06): CHANGES REQUESTED. Suite: 787 tests OK. Criteria 1 and 2
+  are met and pinned (full `get_params()` of every step, defaults 50/15, grid order and
+  values), unit norm, same-seed, all-noise (11.17) and the import check are tested, and there
+  are no new dependencies or downloads. Mutation pass in an isolated copy: 21 mutants, 19
+  killed (L1 normaliser, half-fit with label reuse, grid reordered or reversed, noise counted
+  as a cluster, noise fraction over non-noise rows, SVD seed dropped or +1, L2 dropped,
+  `min_samples=5`, `copy` unset or False, each default, `normalise` dropped or doubled, grid
+  value dropped, `labels` key dropped, `metric="cosine"`). Two survived:
+  1. `tests/test_cluster.py:102`: the no-labels test passes by accident. With
+     `cluster_labels(texts, labels=None, n_components=..., min_cluster_size=...)`, the call
+     `cluster_labels(TEXTS, 5, 5, [0] * 60)` passes a list as `min_cluster_size`, and
+     sklearn's `InvalidParameterError` subclasses `TypeError`, so the test still passes.
+     `run_grid(texts, labels=None)` isn't checked at all. Fix: pin the exact parameter names
+     with `inspect.signature`: `cluster_labels` and `make_pipeline` take
+     `["texts", "n_components", "min_cluster_size"]` (`make_pipeline` without `texts`), and
+     `run_grid` takes `["texts"]`.
+  2. `tests/test_cluster.py:60-80`: nothing checks that the steps are fitted on all rows
+     (9.1 step 1). If the vectoriser and SVD are fitted on the first half and then transform
+     every row before `HDBSCAN.fit_predict`, the tests still pass. Fix: add a test that wraps
+     `bqc.cluster.make_pipeline` to capture the fitted pipeline from
+     `cluster_labels(TEXTS, 5, 5)`. Assert that its `vectoriser.vocabulary_` and
+     `svd.components_` equal those of a reference `make_pipeline(5, 5)` fitted on all
+     normalised texts, and that `len(hdbscan.labels_) == len(TEXTS)`. `TEXTS` halves use
+     disjoint alphabets, so a half-fit vocabulary differs.
+
+  Rulings: rows below `min_cluster_size` raising sklearn's `ValueError` is accepted, because
+  11.17 is about the all-noise result, which is tested, and that case is documented and
+  pinned. Refitting the vectoriser per grid cell is accepted: a shared fit would split the
+  `Pipeline` and isn't simpler. Returning `labels` per cell is accepted because M5.T2 needs
+  them, and nothing else speculative is built. For `fable`: 13.5 says only "set `copy`
+  explicitly". The `bqc/cluster.py` docstring records the finding (no observable effect on
+  dense input, so True was chosen). A one-line pointer in 13.5 would keep the HDBSCAN
+  findings in one place (optional).
 
 ### M5.T2: Cluster labelling rules and metrics
 

@@ -1259,7 +1259,14 @@ Sign-off: pending.
   - A training side missing one of the other three families raises.
   - Fit counts: 1 per family per fold in the primary arm, inner folds + 1 in the comparison arm.
 - **Depends on:** M3.T8.
-- **Status:** todo
+- **Status:** done
+- **Status note:** `iter_fold_data(leave_out=F)` re-renders the training side without F and keeps the
+  test-side queries and F's rows; both runners take `leave_out`, which prefixes score-set names
+  (`LOFO A test queries`) and narrows the inner family check; `lofo_section` builds the rows;
+  `build_run_report(lofo=True)` adds `body[arm]["lofo"][model][F]` with `folds` and `pooled`. Comparison
+  arm: positives per template are `len(train_queries) // n_remaining` (the main run uses 20), so it stays
+  1:1; the criteria's `n` is read that way there. Tests use 5 outer folds: with 3, an inner training fold
+  can lose a family (the 11.16 error). The `--lofo` CLI flag is not wired (M4.T4).
 
 ### M3.T14: Catalogue-gap check
 

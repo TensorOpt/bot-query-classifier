@@ -1210,7 +1210,7 @@ Sign-off: pending.
   - Follow-up F7, in `tests/test_metrics.py`: one word flagged in both of two repeats gives `flagged` 1 and
     `flagged_mean_per_repeat` 1.0.
 - **Depends on:** M2.T8, M3.T7, M3.T13.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T9: Leave-one-family-out
 

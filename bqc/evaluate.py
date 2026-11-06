@@ -10,7 +10,9 @@ non-finite score, and `run_primary_fold` cross-fits one fold of the primary arm.
 import math
 import warnings
 from collections import Counter
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from datetime import datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -19,8 +21,15 @@ from sklearn.model_selection import StratifiedGroupKFold
 
 from bqc import SEED
 from bqc.models import Scorer
-from bqc.negatives import DEFAULT_N, VOCABULARY_CAP, build_spans, token_occurrences
+from bqc.negatives import (
+    DEFAULT_N,
+    LENGTH_COUNTS,
+    VOCABULARY_CAP,
+    build_spans,
+    token_occurrences,
+)
 from bqc.preprocess import normalise
+from bqc.report import write_report
 from bqc.synth.audit import SanityCollision, screen_samples
 from bqc.synth.registry import (
     ALL_FAMILIES,
@@ -226,6 +235,7 @@ def iter_fold_data(
         spans, removals = build_spans(
             products, n, render_seed, real_queries, part_numbers, sanity)
         span_texts = [s.text for s in spans]
+        span_lengths = Counter(s.k for s in spans)
         for fold in (f for f in folds if f.repeat == repeat):
             test_vocabulary = token_occurrences(fold.test_queries)
             test_drop = {"training_negatives": span_texts, "real_queries": real_queries,
@@ -256,7 +266,8 @@ def iter_fold_data(
                     list(fold.train_queries) if arm == PRIMARY else [],
                     test.texts, test.y, test.families, test.groups,
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
-                     "span_removals": removals, "train": train.report, "test": test.report},
+                     "span_removals": removals, "train": train.report, "test": test.report,
+                     **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {})},
                 )
 
 
@@ -609,3 +620,97 @@ def _block(
         "false_positives": [{"query": row.text, "repeat": row.repeat, "fold": row.fold}
                             for row in negatives if row.flagged],
     }
+
+
+def length_mix(counts: Mapping[int, int]) -> dict[str, Any]:
+    """Span length mix of 3.2 as JSON-ready data: `{"counts", "shares", "mean"}`, keyed by
+    the word count as a string. Raises ValueError on no spans."""
+    total = sum(counts.values())
+    if total < 1:
+        raise ValueError("no spans to take a length mix of")
+    return {
+        "counts": {str(k): counts[k] for k in sorted(counts)},
+        "shares": {str(k): counts[k] / total for k in sorted(counts)},
+        "mean": sum(k * c for k, c in counts.items()) / total,
+    }
+
+
+def build_run_report(
+    real_queries: Sequence[str],
+    products: Sequence[WandsProduct],
+    part_numbers: Sequence[str],
+    sanity: Sequence[str],
+    models: Mapping[str, Callable[[], Scorer]],
+    target_fpr: float,
+    arms: Sequence[str] = ARMS,
+    n: int = DEFAULT_N,
+    registry: Registry = REGISTRY,
+    n_splits: int = N_SPLITS,
+    repeats: int = REPEATS,
+    test_per_template: int = TEST_PER_TEMPLATE,
+    eval_per_template: int = EVAL_PER_TEMPLATE,
+    vocabulary_cap: int = VOCABULARY_CAP,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run every arm and model over the outer folds; return `(parameters, body)` for
+    `write_report` (8.1, 8.2, 11.12).
+
+    `body` has one key per arm. Each holds `folds` (the `FoldData.report` of every
+    (repeat, fold), once per arm), `models` (per model: `compute_metrics` plus, on each
+    fold entry, `target_unmet`, `threshold_warning` and `fit_warnings`) and, in the
+    primary arm only, `span_lengths`: the realised mix per repeat next to the target.
+    No removed span, positive or sanity text is in it.
+    """
+    parameters = {
+        "arms": list(arms), "models": list(models), "target_fpr": target_fpr,
+        "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
+        "test_per_template": test_per_template, "eval_per_template": eval_per_template,
+        "vocabulary_cap": vocabulary_cap,
+    }
+    runners = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
+    fold_reports: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}
+    results: dict[str, dict[str, list[FoldResult]]] = {
+        arm: {model: [] for model in models} for arm in arms}
+    mixes: dict[int, dict[str, Any]] = {}
+    for data in iter_fold_data(
+            real_queries, products, part_numbers, sanity, arms, n, registry, n_splits,
+            repeats, SEED, test_per_template, eval_per_template, vocabulary_cap):
+        report = dict(data.report)
+        if "span_lengths" in report:  # the same for every fold of a repeat: kept once
+            mixes[data.repeat] = length_mix(report.pop("span_lengths"))
+        fold_reports[data.arm].append(report)
+        for model, make_scorer in models.items():
+            results[data.arm][model].append(
+                runners[data.arm](data, make_scorer, target_fpr, model))
+    body: dict[str, Any] = {}
+    for arm in arms:
+        body[arm] = {"folds": fold_reports[arm],
+                     "models": {model: _model_entry(rs) for model, rs in results[arm].items()}}
+    if PRIMARY in arms:
+        body[PRIMARY]["span_lengths"] = {
+            "target": length_mix(LENGTH_COUNTS),
+            "repeats": [{"repeat": r, **mixes[r]} for r in sorted(mixes)]}
+    return parameters, body
+
+
+def _model_entry(results: list[FoldResult]) -> dict[str, Any]:
+    """`compute_metrics` with each fold entry extended by what the threshold and the fit
+    report (`target_unmet`, `threshold_warning`, `fit_warnings`; 8.4, 11.10, 11.12)."""
+    entry = compute_metrics(results)
+    by_fold = {(r.repeat, r.fold): r for r in results}
+    for fold in entry["folds"]:
+        result = by_fold[(fold["repeat"], fold["fold"])]
+        fold["target_unmet"] = bool(result.threshold.target_unmet)
+        fold["threshold_warning"] = result.threshold.warning
+        fold["fit_warnings"] = list(result.fit_warnings)
+    return entry
+
+
+def run_report(
+    results_dir: Path,
+    now: datetime | None = None,
+    **options: Any,
+) -> Path:
+    """`build_run_report(**options)`, written through `write_report` as command
+    `evaluate`; returns the path. `now` is for tests."""
+    parameters, body = build_run_report(**options)
+    return write_report(results_dir, "evaluate", parameters, body, now)

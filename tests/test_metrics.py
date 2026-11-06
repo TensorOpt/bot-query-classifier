@@ -244,6 +244,14 @@ class ScenarioTest(unittest.TestCase):
         self.assertEqual(metrics["pooled"]["one_word"]["flagged_mean_per_repeat"], 1.0)
         self.assertEqual(metrics["repeats"][0]["one_word"]["flagged_mean_per_repeat"], 2.0)
 
+    def test_one_word_flagged_in_both_repeats_counts_once_but_averages_one(self):
+        # F7: with the union divided by the repeat count this would be 0.5
+        hit = [("zen", 0.9, None, None), ("owl", 0.1, None, None),
+               ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        metrics = compute_metrics([make_result(hit, repeat=0), make_result(hit, repeat=1)])
+        self.assertEqual(metrics["pooled"]["one_word"], {
+            "total": 2, "flagged": 1, "flagged_mean_per_repeat": 1.0, "words": ["zen"]})
+
     def test_output_round_trips_through_json(self):
         self.assertEqual(json.loads(json.dumps(self.metrics)), self.metrics)
 

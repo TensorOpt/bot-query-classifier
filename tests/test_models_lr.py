@@ -4,6 +4,7 @@ from unittest import mock
 
 import numpy as np
 from sklearn.exceptions import NotFittedError
+from sklearn.linear_model import LogisticRegression
 
 from bqc.features import make_vectoriser
 from bqc.models import LogisticRegressionScorer
@@ -72,8 +73,9 @@ class LogisticRegressionScorerTest(unittest.TestCase):
             LogisticRegressionScorer().score([])
 
     def test_configuration(self):
-        c = LogisticRegressionScorer()._classifier
-        self.assertEqual((c.C, c.max_iter), (1.0, 1000))
+        expected = LogisticRegression(C=1.0, max_iter=1000)
+        self.assertEqual(LogisticRegressionScorer()._classifier.get_params(),
+                         expected.get_params())
 
     def test_uses_m3_vectoriser(self):
         v = LogisticRegressionScorer()._vectoriser

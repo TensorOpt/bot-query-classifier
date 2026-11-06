@@ -4,6 +4,7 @@ import warnings
 from unittest import mock
 
 from sklearn.exceptions import ConvergenceWarning, NotFittedError
+from sklearn.neural_network import MLPClassifier
 
 from bqc import SEED
 from bqc.features import make_vectoriser
@@ -20,8 +21,8 @@ Y = [0, 0, 0, 0, 1, 1, 1, 1] * 3
 Q = ["sofa", "drop table", "", "zzqx"]
 
 
-def fitted(seed=SEED):
-    return MLPScorer(seed).fit(TEXTS, Y)
+def fitted():
+    return MLPScorer().fit(TEXTS, Y)
 
 
 class MLPScorerTest(unittest.TestCase):
@@ -31,10 +32,6 @@ class MLPScorerTest(unittest.TestCase):
 
     def test_same_seed_identical_scores(self):
         self.assertEqual(fitted().score(Q).tolist(), fitted().score(Q).tolist())
-
-    def test_seed_is_passed_through(self):
-        self.assertEqual(MLPScorer()._classifier.random_state, SEED)
-        self.assertEqual(MLPScorer(7)._classifier.random_state, 7)
 
     def test_range_and_dtype(self):
         s = fitted().score(["sofa", "", "drop table", "☃"])
@@ -81,21 +78,20 @@ class MLPScorerTest(unittest.TestCase):
             MLPScorer().score([])
 
     def test_configuration(self):
-        p = MLPScorer()._classifier.get_params()
-        expected = dict(hidden_layer_sizes=(64,), activation="relu", solver="adam", alpha=1e-3,
-                        early_stopping=True, validation_fraction=0.2, max_iter=500,
-                        random_state=SEED)
-        self.assertEqual({k: p[k] for k in expected}, expected)
+        expected = MLPClassifier(
+            hidden_layer_sizes=(64,), activation="relu", solver="adam", alpha=1e-3,
+            early_stopping=True, validation_fraction=0.2, max_iter=500, random_state=SEED)
+        self.assertEqual(MLPScorer()._classifier.get_params(), expected.get_params())
 
     def test_uses_m3_vectoriser(self):
         v = MLPScorer()._vectoriser
         self.assertEqual(v.get_params(), make_vectoriser().get_params())
 
     def test_convergence_warning_not_suppressed(self):
-        m = MLPScorer()
-        m._classifier.set_params(max_iter=1)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
+            m = MLPScorer()
+            m._classifier.set_params(max_iter=1)
             self.assertIs(m.fit(TEXTS, Y), m)
         self.assertTrue(any(issubclass(w.category, ConvergenceWarning) for w in caught))
         self.assertEqual(m.score(Q).shape, (4,))

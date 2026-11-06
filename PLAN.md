@@ -31,9 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T16. It is scheduled before M3.T10: it completes the catalogue-gap check end to end
-(without it the check can't run on real data), touches only `bqc/wands.py` and its tests, and 11.15 is
-fresh. Nothing in M3 depends on it; M4.T4 does.
+**Next task:** M3.T10.
 
 ### Order constraints
 
@@ -1444,7 +1442,17 @@ Sign-off: pending.
     the M1.T4 test that pinned the drop.
   - The hash, missing-file and header failure paths still raise as before (existing tests, unchanged).
 - **Depends on:** M1.T4, M3.T14.
-- **Status:** done
+- **Status:** validated
+- **Validation (`opus`, `40f1334`): PASS.** Suite: 585 tests, OK (40 s). `40f1334` touches only
+  `bqc/wands.py` (default dropped, comment kept), `tests/test_sanity_loader.py:11,74` (`""` passed),
+  `tests/test_wands.py` (items 2 and 3 as specified, plus `test_query_class_is_required` pinning
+  item 1) and a one-line `PLAN.md` note; `386bf88` is unchanged. No other two-argument `WandsQuery`
+  construction remains. Probe: the no-pipe assumption is closed in `DESIGN.md` 13.9 (`1152683`); the
+  real-file probe above stands. Mutants, each in isolation then reverted: `row[2].strip()` caught by
+  `test_query_class_is_not_stripped`; `row[2] if len(row) > 2 else ""` caught by
+  `test_row_without_query_class_cell_raises_naming_path`. Lines within 100 columns. Process note:
+  `sonnet` added the "Corrections addressed" line to `PLAN.md`, which `opus` owns; harmless,
+  recorded as at M3.T14.
 - **Validation (`opus`, `386bf88`): CHANGES REQUESTED.** Suite: 582 tests, OK (40 s). Criteria 2-4 are met:
   `load_queries` changes only in reading `row[2]`, so the hash-before-parse, header, order and raw-query
   tests pass unchanged; `bqc/cli.py:157-159` and `bqc/sanity.py:64` read `.query` only; the new field is

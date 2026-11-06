@@ -2131,7 +2131,7 @@ Sign-off: pending.
   - An all-noise result returns 0 clusters and 100% noise without raising (11.17).
   - The module doesn't import `bqc.evaluate` or `bqc.models`.
 - **Depends on:** M3.T1.
-- **Status:** done
+- **Status:** validated
 
   Implementation notes (`sonnet`): `make_pipeline` is a sklearn `Pipeline` (vectoriser, SVD,
   L2 `Normalizer`, `HDBSCAN(copy=True)`); `cluster_labels` normalises once per text; `run_grid`
@@ -2166,7 +2166,16 @@ Sign-off: pending.
      `svd.components_` equal those of a reference `make_pipeline(5, 5)` fitted on all
      normalised texts, and that `len(hdbscan.labels_) == len(TEXTS)`. `TEXTS` halves use
      disjoint alphabets, so a half-fit vocabulary differs.
-  - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M5.T1)` commit.
+  - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M5.T1)`
+    commit.
+
+  Re-validation (`opus`, 2026-11-06): PASS. `09d186c` touches tests and `PLAN.md` only.
+  Item 1: `test_signatures_take_texts_only` pins exact parameter names of `cluster_labels`,
+  `make_pipeline` and `run_grid`. Item 2: `test_every_step_fitted_on_all_rows` wraps
+  `make_pipeline` and compares vocabulary and SVD components with an all-row reference.
+  Mutants re-run in an isolated copy, all killed: `labels=None` on `cluster_labels` and on
+  `run_grid` (by the signature test); vectoriser and SVD fitted on the first half (by the
+  all-rows test). Suite: 789 tests OK.
 
   Rulings: rows below `min_cluster_size` raising sklearn's `ValueError` is accepted, because
   11.17 is about the all-noise result, which is tested, and that case is documented and

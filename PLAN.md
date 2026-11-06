@@ -1259,7 +1259,7 @@ Sign-off: pending.
   - A training side missing one of the other three families raises.
   - Fit counts: 1 per family per fold in the primary arm, inner folds + 1 in the comparison arm.
 - **Depends on:** M3.T8.
-- **Status:** todo
+- **Status:** done
 
 ### M3.T14: Catalogue-gap check
 

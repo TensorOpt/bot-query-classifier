@@ -511,7 +511,7 @@ class _Row(NamedTuple):
 
 
 def _rows(result: FoldResult) -> list[_Row]:
-    t = result.threshold.threshold
+    t = float(result.threshold.threshold)  # runners give numpy.float64; keep flags Python bools
     return [
         _Row(result.repeat, result.fold, text, float(score), y, family, group,
              is_illegitimate(float(score), t))
@@ -562,7 +562,7 @@ def _block(
     n: int,
 ) -> dict[str, Any]:
     """The 8.5 numbers over `rows` spanning `repeats` repeats of `n` test negatives each.
-    Headline numbers leave family E out; `families` and `templates` keep it."""
+    Headline numbers and `templates` leave family E out; `families` keeps it as its own row."""
     headline = [row for row in rows if row.family != EVAL_FAMILY]
     negatives = [row for row in headline if row.y == 0]
     positives = [row for row in headline if row.y == 1]
@@ -572,12 +572,15 @@ def _block(
     flagged = [int(row.flagged) for row in headline]
     fold_aucs = [f["roc_auc"] for f in folds]
     word_flagged: dict[str, bool] = {}
+    flagged_per_repeat: dict[int, set[str]] = {}
     for row in negatives:
         word = normalise(row.text)
         if len(word.split()) == 1:
             word_flagged[word] = word_flagged.get(word, False) or row.flagged
+            if row.flagged:
+                flagged_per_repeat.setdefault(row.repeat, set()).add(word)
     group_rows: dict[tuple[str, str], list[_Row]] = {}
-    for row in rows:
+    for row in headline:  # E has its own row in `families`; 8.5 asks for 24 template rows
         if row.group is not None:
             group_rows.setdefault(row.group, []).append(row)
     return {
@@ -596,12 +599,12 @@ def _block(
             "fold_sd": float(np.std(fold_aucs, ddof=1)) if len(fold_aucs) > 1 else None},
         "families": _families(rows),
         "templates": [
-            {"family": family, "template_id": template_id, **_recall(members),
-             "evaluation_only": family == EVAL_FAMILY}
+            {"family": family, "template_id": template_id, **_recall(members)}
             for (family, template_id), members in sorted(group_rows.items())],
         "one_word": {
             "total": len(word_flagged),
             "flagged": sum(word_flagged.values()),
+            "flagged_mean_per_repeat": sum(map(len, flagged_per_repeat.values())) / repeats,
             "words": sorted(w for w, hit in word_flagged.items() if hit)},
         "false_positives": [{"query": row.text, "repeat": row.repeat, "fold": row.fold}
                             for row in negatives if row.flagged],

@@ -204,15 +204,13 @@ class ScenarioTest(unittest.TestCase):
         self.assertEqual((fold0["B"]["count"], fold0["B"]["caught"]), (1, 1))
         self.assertEqual(self.pooled["families"]["B"]["recall"], 1.0)
 
-    def test_per_template_rows(self):
+    def test_per_template_rows_leave_e_out(self):
         rows = {(r["family"], r["template_id"]): r for r in self.pooled["templates"]}
-        self.assertEqual(set(rows), {("A", "t1"), ("A", "t3"), ("B", "t2"), (EVAL_FAMILY, "e1")})
+        self.assertEqual(set(rows), {("A", "t1"), ("A", "t3"), ("B", "t2")})
         self.assertEqual((rows[("A", "t1")]["count"], rows[("A", "t1")]["caught"]), (3, 2))
         self.assertEqual((rows[("A", "t3")]["count"], rows[("A", "t3")]["caught"]), (2, 0))
         self.assertEqual(rows[("A", "t3")]["recall"], 0.0)
         self.assertEqual(rows[("B", "t2")]["recall"], 1.0)
-        self.assertTrue(rows[(EVAL_FAMILY, "e1")]["evaluation_only"])
-        self.assertFalse(rows[("A", "t1")]["evaluation_only"])
 
     def test_e_is_its_own_evaluation_only_row(self):
         e = self.pooled["families"][EVAL_FAMILY]
@@ -225,10 +223,67 @@ class ScenarioTest(unittest.TestCase):
 
     def test_one_word_negatives_counted_once_after_normalise(self):
         # zen, owl, gold, and "Zen " normalising to zen again: 3 distinct words, zen flagged
-        self.assertEqual(self.pooled["one_word"], {"total": 3, "flagged": 1, "words": ["zen"]})
+        self.assertEqual(self.pooled["one_word"], {
+            "total": 3, "flagged": 1, "flagged_mean_per_repeat": 1.0, "words": ["zen"]})
+
+    def test_one_word_pooled_reports_union_and_mean_per_repeat(self):
+        zen_hit = [("zen", 0.9, None, None), ("owl", 0.1, None, None),
+                   ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        owl_hit = [("zen", 0.1, None, None), ("owl", 0.9, None, None),
+                   ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        metrics = compute_metrics([make_result(zen_hit, repeat=0), make_result(owl_hit, repeat=1)])
+        self.assertEqual(metrics["pooled"]["one_word"], {
+            "total": 2, "flagged": 2, "flagged_mean_per_repeat": 1.0, "words": ["owl", "zen"]})
+        self.assertEqual(metrics["repeats"][0]["one_word"]["flagged_mean_per_repeat"], 1.0)
+        both = [("zen", 0.9, None, None), ("owl", 0.9, None, None),
+                ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        none = [("zen", 0.1, None, None), ("owl", 0.1, None, None),
+                ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        metrics = compute_metrics([make_result(both, repeat=0), make_result(none, repeat=1)])
+        self.assertEqual(metrics["pooled"]["one_word"]["flagged"], 2)
+        self.assertEqual(metrics["pooled"]["one_word"]["flagged_mean_per_repeat"], 1.0)
+        self.assertEqual(metrics["repeats"][0]["one_word"]["flagged_mean_per_repeat"], 2.0)
 
     def test_output_round_trips_through_json(self):
         self.assertEqual(json.loads(json.dumps(self.metrics)), self.metrics)
+
+    def test_numpy_threshold_leaves_no_numpy_types(self):
+        results = [make_result(rows, fold=i, threshold=np.float64(T))
+                   for i, rows in enumerate((FOLD0, FOLD1))]
+        metrics = compute_metrics(results)
+        self.assertEqual(json.loads(json.dumps(metrics)), metrics)
+        self.assertEqual(metrics["pooled"]["false_positives"], self.pooled["false_positives"])
+
+    def test_macro_f1_differs_from_plain_f1_on_an_asymmetric_matrix(self):
+        rows = [("n1", 0.9, None, None), ("n2", 0.1, None, None), ("n3", 0.1, None, None),
+                ("n4", 0.1, None, None), ("p1", 0.9, "A", "t1"), ("p2", 0.1, "A", "t1")]
+        pooled = compute_metrics([make_result(rows)])["pooled"]
+        self.assertEqual(pooled["confusion_matrix"], [[3, 1], [1, 1]])
+        self.assertAlmostEqual(pooled["macro_f1"], (0.75 + 0.5) / 2)
+
+
+class TwoRepeatTest(unittest.TestCase):
+    REPEAT1 = [
+        [("n1", 0.1, None, None), ("n2", 0.2, None, None), ("p1", 0.9, "A", "t1"),
+         ("e1", 0.3, EVAL_FAMILY, "e1")],
+        [("n3", 0.1, None, None), ("n4", 0.2, None, None), ("n5", 0.3, None, None),
+         ("p2", 0.9, "B", "t2")],
+    ]
+
+    def test_folds_and_repeat_blocks_do_not_mix_repeats(self):
+        first = scenario()
+        second = [make_result(rows, repeat=1, fold=i) for i, rows in enumerate(self.REPEAT1)]
+        both = compute_metrics(first + second)
+        alone = [compute_metrics(first), compute_metrics(second)]
+        self.assertEqual(len(both["folds"]), 4)
+        self.assertEqual(both["folds"], alone[0]["folds"] + alone[1]["folds"])
+        for repeat in (0, 1):
+            block = dict(both["repeats"][repeat])
+            self.assertEqual(block.pop("repeat"), repeat)
+            self.assertEqual(block, alone[repeat]["pooled"])
+        self.assertEqual(both["pooled"]["roc_auc"]["fold_mean"],
+                         float(np.mean([f["roc_auc"] for f in both["folds"]])))
+        self.assertEqual(both["pooled"]["fpr"]["repeats"], 2)
 
 
 class EvaluationOnlyFamilyTest(unittest.TestCase):

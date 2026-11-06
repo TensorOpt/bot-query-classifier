@@ -4,7 +4,6 @@ from typing import Protocol
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-
 from sklearn.utils.validation import check_is_fitted
 
 from bqc.features import make_vectoriser

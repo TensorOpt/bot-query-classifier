@@ -31,7 +31,7 @@ after M3.T13, and M3.T14 comes after M3.T9.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T9.
+**Next task:** M3.T14.
 
 ### Order constraints
 
@@ -1259,7 +1259,19 @@ Sign-off: pending.
   - A training side missing one of the other three families raises.
   - Fit counts: 1 per family per fold in the primary arm, inner folds + 1 in the comparison arm.
 - **Depends on:** M3.T8.
-- **Status:** done
+- **Status:** validated
+- **Status note:** implemented in `5712400`. Real run by `opus`, all 15 folds of both arms, 5,000 spans,
+  scratch logistic regression, 525 fits, 552 s beside other work: no `FoldError`; no F text in any fit;
+  test strings equal the main run's in 120 of 120; positives 4,991-4,998 to 5,000 and 375-384 to 384;
+  headline identical to the M3.T8 run. LOFO recall against main, primary: A 62.7/70.9%, B 34.1/64.6%, C
+  71.3/90.4%, D 29.7/82.0%, FPR 0.49-0.83%; comparison: A 50.2/60.2%, B 44.3/67.8%, C 65.8/78.2%, D 30.0/75.4%,
+  FPR 0.56-0.90%. F is absent from the test side in 5, 4, 2 and 4 of 15 folds. The pooled difference is over
+  the same rows, so it agrees with the per-fold rows and 8.5. `n_splits=4` in the report tests suits the small
+  stub only. LOFO's own dropped and shortfall counts aren't in the JSON, which 8.6 item 1 doesn't ask for.
+  Process deviation (F1), disclosed: the skeleton block came from a saved file filtered by `grep`, and nine
+  `DataTest` tests were hidden behind a `setUpClass` failure. 33 of 35 mutations are caught, including those
+  tests' behaviour; one survivor is equivalent, as the LOFO test side holds only F, and the other is a guard
+  that can't fire.
 
 ### M3.T14: Catalogue-gap check
 
@@ -1454,7 +1466,8 @@ Sign-off: pending.
   3. The real run scores the committed sanity labels. The skip path stays covered by fixtures
      (M3.T11).
   4. `--lofo` and `--catalogue-gap` take an optional comma list of models, default all of `--models`;
-     naming or omitting `mlp` there is the request (section 10). The main fits and the final
+     naming or omitting `mlp` there is the request (section 10). `build_run_report`'s `lofo` is a boolean
+     covering every model since M3.T9, so this task makes it per model. The main fits and the final
      model always cover every model in `--models`. A model left out has its rows reported as not run,
      with the reason. `--lofo` never runs the MLP in the comparison arm (8.6 item 1). `--catalogue-gap`
      is valid with either arm.

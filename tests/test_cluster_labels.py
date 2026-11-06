@@ -253,7 +253,7 @@ class SeedRuleTest(unittest.TestCase):
         self.assertEqual([e["k"] for e in r], [10, 20, 40])
         for e in r:
             self.assertEqual(e["n_draws"], 20)
-            # mean of i**2 for 0..19 is 123.5; the median is 110.5
+            # mean of i**2 for 0..19 is 123.5; the median is 90.5
             self.assertEqual(e["accuracy"], 123.5)
             self.assertEqual(e["fpr"], 0.5)
             self.assertIsNone(e["recall"])

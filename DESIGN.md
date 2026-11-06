@@ -1511,6 +1511,10 @@ queries contain no bot traffic. Mitigation: the FP list (8.5) is reviewed by eye
   41.5% noise, ARI 0.759 vs true labels (positives were crude random strings, so
   this is an upper-bound-ish sanity figure, not a result).
 - `metric="cosine"` on the dense 50-d matrix is accepted.
+- (2026-11-06, M5.T1, scikit-learn 1.9.1.) `HDBSCAN(copy=...)` defaults to `"warn"`
+  (becoming `True` in 1.10); on dense finite input `True` and `False` give identical
+  labels and neither mutates the input, so `bqc/cluster.py` sets `copy=True`. Details
+  in its module docstring.
 
 ### 13.6 MLPClassifier (2026-11-05, scikit-learn 1.9.1)
 

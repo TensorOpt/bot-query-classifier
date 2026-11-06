@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M4.T8 corrections.
+**Next task:** M4 sign-off by `fable`, then M5.T1.
 
 ### Order constraints
 
@@ -2026,7 +2026,7 @@ Sign-off: pending.
   - The sign is primary minus comparison, and MLP minus LR.
   - No `arm_comparison` with one arm; no `model_comparison` unless both models ran.
 - **Depends on:** M4.T4.
-- **Status:** done
+- **Status:** validated
   - `paired_comparison(first, second)` in `bqc/evaluate.py` over two `compute_metrics` `folds` lists;
     returns `folds`, `recall`/`fpr`/`roc_auc` (`differences`, `mean`, `sd`, `se`, `wins`), `justified`,
     `worse`, `fpr_gate` (`holds`, `mean`, `sd`, `sign` -1/0/1) and `roc_auc.justified`/`.worse`. Raises
@@ -2069,6 +2069,13 @@ Sign-off: pending.
     `arm_comparison` section"); `model_comparison` under each arm matches 8.2 ("inside a run"). The
     `tests/test_run_report.py` key-set changes are accepted and added to Files with `bqc/cli.py`.
   - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M4.T8)` commit.
+  - **Validation of corrections (opus, 2026-11-06): PASS.** `e7bd2e8` touches tests and PLAN.md only.
+    Item 1: ROC-AUC differences `[0.125, 0.0625, -0.125, 0.0]`, 2 wins (1 if inverted), mean 0.015625.
+    Item 2: new `test_roc_auc_justified_does_not_override_a_failed_fpr_gate`; hand check: recall mean
+    0.5 > 2 se 0.102; FPR mean 0.140625 > 2 se 0.03125 (ss 3/1024, sd 1/32, exact); ROC-AUC the same,
+    so `roc_auc.justified` true, gate fails, `justified` false. Both survivors now killed in an isolated
+    copy: `d < 0` for ROC-AUC fails `test_roc_auc_higher_is_a_win`; `gate["holds"] or
+    roc_auc["justified"]` fails the new test. Full suite: 768 tests OK. Lines within 100 columns.
 
 ---
 

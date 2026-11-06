@@ -1,9 +1,13 @@
 import pickle
 import unittest
+from unittest import mock
 
 import numpy as np
+from sklearn.exceptions import NotFittedError
 
+from bqc.features import make_vectoriser
 from bqc.models import LogisticRegressionScorer
+from bqc.preprocess import normalise
 
 TEXTS = ["sofa", "sofa bed", "oak table", "arm chair", "drop table users", "1=1 or 2=2",
          "select star from x", "zzqx qzzx"] * 3
@@ -43,6 +47,14 @@ class LogisticRegressionScorerTest(unittest.TestCase):
         b = fitted().score(["sofa bed", "drop table"])
         self.assertEqual(a.tolist(), b.tolist())
 
+    def test_normalise_applied_once_per_text(self):
+        with mock.patch("bqc.models.normalise", wraps=normalise) as spy:
+            m = LogisticRegressionScorer().fit(TEXTS, Y)
+            self.assertEqual(spy.call_count, len(TEXTS))
+            spy.reset_mock()
+            m.score(["sofa", "  Drop TABLE "])
+            self.assertEqual(spy.call_count, 2)
+
     def test_empty_and_unknown_same_score(self):
         s = fitted().score(["", "☃☃", "   "])
         self.assertEqual(s[0], s[1])
@@ -52,16 +64,20 @@ class LogisticRegressionScorerTest(unittest.TestCase):
         self.assertEqual(fitted().score([]).shape, (0,))
 
     def test_score_before_fit_raises(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotFittedError):
             LogisticRegressionScorer().score(["a"])
 
     def test_empty_score_before_fit_raises(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(NotFittedError):
             LogisticRegressionScorer().score([])
 
     def test_configuration(self):
         c = LogisticRegressionScorer()._classifier
         self.assertEqual((c.C, c.max_iter), (1.0, 1000))
+
+    def test_uses_m3_vectoriser(self):
+        v = LogisticRegressionScorer()._vectoriser
+        self.assertEqual(v.get_params(), make_vectoriser().get_params())
 
     def test_pickle_round_trip(self):
         m = fitted()

@@ -1772,6 +1772,7 @@ Sign-off: pending.
     the code that depends on it"); re-run now, same results. Notes, not required: `scratch/models.orig` is a
     leftover backup identical to `bqc/models.py` (gitignored; delete it); stray blank line between the two
     sklearn imports at `bqc/models.py:7`.
+  - **Corrections (sonnet, 2026-11-06):** items 1-3 addressed in tests; see the `test(M4.T1)` commit.
 
 ### M4.T2: MLP adapter
 

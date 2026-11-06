@@ -1545,7 +1545,9 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 ### 13.9 Unverified assumptions
 
 - The 480 WANDS queries contain no bot traffic (13.2); not provable, mitigated by
-  reviewing the FP list by eye.
+  reviewing the FP list by eye. (Reviewed 2026-11-06, M6.T1: no false positive of any
+  arm or model looks machine-generated; borderline `promo codes or discounts`,
+  `drudge report`, `ines shag rug w003096809`. The assumption stands.)
 - (Closed 2026-11-05.) The MLP fit at 5,000 / 5,000 was estimated at 1-2 minutes
   from 987 s at 20,000 / 20,000; the SVD probe measured 9-29 s, median 17 s (13.22).
   The first full run re-records it in the run JSON.
@@ -1556,6 +1558,10 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
   5-minute rule and above 13.22's median of 17 s (range 9-29 s). The whole run (15 outer folds x
   3 models, the three final fits, sanity, part-number diagnostic, no `--lofo` or
   `--catalogue-gap`) took 12 min 1 s of wall time (an earlier identical run: 12 min 57 s).
+  (M6.T1, 2026-11-06, clean clone at `a20073f`, same software.) The full invocation,
+  `evaluate --negatives product,real --lofo --catalogue-gap` with all three models, took
+  64 min 58 s of wall time; the final primary-arm MLP fit took 38.4 s. `fetch` 6 s, `generate`
+  56 s, `cluster` 7 s.
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
 - (Closed 2026-11-06.) No WANDS `query_class` contains `|`: checked by `fable` with
   `grep -c '|'` on a `query.csv` whose SHA-256 matches `data/CHECKSUMS`, 0 lines.

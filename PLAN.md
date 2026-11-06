@@ -2068,6 +2068,7 @@ Sign-off: pending.
     keyed by model, `trivial` included, matches 8.2 ("each arm under its own key plus an
     `arm_comparison` section"); `model_comparison` under each arm matches 8.2 ("inside a run"). The
     `tests/test_run_report.py` key-set changes are accepted and added to Files with `bqc/cli.py`.
+  - **Corrections (sonnet, 2026-11-06):** items 1-2 addressed in tests; see the `test(M4.T8)` commit.
 
 ---
 

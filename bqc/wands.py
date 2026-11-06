@@ -35,6 +35,7 @@ PRODUCT_HEADER = [
 class WandsQuery(NamedTuple):
     query_id: int
     query: str
+    query_class: str = ""  # the raw cell; "" when empty (11.15, 11.28)
 
 
 class WandsProduct(NamedTuple):
@@ -79,20 +80,20 @@ def fetch(
 
 
 def load_queries(path: Path, checksums: Path) -> list[WandsQuery]:
-    """Return the queries of `path` in file order, unmodified.
+    """Return (query_id, query, query_class) of every row of `path`, raw, in file order.
 
     `checksums` holds `sha256sum`-style lines (`<hex>  <file name>`); the line for
     `path.name` must match the SHA-256 of the file's bytes. The check runs before any
     parsing. Raises WandsError, naming the path, on a missing file, a missing or
     mismatching checksum, or a header other than `query_id, query, query_class`.
-    `query_class` is ignored and may be empty.
+    `query_class` is the raw cell (not normalised or split) and may be empty.
     """
     data = _read_verified(path, checksums)
     reader = _tsv_reader(data)
     if next(reader, None) != HEADER:
         raise WandsError(f"unexpected header in {path}: want {HEADER}")
     try:
-        return [WandsQuery(int(row[0]), row[1]) for row in reader]
+        return [WandsQuery(int(row[0]), row[1], row[2]) for row in reader]
     except (ValueError, IndexError) as e:
         raise WandsError(f"malformed row in {path}: {e}") from e
 

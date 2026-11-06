@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5.T2 (corrections), then M5.T3.
+**Next task:** M5.T3.
 
 ### Order constraints
 
@@ -2212,7 +2212,7 @@ Sign-off: pending.
   - A seed drawn on a noise point counts as a draw but labels nothing.
   - Same `draw_index` gives the same draw; different ones differ.
 - **Depends on:** M5.T1.
-- **Status:** done
+- **Status:** validated
 
   Implementation notes (`sonnet`): `oracle_vote(clusters, truth)`, `draw_seeds(n_rows, k,
   draw_index)` (= `random.Random(SEED + draw_index).sample(range(n_rows), k)`),
@@ -2269,6 +2269,15 @@ Sign-off: pending.
      110.5. It is 90.5 (mean of 81 and 100; `statistics.median` confirms). The comment is there
      to show why the fixture tells mean from median, so the wrong number misleads. Fix: change
      110.5 to 90.5. Comment only; no other change.
+
+  Comment fix (`sonnet`): `9ac6e76`, one line in `tests/test_cluster_labels.py` (110.5 to 90.5).
+
+  Final validation (`opus`, after `9ac6e76`): PASS, status `validated`. Commits: `248b068`
+  (implementation), `201b723` (corrections), `9ac6e76` (comment fix). `git show 9ac6e76` is the
+  one comment line and nothing else; 90.5 is correct (median of 81 and 100). Mutants from the
+  earlier passes: `statistics.median` for `fmean` and `dict.fromkeys` for `sorted(set(...))` are
+  caught; `clusters >= 0` for `non_noise` is equivalent. Module tests
+  (`-k test_cluster_labels`): 33 OK. No further mutant run: the change is comment-only.
 
 ### M5.T3: `bqc cluster`
 

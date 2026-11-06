@@ -1262,7 +1262,7 @@ Sign-off: pending.
   - A training side missing one of the other three families raises.
   - Fit counts: 1 per family per fold in the primary arm, inner folds + 1 in the comparison arm.
 - **Depends on:** M3.T8.
-- **Status:** done
+- **Status:** validated
 - **Status note:** `iter_fold_data(leave_out=F)` re-renders the training side without F and keeps the
   test-side queries and F's rows; both runners take `leave_out`, which prefixes score-set names
   (`LOFO A test queries`) and narrows the inner family check; `lofo_section` builds the rows;
@@ -1300,6 +1300,19 @@ Sign-off: pending.
   are asserted identical to the main run's, so nothing is wrong; if M6 timing shows it matters, build the
   test side once and reuse it.
   Corrections addressed in the `fix(M3.T9)` commit that follows `ab29b45`.
+- **Correction validation (`opus`, `0520ede` against `ab29b45`): PASS.** Suite: 538 tests, OK (35 s).
+  `0520ede` touches only the three items (plus the one-line pointer above); `3ecd83f` is unchanged in
+  history (no amend). Item 1: `ReportTest.test_nan_only_in_a_lofo_pass_names_the_lofo_score_set` runs both
+  arms with a factory whose scorers return `NaN` only after the main run's fits (10 primary, 60
+  comparison), asserts `LOFO A` and `arm <arm>` in the `NonFiniteScoreError`, and runs the same factory
+  without `lofo` without raising. The surviving mutant (primary runner given `leave_out=None` in
+  `build_run_report`) is now caught, by that test alone; a second mutant (comparison out-of-fold score set
+  without the prefix) is caught by it and by `RunnerTest`. Both reverted. Item 2: `"lofo": lofo` is in
+  `parameters`; `test_parameters_record_lofo` pins `False` by default and `True` when enabled, and
+  `test_run_report.StructureTest` includes `"lofo": False` in the whole-config check. Item 3: no line of
+  `bqc/evaluate.py` or `tests/test_lofo.py` exceeds 100 columns. Process deviations: the correction
+  commit carries the `fable` co-author trailer rather than `sonnet`'s, and it adds a line to `PLAN.md`,
+  which `opus` owns; neither changes the code under review.
 
 ### M3.T14: Catalogue-gap check
 

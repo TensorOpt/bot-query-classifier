@@ -60,6 +60,13 @@ class OracleVoteTest(unittest.TestCase):
         self.assertEqual(r["clusters"][0], {"cluster": 0, "size": 2, "purity": 0.5, "label": 0})
         self.assertEqual(r["clusters"][1]["label"], 1)
 
+    def test_clusters_listed_in_ascending_id_order(self):
+        # HDBSCAN ids don't appear in order: id 1 shows up first here.
+        r = oracle_vote([1, 1, 0, 0, 0], [1, 1, 0, 0, 1])
+        self.assertEqual([c["cluster"] for c in r["clusters"]], [0, 1])
+        self.assertEqual([c["size"] for c in r["clusters"]], [3, 2])
+        self.assertEqual([c["label"] for c in r["clusters"]], [0, 1])
+
     def test_strict_majority_of_illegitimate_is_one(self):
         r = oracle_vote([0, 0, 0], [1, 1, 0])
         self.assertEqual(r["clusters"][0]["label"], 1)
@@ -238,7 +245,7 @@ class SeedRuleTest(unittest.TestCase):
 
         def fake(clusters, truth, k, draw_index):
             calls.append((k, draw_index))
-            return {"accuracy": float(draw_index), "fpr": 0.5, "recall": None}
+            return {"accuracy": float(draw_index ** 2), "fpr": 0.5, "recall": None}
 
         with mock.patch("bqc.cluster.seed_draw", side_effect=fake):
             r = seed_rule([0] * 50, [0] * 50)
@@ -246,10 +253,12 @@ class SeedRuleTest(unittest.TestCase):
         self.assertEqual([e["k"] for e in r], [10, 20, 40])
         for e in r:
             self.assertEqual(e["n_draws"], 20)
-            self.assertEqual(e["accuracy"], 9.5)  # mean of 0..19
+            # mean of i**2 for 0..19 is 123.5; the median is 110.5
+            self.assertEqual(e["accuracy"], 123.5)
             self.assertEqual(e["fpr"], 0.5)
             self.assertIsNone(e["recall"])
-            self.assertEqual([d["accuracy"] for d in e["draws"]], [float(i) for i in range(20)])
+            self.assertEqual([d["accuracy"] for d in e["draws"]],
+                             [float(i ** 2) for i in range(20)])
 
     def test_draw_seeds_receives_seed_plus_index(self):
         with mock.patch("bqc.cluster.draw_seeds", wraps=draw_seeds) as spy:

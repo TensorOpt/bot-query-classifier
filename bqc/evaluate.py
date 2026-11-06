@@ -131,13 +131,15 @@ def check_fold(
     train_y: Sequence[int],
     train_families: Sequence[str | None],
     test_y: Sequence[int],
+    families: Sequence[str] = TRAINING_FAMILIES,
 ) -> None:
-    """Raise FoldError if a class or a training family (A-D) is missing from the training
-    side, or a class from the test side. Families are never asserted on the test side (11.16).
+    """Raise FoldError if a class or a family of `families` (A-D by default; the other three
+    in LOFO, 8.6) is missing from the training side, or a class from the test side.
+    Families are never asserted on the test side (11.16).
     """
     if set(train_y) != {0, 1}:
         raise FoldError(f"training fold classes are {sorted(set(train_y))}, need 0 and 1")
-    missing = [f for f in TRAINING_FAMILIES if f not in set(train_families)]
+    missing = [f for f in families if f not in set(train_families)]
     if missing:
         raise FoldError(f"training fold lacks families {missing}")
     if set(test_y) != {0, 1}:
@@ -216,8 +218,15 @@ def iter_fold_data(
     test_per_template: int = TEST_PER_TEMPLATE,
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
+    leave_out: str | None = None,
 ) -> Iterator[FoldData]:
     """Yield a FoldData per (repeat, fold, arm) (8.2, 8.3).
+
+    With `leave_out` a family of A-D (LOFO, 8.6): its templates leave the training side,
+    the others render at `n_negatives // n_remaining_templates` each (1:1; `n_negatives`
+    is `n` in the primary arm), and the test side keeps only the test-side queries and that
+    family's rows. The fold check still sees the full test side, so a fold with none of the
+    family's templates on the test side doesn't raise, and asserts the other three families.
 
     Spans are built once per repeat with seed `seed + repeat`. The test side (test-side
     queries, test-template positives, family E) is built once per fold and shared by
@@ -228,6 +237,9 @@ def iter_fold_data(
     unknown = [a for a in arms if a not in ARMS]
     if unknown:
         raise ValueError(f"unknown arms {unknown}")
+    if leave_out is not None and leave_out not in TRAINING_FAMILIES:
+        raise ValueError(f"leave_out must be one of {list(TRAINING_FAMILIES)}, got {leave_out!r}")
+    kept_families = [f for f in TRAINING_FAMILIES if f != leave_out]
     folds = assign_folds(real_queries, registry, n_splits, repeats, seed)
     eval_templates = [(EVAL_FAMILY, t.template_id) for t in registry.templates(EVAL_FAMILY)]
     for repeat in range(repeats):
@@ -247,25 +259,31 @@ def iter_fold_data(
                                        (eval_templates, eval_per_template))
             ], test_per_template)
             for arm in arms:
+                train_templates = [t for t in fold.train_templates if t[0] != leave_out]
                 if arm == PRIMARY:
                     negatives = span_texts
                     vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
-                    per_template = n // len(fold.train_templates)
+                    per_template = n // len(train_templates)
                 else:
                     negatives = fold.train_queries
                     vocabulary = token_occurrences(fold.train_queries)
-                    per_template = QUOTA
+                    per_template = (len(negatives) // len(train_templates)
+                                    if leave_out else QUOTA)
                 drop = {"training_negatives": negatives, "real_queries": real_queries,
                         "part_numbers": part_numbers}
                 train = _side(negatives, [_render_screened(
-                    registry, vocabulary, render_seed, fold.train_templates, per_template,
+                    registry, vocabulary, render_seed, train_templates, per_template,
                     sanity, drop)], per_template)
-                check_fold(train.y, train.families, test.y)
+                check_fold(train.y, train.families, test.y, kept_families)
+                rows = [i for i, f in enumerate(test.families)
+                        if leave_out is None or f is None or f == leave_out]
                 yield FoldData(
                     repeat, fold.fold, arm, train.texts, train.y, train.families, train.groups,
                     list(fold.train_queries) if arm == PRIMARY else [],
-                    test.texts, test.y, test.families, test.groups,
+                    [test.texts[i] for i in rows], [test.y[i] for i in rows],
+                    [test.families[i] for i in rows], [test.groups[i] for i in rows],
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
+                     **({"leave_out": leave_out} if leave_out else {}),
                      "span_removals": removals, "train": train.report, "test": test.report,
                      **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {})},
                 )
@@ -369,12 +387,14 @@ def run_primary_fold(
     make_scorer: Callable[[], Scorer],
     target_fpr: float,
     model: str,
+    leave_out: str | None = None,
 ) -> FoldResult:
     """Cross-fit one primary-arm fold (8.2): fit once on `data.train_texts`, set `t` from
     the scores of `data.threshold_texts` (training-side real queries, not in the fit),
     and score the test side, which includes family E. Every score array goes through
     `check_finite`. Warnings raised by `fit` are returned, not raised (11.12).
-    Raises ValueError if `data` is not the primary arm.
+    `leave_out` marks a LOFO fold (8.6): it prefixes every score-set name ("LOFO A test
+    queries"). Raises ValueError if `data` is not the primary arm.
     """
     if data.arm != PRIMARY:
         raise ValueError(f"run_primary_fold needs the {PRIMARY!r} arm, got {data.arm!r}")
@@ -385,9 +405,14 @@ def run_primary_fold(
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
     threshold = select_threshold(
         check_finite(scorer.score(data.threshold_texts), **context,
-                     score_set="threshold queries"),
+                     score_set=_score_set("threshold queries", leave_out)),
         target_fpr)
-    return _test_result(data, scorer, threshold, model, fit_warnings)
+    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out)
+
+
+def _score_set(name: str, leave_out: str | None) -> str:
+    """The score-set name for `check_finite`, prefixed with "LOFO <family> " in a LOFO run."""
+    return name if leave_out is None else f"LOFO {leave_out} {name}"
 
 
 def _test_result(
@@ -396,6 +421,7 @@ def _test_result(
     threshold: Threshold,
     model: str,
     fit_warnings: list[str],
+    leave_out: str | None = None,
 ) -> FoldResult:
     """Score the test side with a fitted `scorer`, check every score set is finite, and
     return the fold's FoldResult. Shared by both arms' runners."""
@@ -406,7 +432,7 @@ def _test_result(
             ("E", lambda f: f == EVAL_FAMILY),
             ("test positives", lambda f: f is not None and f != EVAL_FAMILY)):
         rows = [family_matches(f) for f in data.test_families]
-        check_finite(scores[rows], **context, score_set=score_set)
+        check_finite(scores[rows], **context, score_set=_score_set(score_set, leave_out))
     return FoldResult(
         data.repeat, data.fold, data.arm, model, threshold, scores,
         list(data.test_texts), list(data.test_y), list(data.test_families),
@@ -418,6 +444,7 @@ def run_comparison_fold(
     make_scorer: Callable[[], Scorer],
     target_fpr: float,
     model: str,
+    leave_out: str | None = None,
 ) -> FoldResult:
     """Nested-split one comparison-arm fold (8.2): an inner `StratifiedGroupKFold` over the
     training rows gives out-of-fold scores for the training-side real queries, `t` is the 8.4
@@ -425,6 +452,8 @@ def run_comparison_fold(
     side as `run_primary_fold` does. `make_scorer` is called once per fit. Every inner
     training fold passes `check_fold`; every score array goes through `check_finite`.
     Warnings from the inner fits and the refit are returned, not raised (11.12).
+    `leave_out` marks a LOFO fold (8.6): the inner check asks for the other three
+    families only, and score-set names are prefixed as in `run_primary_fold`.
     Raises ValueError if `data` is not the comparison arm.
     """
     if data.arm != COMPARISON:
@@ -435,6 +464,7 @@ def run_comparison_fold(
     codes = [group_ids.setdefault(g if g is not None else ("row", i), len(group_ids))
              for i, g in enumerate(data.train_groups)]
     texts, y, families = data.train_texts, data.train_y, data.train_families
+    expected = [f for f in TRAINING_FAMILIES if f != leave_out]
     splitter = StratifiedGroupKFold(
         n_splits=N_SPLITS, shuffle=True, random_state=SEED + data.repeat)
     out_of_fold = np.full(len(texts), np.nan)
@@ -442,15 +472,15 @@ def run_comparison_fold(
         warnings.simplefilter("always")
         for train, held_out in splitter.split(texts, y, codes):
             check_fold([y[i] for i in train], [families[i] for i in train],
-                       [y[i] for i in held_out])
+                       [y[i] for i in held_out], expected)
             scorer = make_scorer().fit([texts[i] for i in train], [y[i] for i in train])
             out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
         scorer = make_scorer().fit(texts, y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
-    out_of_fold = check_finite(out_of_fold, **context, score_set="out-of-fold scores")
+    out_of_fold = check_finite(out_of_fold, **context, score_set=_score_set("out-of-fold scores", leave_out))
     real = [i for i, f in enumerate(families) if f is None]
     threshold = select_threshold(out_of_fold[real], target_fpr)
-    return _test_result(data, scorer, threshold, model, fit_warnings)
+    return _test_result(data, scorer, threshold, model, fit_warnings, leave_out)
 
 
 def wilson_interval(k: float, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
@@ -650,6 +680,7 @@ def build_run_report(
     test_per_template: int = TEST_PER_TEMPLATE,
     eval_per_template: int = EVAL_PER_TEMPLATE,
     vocabulary_cap: int = VOCABULARY_CAP,
+    lofo: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run every arm and model over the outer folds; return `(parameters, body)` for
     `write_report` (8.1, 8.2, 11.12).
@@ -658,6 +689,8 @@ def build_run_report(
     (repeat, fold), once per arm), `models` (per model: `compute_metrics` plus, on each
     fold entry, `target_unmet`, `threshold_warning` and `fit_warnings`) and, in the
     primary arm only, `span_lengths`: the realised mix per repeat next to the target.
+    With `lofo` (off by default; 8.6 item 1) each arm also has `lofo`: per model, the
+    `lofo_section` rows, run on the same folds with each family of A-D left out in turn.
     No removed span, positive or sanity text is in it.
     """
     parameters = {
@@ -683,15 +716,92 @@ def build_run_report(
         for model, make_scorer in models.items():
             results[data.arm][model].append(
                 runners[data.arm](data, make_scorer, target_fpr, model))
+    lofo_results: dict[str, dict[str, dict[str, list[FoldResult]]]] = {
+        arm: {family: {model: [] for model in models} for family in TRAINING_FAMILIES}
+        for arm in arms}
+    for family in TRAINING_FAMILIES if lofo else ():
+        for data in iter_fold_data(
+                real_queries=real_queries, products=products, part_numbers=part_numbers,
+                sanity=sanity, arms=arms, n=n, registry=registry,
+                n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
+                eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap,
+                leave_out=family):
+            for model, make_scorer in models.items():
+                lofo_results[data.arm][family][model].append(
+                    runners[data.arm](data, make_scorer, target_fpr, model, leave_out=family))
     body: dict[str, Any] = {}
     for arm in arms:
         body[arm] = {"folds": fold_reports[arm],
                      "models": {model: _model_entry(rs) for model, rs in results[arm].items()}}
+    if lofo:
+        for arm in arms:
+            body[arm]["lofo"] = {
+                model: lofo_section(
+                    {family: lofo_results[arm][family][model] for family in TRAINING_FAMILIES},
+                    results[arm][model])
+                for model in models}
     if PRIMARY in arms:
         body[PRIMARY]["span_lengths"] = {
             "target": length_mix(LENGTH_COUNTS),
             "repeats": [{"repeat": r, **mixes[r]} for r in sorted(mixes)]}
     return parameters, body
+
+
+def lofo_section(
+    lofo: Mapping[str, Sequence[FoldResult]],
+    main: Sequence[FoldResult],
+) -> dict[str, Any]:
+    """One row per family A-D (8.6 item 1) for one (arm, model), without ROC-AUC.
+
+    `lofo` maps each family F to its LOFO fold results (test side: the queries and F's
+    rows); `main` holds the main run's results of the same arm and model. Each row has
+    `folds` (per fold: `threshold`, F's `recall`, achieved `fpr`, the main run's
+    `main_recall` on F and `difference` = LOFO minus main, `None` when F has no test rows
+    in that fold) and `pooled` (the same over all folds). Raises ValueError on a LOFO
+    fold with no matching main fold.
+    """
+    main_by_fold = {(r.repeat, r.fold): r for r in main}
+    section = {}
+    for family in TRAINING_FAMILIES:
+        folds = []
+        pooled_f: list[_Row] = []
+        pooled_main: list[_Row] = []
+        queries: list[_Row] = []
+        for result in sorted(lofo[family], key=lambda r: (r.repeat, r.fold)):
+            if (result.repeat, result.fold) not in main_by_fold:
+                raise ValueError(f"no main fold for LOFO fold {(result.repeat, result.fold)}")
+            rows = _rows(result)
+            f_rows = [row for row in rows if row.family == family]
+            main_rows = [row for row in _rows(main_by_fold[(result.repeat, result.fold)])
+                         if row.family == family]
+            negatives = [row for row in rows if row.y == 0]
+            folds.append({
+                "repeat": result.repeat, "fold": result.fold,
+                "threshold": float(result.threshold.threshold),
+                **_lofo_numbers(f_rows, main_rows, negatives)})
+            pooled_f += f_rows
+            pooled_main += main_rows
+            queries += negatives
+        section[family] = {"folds": folds,
+                           "pooled": _lofo_numbers(pooled_f, pooled_main, queries)}
+    return section
+
+
+def _lofo_numbers(
+    f_rows: list[_Row],
+    main_rows: list[_Row],
+    negatives: list[_Row],
+) -> dict[str, Any]:
+    recall, main_recall = _recall(f_rows), _recall(main_rows)["recall"]
+    false_positives = sum(row.flagged for row in negatives)
+    return {
+        "recall": recall,
+        "fpr": {"false_positives": false_positives, "n_negatives": len(negatives),
+                "point": false_positives / len(negatives) if negatives else None},
+        "main_recall": main_recall,
+        "difference": (None if recall["recall"] is None or main_recall is None
+                       else recall["recall"] - main_recall),
+    }
 
 
 def _model_entry(results: list[FoldResult]) -> dict[str, Any]:

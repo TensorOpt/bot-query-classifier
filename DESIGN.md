@@ -1,6 +1,6 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.6, 2026-11-05 (Q13: product-name spans are the training
+Owner: `fable`. Status: v2.7, 2026-11-06 (Q13: product-name spans are the training
 negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
@@ -589,10 +589,27 @@ than data; and `imblearn.pipeline.Pipeline` skips the sampler at predict time
 (13.12). None of that is needed now. The section number is kept so that
 references to 7 and 7.1 elsewhere resolve to this note; the paired-comparison
 shape once defined in 7.1 is now stated in 8.2 (`arm_comparison`) and 12.1 item
-13 (`model_comparison`), with the same verdict rule: a difference counts only if
-its mean exceeds twice its standard error (`sd / sqrt(15)`, `sd` the sample
-standard deviation of the 15 paired per-fold differences, `ddof=1`) and the
-paired FPR difference is not positive.
+13 (`model_comparison`), with one verdict rule (settled 2026-11-06, PQ-6):
+
+- **Direction.** Every paired difference is *first-named minus second-named*:
+  `arm_comparison` is primary arm minus comparison arm; `model_comparison` is
+  **MLP minus logistic regression** (the user's model minus the baseline). "Wins"
+  counts the folds where the first-named is better.
+- **`justified` (per comparison, one boolean)** is one-sided: the first-named is
+  better. True only if the mean paired difference in **headline recall is
+  positive and greater than** twice its standard error (`sd / sqrt(15)`, `sd` the
+  sample standard deviation of the 15 per-fold differences, `ddof=1`), **and** the
+  FPR gate holds. A negative mean, however large, is never `justified`; a `worse`
+  boolean (mean negative and beyond twice its standard error) is reported for
+  symmetry. ROC-AUC gets the same two booleans, informational only.
+- **FPR gate.** Achieved FPR is not a gain metric: both arms target the same FPR,
+  so its paired difference should be noise. The gate is: the mean paired
+  difference in achieved FPR is **not positive beyond twice its standard error**
+  (a one-false-positive wobble does not flip the verdict; a systematic rise does).
+  Its mean, sd and the strict sign are reported next to the gate's boolean.
+- With `justified` false and `worse` false the reading is "within fold-to-fold
+  noise"; for `model_comparison` that means the 6.2 recommendation is the
+  simpler model.
 
 A more meaningful augmentation for text (string-level perturbation of real negatives)
 is in section 14.
@@ -662,10 +679,10 @@ each arm under its own key plus an `arm_comparison` section: per-fold paired
 differences (primary minus comparison) in headline recall, achieved FPR and
 ROC-AUC, each as the list of 15 per-fold values, their mean, their sample standard
 deviation (`ddof=1`), the standard error (`sd / sqrt(15)`) and the count of folds
-where the primary arm wins; a boolean `justified` per metric applies the verdict
-rule of section 7 (mean beyond twice its standard error, paired FPR difference not
-positive). The LR-vs-MLP difference lives inside a run under `model_comparison`
-with the same shape. There is no
+where the primary arm wins; one `justified` and one `worse` boolean for the
+comparison and the FPR gate, by the verdict rule of section 7. The MLP-minus-LR
+difference lives inside a run under `model_comparison` with the same shape and
+direction rule. There is no
 command that compares two run files; the full run (M6) is one invocation with both
 arms, and reports the primary arm as the headline with the paired differences.
 
@@ -1007,7 +1024,9 @@ already has labels.
 
 1. Same preprocessing and char TF-IDF as section 5, fitted on all 960 strings.
 2. `TruncatedSVD(n_components=50, random_state=SEED)` then L2-normalise rows, so
-   that Euclidean distance approximates cosine distance.
+   that Euclidean distance approximates cosine distance. This SVD stands by the
+   user's decision of 2026-11-06 (12.1 item 16): the rejection of SVD applies to
+   the classifier's features, not to this experiment.
 3. `HDBSCAN(min_cluster_size=15, min_samples=None)` on the 50-d vectors.
 
 **Evidence (probe 13.5):** HDBSCAN on the raw 25k-dim TF-IDF matrix, sparse
@@ -1339,10 +1358,14 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
     rejected by the user.** It lost accuracy at every dimension tried (recall
     75-80% against 79.7% for plain TF-IDF, AUC down, FPR at 90% recall worse) and
     its scoring latency (1.8-18 ms per query against 0.22 ms) misses the bound
-    Q17 set. **Not to be re-proposed**: dimensionality reduction of the section 5
-    features is closed for this project unless the user reopens it. Section 5 is
-    unchanged. The M6 recommendation between logistic regression and the MLP is
-    unaffected (12.1 item 13).
+    Q17 set. **Not to be re-proposed for the classifier**: dimensionality
+    reduction of the section 5 features before the estimator is closed for this
+    project unless the user reopens it. Section 5 is unchanged. The M6
+    recommendation between logistic regression and the MLP is unaffected (12.1
+    item 13). **Clarified by the user on 2026-11-06: the rejection covers the
+    classifier only; the HDBSCAN experiment keeps its `TruncatedSVD(50)` step
+    (9.1)**, which is required there (13.5: without it HDBSCAN returns no
+    clusters) and has no latency role.
 17. **SMOTE dropped (2026-11-05).** The user's decision: with training data from
     product spans there is enough of it, and SMOTE is not needed. Applies to both
     arms, the comparison arm included. Supersedes Q3 and the plan-review rulings
@@ -1838,8 +1861,9 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Isolate the 13.22 recall drop** (T 81.7 -> 79.7%, `B.template` 92 -> 60%)
   by re-running the 13.21 protocol with the M2.T13 templates and with distinct
   rendering switched separately, if the full run's per-template table confirms it.
-- **Dimensionality reduction of the TF-IDF features**: closed by the user (SVD
-  rejected, 12.1 item 16); not to be re-proposed.
+- **Dimensionality reduction of the classifier's TF-IDF features**: closed by the
+  user (SVD rejected for the classifier, 12.1 item 16); not to be re-proposed.
+  The HDBSCAN experiment's SVD (9.1) is unaffected.
 - **More variety in `B.script`** beyond its 396 distinct strings, only if the
   20,000 sensitivity run's per-template recall for it looks off (section 4; done
   for 5,000 by M2.T13).

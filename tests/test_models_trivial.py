@@ -63,6 +63,8 @@ class TrivialScorerTest(unittest.TestCase):
         self.assertEqual(m.score(["  SOFA   BED "]).tolist(), m.score(["sofa bed"]).tolist())
         # NFKC maps the full-width letters to ASCII, so the length is 4, not 4 wide chars.
         self.assertEqual(m.score(["ＳＯＦＡ"]).tolist(), m.score(["sofa"]).tolist())
+        # U+200B (Cf) is dropped, so the raw text splits into 3 words and the normalised into 2.
+        self.assertEqual(m.score(["sofa \u200b bed"]).tolist(), m.score(["sofa bed"]).tolist())
 
     def test_fit_normalises(self):
         raw = [f"  {t.upper()}  " for t in TEXTS]

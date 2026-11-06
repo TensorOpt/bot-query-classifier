@@ -30,7 +30,8 @@ class _VectorisedScorer:
     """normalise -> vectoriser -> classifier, the one home of that step (section 5).
 
     Calls normalise() once per text in fit and score; callers pass raw text.
-    Subclasses set `_classifier`. Module-level classes so fitted instances pickle (M3.T10).
+    Subclasses set `_classifier` and may replace `_vectoriser`. Module-level classes so
+    fitted instances pickle (M3.T10).
     """
 
     _classifier: ClassifierMixin

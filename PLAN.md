@@ -1858,7 +1858,7 @@ Sign-off: pending.
   zero (11.1); scores in `[0, 1]`; pickle round trip of a fitted adapter (module-level class,
   M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
-- **Status:** done
+- **Status:** done (item 1 addressed in the `test(M4.T3)` correction commit)
   - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 682 OK (43 s). Met by reading and by test:
     exactly three features in the documented order (`test_hand_computed`, `(0, 3)` for no texts); the ratio
     counts spaces and is 0.0 for `""` (11.1); length, ratio and normalise-before-features pinned by

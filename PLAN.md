@@ -1719,7 +1719,36 @@ Follow-ups:
 
 ## M4: Real models and paired comparisons
 
-Sign-off: pending.
+**Sign-off: 2026-11-06, `fable`, verdict POSITIVE** (audited at `07ee3ac`; `DESIGN.md` `7034165`).
+
+- Suite: `.venv/bin/python -m unittest discover -s tests`, 768 tests, OK in 134 s, run by `fable`.
+- Diff read: the whole of `bqc/models.py`, `paired_comparison` and the `build_run_report` changes
+  in `bqc/evaluate.py`, and the `evaluate` parts of `bqc/cli.py` (parser, `_FitTimer`,
+  `_not_run_reasons`, `_evaluate`), plus every M4 review record. Invariants: the three adapters
+  are module-level `vectoriser -> estimator` classes behind the `Scorer` port with exactly the
+  parameters of 6.1, 6.2 and 6.3, pinned by full `get_params()`; stages still import no vendor
+  SDK (`bqc/evaluate.py` imports nothing from `bqc/cli.py` or `sklearn` estimators); the MLP's
+  `random_state` is `SEED`; the paired comparisons follow the one verdict rule of section 7; a
+  failed run writes no run JSON; tests never download or read `data/raw/`.
+- Real run (M4.T4, recorded in 13.9): 12 min 1 s wall, one MLP fit at 5,000 / 5,000 in 39.7 s,
+  under the 5-minute rule; sanity section `scored`.
+- Rulings recorded in `DESIGN.md`: 13.6 (early stopping needs 3 + 3 rows), 11.18 (`timing`
+  excluded from the determinism rule).
+
+Follow-ups:
+
+- **F1 (process):** the TDD order slipped at M3.T11, M4.T4 and M4.T8 (implementation before
+  tests). The M3 sign-off rule held: every task had an isolated mutation pass by `opus`, and each
+  survivor became a correction. Recorded without penalty.
+- **F11 (for the user, via M6.T1):** the first real run's pooled primary-arm numbers at target
+  FPR 0.01: `lr` recall 0.770 / FPR 0.0049; `mlp` 0.763 / 0.0118 (point estimate above target,
+  CI 0.0053-0.0261); `trivial` 0.613 / 0.0090. The trivial baseline is close to the MLP on recall
+  (8.6 item 2), so the generators may be too easy. Nothing acts on this before M6.T1 reports it
+  with the paired comparisons and the user decides.
+- **F12 (optional):** two tests in `tests/test_cli_evaluate.py` (the over-five-minutes message
+  pair) still fit the real MLP; a fake pins them equally.
+- **F13 (noted):** the MLP fit time (39.7 s) is above the 13.22 median of 17 s; different
+  machine, same software versions. The section 10 budget is unaffected.
 
 ### M4.T1: Logistic regression adapter
 

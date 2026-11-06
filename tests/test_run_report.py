@@ -91,7 +91,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(self.parameters, {
             "arms": list(ARMS), "models": ["lr", "mlp"], "target_fpr": 0.5,
             "negatives_size": 120, "n_splits": 3, "repeats": 2, "test_per_template": 5,
-            "eval_per_template": 4, "vocabulary_cap": 10_000})
+            "eval_per_template": 4, "vocabulary_cap": 10_000, "lofo": False})
 
     def test_one_fold_report_per_repeat_fold_and_arm_with_counts(self):
         for arm in ARMS:

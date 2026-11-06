@@ -1228,12 +1228,15 @@ Sign-off: pending.
 ### M3.T9: Leave-one-family-out
 
 - **Goal:** report recall and achieved FPR on each family at a threshold chosen without it.
-- **Design refs:** `DESIGN.md` `6cec6c6`: 8.2, 8.6 (item 1), 11.16; `a8b8600`: 11.30.
+- **Design refs:** `DESIGN.md` `6cec6c6`: 8.2, 8.6 (item 1), 11.16; `a8b8600`: 11.30; `7bcea5e`: 8.6
+  (item 1, `n` per arm).
 - **Files:** `bqc/evaluate.py`, `tests/test_lofo.py`.
 - **Acceptance criteria:**
   1. For each F in A-D (E has no LOFO row), per outer fold and per arm: the arm's training negatives
      stay unchanged, and positives come from the training-side templates of the other three families
-     only, at `n // n_remaining_training_templates` each, so the training side stays 1:1.
+     only, at `n // n_remaining_training_templates` each, so the training side stays 1:1. `n` is the
+     arm's training-negative count: the span count in the primary arm, the 384 training-side queries in
+     the comparison arm (`7bcea5e`); the comparison arm's main run keeps its fixed 20 per template.
   2. The threshold follows the arm's own rule (M3.T5 or M3.T13), chosen without F, so F is absent from
      every fit and from threshold selection.
   3. The test side is the same strings as the main run for that fold: the test-side queries, and F's
@@ -1267,6 +1270,35 @@ Sign-off: pending.
   arm: positives per template are `len(train_queries) // n_remaining` (the main run uses 20), so it stays
   1:1; the criteria's `n` is read that way there. Tests use 5 outer folds: with 3, an inner training fold
   can lose a family (the 11.16 error). The `--lofo` CLI flag is not wired (M4.T4).
+- **Validation (`opus`, `3ecd83f` against `7bcea5e`): CHANGES REQUESTED.** Suite: 536 tests, OK (33 s).
+  `fable`'s ruling matches the code: `n // len(train_templates)` in the primary arm, `len(train_queries) //
+  n_remaining` in the comparison arm, `QUOTA` when `leave_out` is None (pinned by
+  `test_folds.FoldDataTest.test_comparison_training_side`). Criteria 1-7 are met and covered; the fold check
+  sees the full test side before the restriction, and `compute_metrics` is never called on a LOFO fold.
+  Mutation run by `opus`, 20 mutants, each in its own copy: 19 caught (F text in training, both quotas, the
+  main-run quota, the test-row restriction two ways, the check on the restricted test side, the outer and
+  inner family lists three ways, the score-set prefix, the `difference` sign, `null` recall as 0, main
+  recall over all families, pooled FPR, FPR over all rows, the threshold source, `lofo` on by default). One
+  survives, item 1. No real data in this checkout, so no real LOFO run; 13.14 and the M3.T13 note (0 of 300
+  LOFO inner folds lose a family) cover the fold check on the real seeds. Process deviation (F1), disclosed
+  by `sonnet`: the `leave_out` plumbing was written before its tests and no mutation pass was run.
+  1. `tests/test_lofo.py:200` (`ReportTest`): no test reaches a `NaN` that appears only in a LOFO pass of
+     `build_run_report`. Mutant: at `bqc/evaluate.py:731` pass `leave_out=None` to the primary runner; the
+     whole suite still passes, so criterion 8's LOFO score-set name is unpinned where the run produces it
+     (the comparison arm is pinned only indirectly, by the inner family check raising). Fix: add a test,
+     in both arms, with a scorer factory whose scorers return `NaN` only once the main run's fits are
+     spent (or only when fitted without one family's texts), so that `build(lofo=True)` raises
+     `NonFiniteScoreError` naming `LOFO <F>` and the arm, and `build()` with the same factory doesn't raise.
+  2. `bqc/evaluate.py:696-701`: `parameters` doesn't record `lofo`, so a run with and without it has the
+     same `config_hash` and file-name prefix; M3.T8 criterion 1 puts every parameter in the config, and
+     criterion 6 here makes `lofo` one. Fix: add `"lofo": lofo` to `parameters`, and test that it is
+     `False` by default and `True` with `lofo=True`.
+  3. `bqc/evaluate.py:480` (109 columns) and `tests/test_lofo.py:214` (101): every other line of both
+     files is within 100. Fix: wrap them.
+  Follow-up, cost only (not a correction): the LOFO pass calls `iter_fold_data` once per family, so spans
+  and the test side are rebuilt four more times per run. The output is deterministic and the test strings
+  are asserted identical to the main run's, so nothing is wrong; if M6 timing shows it matters, build the
+  test side once and reuse it.
 
 ### M3.T14: Catalogue-gap check
 

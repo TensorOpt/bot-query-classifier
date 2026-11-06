@@ -735,6 +735,8 @@ def build_run_report(
     lofo: bool = False,
     catalogue_gap: bool = False,
     query_classes: Sequence[str] | None = None,
+    lofo_not_run: Mapping[str, Mapping[str, str]] | None = None,
+    gap_not_run: Mapping[str, Mapping[str, str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run every arm and model over the outer folds; return `(parameters, body)` for
     `write_report` (8.1, 8.2, 11.12).
@@ -749,11 +751,14 @@ def build_run_report(
     of each real query) each arm also has `catalogue_gap`: per model, the
     `catalogue_gap_section` of a pass on the same folds with the test side's classes removed;
     the primary arm adds `folds` (`products_removed` per fold) and `unclassified_products`.
-    A failed gap never stops the run.
+    A failed gap never stops the run. `lofo_not_run` and `gap_not_run` (arm -> model -> reason)
+    leave a model out of that section for that arm: it is not fitted there and its row is
+    `{"status": "not run", "reason": reason}` (10, PQ-5); the main fits are unaffected.
     No removed span, positive or sanity text is in it.
     """
     if catalogue_gap and query_classes is None:
         raise ValueError("catalogue_gap needs query_classes")
+    lofo_skip, gap_skip = lofo_not_run or {}, gap_not_run or {}
     parameters = {
         "arms": list(arms), "models": list(models), "target_fpr": target_fpr,
         "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
@@ -784,6 +789,8 @@ def build_run_report(
     for family in TRAINING_FAMILIES if lofo else ():
         for data in fold_data(leave_out=family):
             for model, make_scorer in models.items():
+                if model in lofo_skip.get(data.arm, {}):
+                    continue
                 lofo_results[data.arm][family][model].append(
                     runners[data.arm](data, make_scorer, target_fpr, model, leave_out=family))
     gap_results: dict[str, dict[str, list[FoldResult]]] = {
@@ -794,6 +801,8 @@ def build_run_report(
             products_removed.append({"repeat": data.repeat, "fold": data.fold,
                                      "products_removed": data.report["products_removed"]})
         for model, make_scorer in models.items():
+            if model in gap_skip.get(data.arm, {}):
+                continue
             gap_results[data.arm][model].append(
                 runners[data.arm](data, make_scorer, target_fpr, model, gap=True))
     body: dict[str, Any] = {}
@@ -803,14 +812,16 @@ def build_run_report(
     if lofo:
         for arm in arms:
             body[arm]["lofo"] = {
-                model: lofo_section(
+                model: _not_run(lofo_skip[arm][model]) if model in lofo_skip.get(arm, {})
+                else lofo_section(
                     {family: lofo_results[arm][family][model] for family in TRAINING_FAMILIES},
                     results[arm][model])
                 for model in models}
     if catalogue_gap:
         for arm in arms:
             body[arm]["catalogue_gap"] = {"models": {
-                model: catalogue_gap_section(rs, target_fpr)
+                model: _not_run(gap_skip[arm][model]) if model in gap_skip.get(arm, {})
+                else catalogue_gap_section(rs, target_fpr)
                 for model, rs in gap_results[arm].items()}}
         if PRIMARY in arms:
             body[PRIMARY]["catalogue_gap"].update(
@@ -821,6 +832,10 @@ def build_run_report(
             "target": length_mix(LENGTH_COUNTS),
             "repeats": [{"repeat": r, **mixes[r]} for r in sorted(mixes)]}
     return parameters, body
+
+
+def _not_run(reason: str) -> dict[str, str]:
+    return {"status": "not run", "reason": reason}
 
 
 def catalogue_gap_section(results: Sequence[FoldResult], target_fpr: float) -> dict[str, Any]:

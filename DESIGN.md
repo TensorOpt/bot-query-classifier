@@ -1544,6 +1544,13 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
 - (Closed 2026-11-05.) The MLP fit at 5,000 / 5,000 was estimated at 1-2 minutes
   from 987 s at 20,000 / 20,000; the SVD probe measured 9-29 s, median 17 s (13.22).
   The first full run re-records it in the run JSON.
+  (Measured 2026-11-06, M4.T4, `python -m bqc evaluate` defaults, primary arm only, Python
+  3.13.18, scikit-learn 1.9.1, numpy 2.5.4, 4 cores, working tree on top of `880d384`.) One
+  `MLPScorer.fit` at 5,000 / 5,000 took 39.7 s (`timing.mlp_final_fit_seconds` in the run JSON: a
+  `time.perf_counter()` around that one fit, not the spans or the threshold scores), under the
+  5-minute rule and above 13.22's median of 17 s (range 9-29 s). The whole run (15 outer folds x
+  3 models, the three final fits, sanity, part-number diagnostic, no `--lofo` or
+  `--catalogue-gap`) took 12 min 1 s of wall time (an earlier identical run: 12 min 57 s).
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
 - (Closed 2026-11-06.) No WANDS `query_class` contains `|`: checked by `fable` with
   `grep -c '|'` on a `query.csv` whose SHA-256 matches `data/CHECKSUMS`, 0 lines.

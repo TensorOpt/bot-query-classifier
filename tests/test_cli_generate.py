@@ -61,7 +61,7 @@ class DataTestCase(unittest.TestCase):
 
     def write_data(self, queries, names):
         q = "query_id\tquery\tquery_class\n" + "".join(
-            f"{i}\t{t}\tC\n" for i, t in enumerate(queries))
+            f"{i}\t{t}\tC{i % 8}\n" for i, t in enumerate(queries))
         blank = ["x"] * (len(PRODUCT_HEADER) - 2)
         p = "\t".join(PRODUCT_HEADER) + "\n" + "".join(
             "\t".join([str(i), t, *blank]) + "\n" for i, t in enumerate(names))

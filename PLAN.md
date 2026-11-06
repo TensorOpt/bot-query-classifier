@@ -1932,7 +1932,15 @@ Sign-off: pending.
   missing raw file; a stub model returning `NaN` exits non-zero and writes no run JSON;
   **real model and fold determinism end to end** (11.18).
 - **Depends on:** M2.T8, M3.T9, M3.T11, M3.T12, M3.T14, M3.T16, M4.T1, M4.T2, M4.T3.
-- **Status:** todo
+- **Status:** done
+  - **Implementation (sonnet, 2026-11-06):** `_evaluate` in `bqc/cli.py` composes `build_run_report`,
+    one `fit_final_model` per arm and model, `sanity_section` and `part_number_section` into one
+    `write_report` call (pickles first, so a failure leaves neither). `build_run_report` gained
+    `lofo_not_run` and `gap_not_run` (arm -> model -> reason); the CLI builds them, including the
+    comparison-arm MLP rule. Real run, defaults, primary arm: 12 min 1 s, one MLP fit 39.7 s (under
+    5 minutes), sanity `scored`; recorded in 13.9. `tests/test_cli_generate.py` fixture: query classes
+    `C0`-`C7` instead of `C` (the gap pass needs several classes). Parameters in the run JSON also
+    carry `lofo_models` and `catalogue_gap_models`.
 
 ### M4.T8: MLP-vs-LR and between-arm paired comparisons
 

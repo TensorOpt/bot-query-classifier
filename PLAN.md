@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T10.
+**Next task:** M3.T11.
 
 ### Order constraints
 
@@ -1512,7 +1512,12 @@ Sign-off: pending.
   - Comparison: 960-equivalent fit input with no E; the threshold comes from out-of-fold scores.
   - Pickle round trip gives identical scores for both arms.
 - **Depends on:** M3.T5, M3.T13.
-- **Status:** todo
+- **Status:** done
+  - `fit_final_model` / `save_final_model` / `load_final_model` in `bqc/evaluate.py`; `FinalModel` (arm, model,
+    scorer, threshold, fit_warnings, report) is what is pickled, as `final-<arm>-<model>-<UTC stamp>.pkl`, never
+    overwritten. `check_finite` takes `repeat=None` (and `fold=None`) for a final model: the message says
+    "final model". The inner out-of-fold loop of `run_comparison_fold` moved to `_inner_out_of_fold`, shared.
+    Real scorers (M4) must be module-level classes to pickle.
 
 ### M3.T11: Sanity section of the run
 

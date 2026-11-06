@@ -1538,6 +1538,7 @@ Sign-off: pending.
        section 10 make `SEED` the final model's seed. Required: a test that the primary fit's positives equal the
        screened kept samples of `registry.render(vocabulary, SEED, templates, n // 24)` with the span
        vocabulary (or an equivalent pin that fails under `SEED + 1`).
+    Corrections addressed in the `test(M3.T10)` commit that follows `f2424dd` (tests only, no production change).
     Disclosed points, accepted: the `_inner_out_of_fold` extraction is behaviour-preserving (same groups,
     `SEED + repeat`, `leave_out`; all M3.T13 tests pass) and belongs in this commit since the final model is
     its second caller (DRY). `check_finite(repeat=None)` saying "final model" meets criterion 5 and 11.30.

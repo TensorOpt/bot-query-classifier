@@ -103,6 +103,9 @@ class ScoredTest(unittest.TestCase):
         models = result["models"]
         self.assertEqual({a: set(m) for a, m in models.items()},
                          {PRIMARY: {"lr", "mlp"}, COMPARISON: {"lr"}})
+        self.assertEqual(models[PRIMARY]["lr"]["threshold"], 0.5)
+        self.assertEqual(models[PRIMARY]["mlp"]["threshold"], 0.15)
+        self.assertEqual(models[COMPARISON]["lr"]["threshold"], 0.85)
         self.assertEqual(models[PRIMARY]["mlp"]["confusion_matrix"], [[1, 1], [0, 2]])
         self.assertEqual(models[COMPARISON]["lr"]["confusion_matrix"], [[2, 0], [1, 1]])
         self.assertEqual([d["id"] for d in models[PRIMARY]["mlp"]["disagreements"]], [2])
@@ -184,7 +187,9 @@ class DuplicateTest(unittest.TestCase):
 
 
 class NoLeakTest(unittest.TestCase):
-    SANITY = [q.query for q in load_sanity(FIXTURES / "sanity_full.csv", WANDS).queries]
+    # "pwhhaj pwhhba" is a PRODUCTS span the primary fit (n=120) would otherwise contain
+    SPAN = "pwhhaj pwhhba"
+    SANITY = [q.query for q in load_sanity(FIXTURES / "sanity_full.csv", WANDS).queries] + [SPAN]
 
     def test_sanity_section_never_fits(self):
         class NoFit(FakeScorer):
@@ -199,9 +204,11 @@ class NoLeakTest(unittest.TestCase):
         for arm in (PRIMARY, COMPARISON):
             with self.subTest(arm):
                 factory = Factory()
-                fit_final_model(arm, factory, 0.1, "lr", REAL, PRODUCTS, [], self.SANITY,
-                                n=120, registry=build_registry())
+                fitted = fit_final_model(arm, factory, 0.1, "lr", REAL, PRODUCTS, [],
+                                         self.SANITY, n=120, registry=build_registry())
                 self.assertTrue(factory.made)
+                if arm == PRIMARY:
+                    self.assertGreaterEqual(fitted.report["span_removals"]["sanity"], 1)
                 for scorer in factory.made:
                     self.assertFalse(set(self.SANITY) & set(scorer.fit_texts))
 

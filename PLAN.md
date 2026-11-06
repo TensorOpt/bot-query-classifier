@@ -31,7 +31,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M3.T11.
+**Next task:** the M3.T10 corrections (listed under that task, `fix(M3.T10)`), then M3.T11.
 
 ### Order constraints
 
@@ -1518,6 +1518,34 @@ Sign-off: pending.
     overwritten. `check_finite` takes `repeat=None` (and `fold=None`) for a final model: the message says
     "final model". The inner out-of-fold loop of `run_comparison_fold` moved to `_inner_out_of_fold`, shared.
     Real scorers (M4) must be module-level classes to pickle.
+  - **Validation (opus, 2026-11-06): CHANGES REQUESTED.** Suite 601 OK. Mutation pass (copy of `bqc/`, `tests/`,
+    `data/`): 15 of 18 mutants killed (E rendered, all 30 templates in the quota, `n // 25`, refit on fewer rows,
+    3 real queries missing from the comparison negatives, a fake `repeat=0` in the context, drops zeroed in the
+    report, real queries in the primary fit, inner seed `SEED + 1`, sanity list not screened, part numbers not
+    dropped, span seed `SEED + 1`, no finite check on the primary threshold scores). Three survive:
+    1. `tests/test_final_model.py:30`: `N = 120` gives `120 // 23 == 120 // 24 == 5`, so a primary quota of
+       `n // 23` (`bqc/evaluate.py:971`) passes every test (mutant run: OK). Required: pin the quota with an `n`
+       where `n // 23`, `n // 24` and `n // 25` all differ (e.g. 299: 13, 12, 11), in the primary
+       positive-count assertion of `test_one_fit_on_spans_and_all_24_templates_without_e_or_real`.
+    2. `tests/test_final_model.py:85` and `:124`: every `REAL` string is alphabetic, so `FakeScorer` scores all
+       of them 0.0 and `select_threshold` gives `(0.0, 1.0, ...)` over any subset. Scoring the threshold over
+       `real_queries[:-5]` (primary, `bqc/evaluate.py:986`) or `out_of_fold[:len(negatives) - 5]`
+       (comparison, `bqc/evaluate.py:993`) passes every test. Required: in both tests give the real queries
+       distinct scores through `Factory` overrides (e.g. `REAL[i] -> (i + 1) / 100`, so the dropped tail
+       holds the top scores) and assert the full `Threshold` (value and `fpr`) equals `select_threshold` over
+       all `len(REAL)` scores at a target where a subset would differ (e.g. 0.1).
+    3. `bqc/evaluate.py:980`: rendering positives with `SEED + 1` instead of `SEED` passes every test. 8.7 and
+       section 10 make `SEED` the final model's seed. Required: a test that the primary fit's positives equal the
+       screened kept samples of `registry.render(vocabulary, SEED, templates, n // 24)` with the span
+       vocabulary (or an equivalent pin that fails under `SEED + 1`).
+    Disclosed points, accepted: the `_inner_out_of_fold` extraction is behaviour-preserving (same groups,
+    `SEED + repeat`, `leave_out`; all M3.T13 tests pass) and belongs in this commit since the final model is
+    its second caller (DRY). `check_finite(repeat=None)` saying "final model" meets criterion 5 and 11.30.
+    Pickling the whole `FinalModel` is fine: `arm` and `model` identify it for M3.T11/M3.T12, and `report`
+    holds only `_side` counts and `build_spans` removal counts, no text. The pickling finding sits next to
+    the code that depends on it (allowed by `CLAUDE.md`); its consequence for M4 is now an acceptance
+    criterion of M4.T1, M4.T2 and M4.T3. No `check_fold` on the final fit's input: not required, and the
+    comparison arm's inner folds are checked.
 
 ### M3.T11: Sanity section of the run
 
@@ -1595,6 +1623,7 @@ Sign-off: pending.
   - Empty and all-unknown strings give the same score, and don't raise (11.1, 11.3).
   - Calling `score` before `fit` raises.
   - No metric values are asserted (section 10).
+  - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M3.T1, M3.T2.
 - **Status:** todo
 
@@ -1611,6 +1640,7 @@ Sign-off: pending.
   - Empty string doesn't raise (11.1).
   - Parameter values.
   - A forced `max_iter=1` fit emits `ConvergenceWarning`, and the fit still returns (11.12).
+  - Pickle round trip of a fitted adapter (module-level class, M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
 - **Status:** todo
 
@@ -1623,7 +1653,8 @@ Sign-off: pending.
   length, word count, non-alphanumeric ratio), computed on normalised text. Marked as
   reported, never selected.
 - **Tests:** hand-computed features for a few strings, including `""` with no division by
-  zero (11.1); scores in `[0, 1]`.
+  zero (11.1); scores in `[0, 1]`; pickle round trip of a fitted adapter (module-level class,
+  M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
 - **Status:** todo
 

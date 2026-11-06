@@ -9,7 +9,7 @@ from unittest import mock
 
 from fakes import FakeScorer
 from sklearn.exceptions import ConvergenceWarning
-from synth_stubs import build_registry
+from synth_stubs import build_family, build_registry
 from test_folds import CONFIG, PRODUCTS, REAL, custom_registry
 
 import bqc.evaluate
@@ -19,12 +19,13 @@ from bqc.evaluate import (
     ARMS,
     COMPARISON,
     PRIMARY,
+    FoldError,
     build_run_report,
     length_mix,
     run_report,
 )
 from bqc.negatives import LENGTH_COUNTS, REMOVAL_KINDS, Span, build_spans
-from bqc.synth.registry import ALL_FAMILIES
+from bqc.synth.registry import ALL_FAMILIES, EVAL_FAMILY, Registry, Template
 
 ROOT = Path(bqc.evaluate.__file__).resolve().parent
 
@@ -155,6 +156,81 @@ class ThresholdFieldsTest(unittest.TestCase):
         self.assertEqual(set(body), {COMPARISON})
 
 
+class OneFoldWarnsScorer(LengthScorer):
+    """Warns on the 4th fit of a counter shared by every scorer a factory makes."""
+    fits = 0
+
+    def fit(self, texts, y):
+        type(self).fits += 1
+        if type(self).fits == 4:
+            warnings.warn("only here", ConvergenceWarning)
+        return super().fit(texts, y)
+
+
+class FitWarningPlacementTest(unittest.TestCase):
+    def test_a_warning_sits_on_its_own_fold_entry_only(self):
+        class Fresh(OneFoldWarnsScorer):
+            fits = 0
+
+        # primary arm, one fit per fold, repeat-major: the 4th fit is repeat 1, fold 0
+        _, body = build(models={"w": Fresh}, arms=[PRIMARY])
+        got = {(e["repeat"], e["fold"]): e["fit_warnings"]
+               for e in body[PRIMARY]["models"]["w"]["folds"]}
+        self.assertEqual(got.pop((1, 0)), ["ConvergenceWarning: only here"])
+        self.assertTrue(all(w == [] for w in got.values()))
+        self.assertEqual(len(got), 5)
+
+
+def vocabulary_registry():
+    """Stub registry whose last template per family renders one token of the vocabulary."""
+    registry = Registry()
+    for family in ALL_FAMILIES:
+        build_family(registry, family)
+        last = registry._templates[family].pop()
+        registry.register(Template(
+            family, last.template_id, last.hard, lambda rng, vocab: rng.choice(vocab)))
+    return registry
+
+
+def shortfalls(body, side="train"):
+    return sum(sum(f[side]["shortfall"].values()) for f in body[PRIMARY]["folds"])
+
+
+class ArgumentsReachTheFoldsTest(unittest.TestCase):
+    """Every option of build_run_report must reach iter_fold_data (invented strings only)."""
+
+    def test_a_positive_equal_to_a_sanity_query_raises(self):
+        invented = "invented sanity probe"
+        registry = custom_registry([invented])
+        with self.assertRaises(FoldError):
+            build(registry=registry, sanity=[invented])
+
+    def test_part_number_strings_are_dropped_from_positives(self):
+        invented = "zq-4417"
+        registry = custom_registry([invented, "fresh one", "fresh two", "fresh three"])
+
+        def dropped(part_numbers):
+            _, body = build(registry=registry, part_numbers=part_numbers, arms=[PRIMARY])
+            return sum(f[side]["dropped"].get("part_numbers", 0)
+                       for f in body[PRIMARY]["folds"] for side in ("train", "test"))
+
+        self.assertGreater(dropped([invented]), 0)
+        self.assertEqual(dropped([]), 0)
+
+    def test_vocabulary_cap_limits_the_primary_positives_vocabulary(self):
+        registry = vocabulary_registry()
+        _, capped = build(registry=registry, vocabulary_cap=2, arms=[PRIMARY])
+        _, wide = build(registry=registry, vocabulary_cap=10_000, arms=[PRIMARY])
+        self.assertGreater(shortfalls(capped), shortfalls(wide))
+
+    def test_per_template_counts_are_not_swapped(self):
+        _, body = build(arms=[PRIMARY])
+        e_templates = len(build_registry().templates(EVAL_FAMILY))
+        for f in body[PRIMARY]["folds"]:
+            self.assertEqual(f["test"]["requested_per_template"], 5)
+            self.assertEqual(f["test"]["families"][EVAL_FAMILY], 4 * e_templates)
+
+
 class SpanMixTest(unittest.TestCase):
     @staticmethod
     def spans(seed, per_k):
@@ -243,6 +319,8 @@ class DeterminismAndWriterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             a, b = self.write(directory, 1), self.write(directory, 2)
             self.assertNotEqual(a.name, b.name)
+            self.assertTrue(a.name.endswith("-20261106T120001000000Z.json"), a.name)
+            self.assertTrue(b.name.endswith("-20261106T120002000000Z.json"), b.name)
             self.assertEqual(a.read_text(), b.read_text())
             self.assertEqual(a.name.split("-")[:2], b.name.split("-")[:2])
 

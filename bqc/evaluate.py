@@ -672,8 +672,10 @@ def build_run_report(
         arm: {model: [] for model in models} for arm in arms}
     mixes: dict[int, dict[str, Any]] = {}
     for data in iter_fold_data(
-            real_queries, products, part_numbers, sanity, arms, n, registry, n_splits,
-            repeats, SEED, test_per_template, eval_per_template, vocabulary_cap):
+            real_queries=real_queries, products=products, part_numbers=part_numbers,
+            sanity=sanity, arms=arms, n=n, registry=registry,
+            n_splits=n_splits, repeats=repeats, seed=SEED, test_per_template=test_per_template,
+            eval_per_template=eval_per_template, vocabulary_cap=vocabulary_cap):
         report = dict(data.report)
         if "span_lengths" in report:  # the same for every fold of a repeat: kept once
             mixes[data.repeat] = length_mix(report.pop("span_lengths"))

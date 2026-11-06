@@ -1299,6 +1299,7 @@ Sign-off: pending.
   and the test side are rebuilt four more times per run. The output is deterministic and the test strings
   are asserted identical to the main run's, so nothing is wrong; if M6 timing shows it matters, build the
   test side once and reuse it.
+  Corrections addressed in the `fix(M3.T9)` commit that follows `ab29b45`.
 
 ### M3.T14: Catalogue-gap check
 

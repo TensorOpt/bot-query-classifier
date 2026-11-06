@@ -198,6 +198,30 @@ class SectionTest(unittest.TestCase):
 
 
 class ReportTest(unittest.TestCase):
+    def test_nan_only_in_a_lofo_pass_names_the_lofo_score_set(self):
+        def late_nan_factory(main_fits):
+            made = []
+
+            def factory():
+                scorer = FakeScorer()
+                nan = len(made) >= main_fits  # fits after the main run's are LOFO fits
+                made.append(scorer)
+                plain = scorer.score
+                scorer.score = lambda texts: np.full(len(texts), np.nan) if nan else plain(texts)
+                return scorer
+            return factory
+
+        for arm, main_fits in ((PRIMARY, 10), (COMPARISON, 60)):
+            with self.assertRaises(NonFiniteScoreError) as ctx:
+                build(models={"lr": late_nan_factory(main_fits)}, arms=(arm,), lofo=True)
+            self.assertIn("LOFO A", str(ctx.exception))
+            self.assertIn(f"arm {arm}", str(ctx.exception))
+            build(models={"lr": late_nan_factory(main_fits)}, arms=(arm,))  # does not raise
+
+    def test_parameters_record_lofo(self):
+        self.assertIs(build(arms=(PRIMARY,))[0]["lofo"], False)
+        self.assertIs(build(arms=(PRIMARY,), lofo=True)[0]["lofo"], True)
+
     def test_off_by_default(self):
         _, body = build()
         for arm in (PRIMARY, COMPARISON):
@@ -211,8 +235,8 @@ class ReportTest(unittest.TestCase):
             self.assertNotIn("lofo", body[arm]["models"]["lr"])
             for row in section.values():
                 self.assertEqual(len(row["folds"]), 10)
-                self.assertEqual({"recall", "fpr", "main_recall", "difference"} - set(row["pooled"]),
-                                 set())
+                self.assertEqual(
+                    {"recall", "fpr", "main_recall", "difference"} - set(row["pooled"]), set())
                 for fold in row["folds"]:
                     self.assertNotIn("roc_auc", fold)
         json.dumps(body)

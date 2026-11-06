@@ -477,7 +477,8 @@ def run_comparison_fold(
             out_of_fold[held_out] = scorer.score([texts[i] for i in held_out])
         scorer = make_scorer().fit(texts, y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
-    out_of_fold = check_finite(out_of_fold, **context, score_set=_score_set("out-of-fold scores", leave_out))
+    out_of_fold = check_finite(
+        out_of_fold, **context, score_set=_score_set("out-of-fold scores", leave_out))
     real = [i for i, f in enumerate(families) if f is None]
     threshold = select_threshold(out_of_fold[real], target_fpr)
     return _test_result(data, scorer, threshold, model, fit_warnings, leave_out)
@@ -697,7 +698,7 @@ def build_run_report(
         "arms": list(arms), "models": list(models), "target_fpr": target_fpr,
         "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
         "test_per_template": test_per_template, "eval_per_template": eval_per_template,
-        "vocabulary_cap": vocabulary_cap,
+        "vocabulary_cap": vocabulary_cap, "lofo": lofo,
     }
     runners = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
     fold_reports: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}

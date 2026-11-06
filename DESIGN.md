@@ -808,7 +808,10 @@ WANDS from *these generators*". Five additional checks make that limitation visi
      training-side templates of the other three families only, rendered at
      `n / n_remaining_training_templates` each so the training side stays 1:1
      (there is no "3:4": the class ratio is held fixed and only the family mix
-     changes).
+     changes). `n` here is the arm's training-negative count: the span count in
+     the primary arm, the 384 training-side queries in the comparison arm, whose
+     main run renders a fixed 20 per template (8.2) rather than a 1:1 quota.
+     Ruled by `fable` on M3.T9, 2026-11-06.
    - **Threshold:** the arm's own rule of 8.2 (cross-fit on the 384 training-side
      queries in the primary arm; the nested inner loop in the comparison arm),
      chosen without F.

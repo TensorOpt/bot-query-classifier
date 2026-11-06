@@ -1858,7 +1858,7 @@ Sign-off: pending.
   zero (11.1); scores in `[0, 1]`; pickle round trip of a fitted adapter (module-level class,
   M3.T10) gives identical scores.
 - **Depends on:** M4.T1.
-- **Status:** todo
+- **Status:** done
 
 ### M4.T4: `bqc evaluate` command
 

@@ -845,7 +845,8 @@ def build_run_report(
     primary arm only, `span_lengths`: the realised mix per repeat next to the target.
     A run with both arms adds `arm_comparison` (per model, `paired_comparison` of the primary
     arm minus the comparison arm); a run with `lr` and `mlp` adds `model_comparison` under each
-    arm (MLP minus LR). No comparison is made across run files (8.2).
+    arm (MLP minus LR), and one with `lr` and `lr_hand` adds `model_comparison_hand` (`lr_hand`
+    minus LR). No comparison is made across run files (8.2).
     With `lofo` (off by default; 8.6 item 1) each arm also has `lofo`: per model, the
     `lofo_section` rows, run on the same folds with each family of A-D left out in turn.
     With `catalogue_gap` (off by default; 8.6 item 5; needs `query_classes`, the `query_class`
@@ -936,10 +937,10 @@ def build_run_report(
         body["arm_comparison"] = {
             model: paired_comparison(folds_of[PRIMARY][model], folds_of[COMPARISON][model])
             for model in models}
-    if LR in models and MLP in models:
-        for arm in arms:
-            body[arm]["model_comparison"] = paired_comparison(
-                folds_of[arm][MLP], folds_of[arm][LR])
+    for key, challenger in (("model_comparison", MLP), ("model_comparison_hand", LR_HAND)):
+        if LR in models and challenger in models:
+            for arm in arms:
+                body[arm][key] = paired_comparison(folds_of[arm][challenger], folds_of[arm][LR])
     if PRIMARY in arms:
         body[PRIMARY]["span_lengths"] = {
             "target": length_mix(LENGTH_COUNTS),

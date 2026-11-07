@@ -181,6 +181,31 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(backward["recall"]["wins"], 0)
 
 
+class HandSignTest(unittest.TestCase):
+    """`model_comparison_hand` is `lr_hand` minus `lr`: hand-built fold lists, exact numbers."""
+
+    def test_lr_hand_minus_lr_statistics_and_verdict(self):
+        # Recall differences 0.25 x 4: sd 0, so the mean is beyond 2 se; FPR differences
+        # -0.125 (lr_hand lower), so the gate holds.
+        hand, lr = sides([0.25] * 4)
+        hand_fpr, lr_fpr = sides([-0.125] * 4, metric="fpr")
+        hand = [{**h, "fpr": f["fpr"]} for h, f in zip(hand, hand_fpr)]
+        lr = [{**h, "fpr": f["fpr"]} for h, f in zip(lr, lr_fpr)]
+        section = paired_comparison(hand, lr)
+        self.assertEqual(section["recall"]["differences"], [0.25] * 4)
+        self.assertEqual((section["recall"]["mean"], section["recall"]["sd"],
+                          section["recall"]["se"], section["recall"]["wins"]), (0.25, 0.0, 0.0, 4))
+        self.assertEqual(section["fpr"]["differences"], [-0.125] * 4)
+        self.assertEqual(section["fpr"]["wins"], 4)
+        self.assertTrue(section["justified"])
+        self.assertFalse(section["worse"])
+        swapped = paired_comparison(lr, hand)  # the sign flips: lr minus lr_hand
+        self.assertEqual(swapped["recall"]["differences"], [-0.25] * 4)
+        self.assertFalse(swapped["justified"])
+        self.assertTrue(swapped["worse"])
+        self.assertFalse(swapped["fpr_gate"]["holds"] and swapped["fpr"]["mean"] > 0)
+
+
 class ReportSectionsTest(unittest.TestCase):
     """The sections in a small real report; models are LengthScorer variants."""
 
@@ -252,6 +277,28 @@ class ReportSectionsTest(unittest.TestCase):
             for arm in (PRIMARY, COMPARISON):
                 self.assertNotIn("model_comparison", body[arm])
             self.assertEqual(set(body["arm_comparison"]), set(models))
+
+    def test_model_comparison_hand_is_lr_hand_minus_lr_under_each_arm(self):
+        models = {"lr": LengthScorer, "lr_hand": self.Low, "mlp": self.Low}
+        _, body = build(arms=[PRIMARY, COMPARISON], models=models)
+        for arm in (PRIMARY, COMPARISON):
+            hand, lr = (body[arm]["models"][m]["folds"] for m in ("lr_hand", "lr"))
+            self.assertEqual(body[arm]["model_comparison_hand"], paired_comparison(hand, lr))
+            self.assertEqual(body[arm]["model_comparison_hand"]["recall"]["differences"], [
+                a["recall"]["recall"] - b["recall"]["recall"] for a, b in zip(hand, lr)])
+            mlp = body[arm]["models"]["mlp"]["folds"]  # model_comparison is unchanged
+            self.assertEqual(body[arm]["model_comparison"], paired_comparison(mlp, lr))
+        self.assertEqual(set(body["arm_comparison"]), set(models))  # covers lr_hand too
+
+    def test_model_comparison_hand_needs_both_lr_and_lr_hand(self):
+        for models in ({"lr": LengthScorer}, {"lr_hand": LengthScorer}, {"other": LengthScorer},
+                       {"lr": LengthScorer, "mlp": self.Low}):
+            _, body = build(arms=[PRIMARY, COMPARISON], models=models)
+            for arm in (PRIMARY, COMPARISON):
+                self.assertNotIn("model_comparison_hand", body[arm])
+        _, body = build(arms=[PRIMARY], models={"lr": LengthScorer, "lr_hand": self.Low})
+        self.assertIn("model_comparison_hand", body[PRIMARY])
+        self.assertNotIn("model_comparison", body[PRIMARY])
 
     def test_no_smote_keys(self):
         _, body = build(arms=[PRIMARY, COMPARISON], models=self.BOTH)

@@ -3373,7 +3373,7 @@ cost little and aren't optimised.
     catalogue gap; `--lofo lr,trivial` reports `lr_hand`'s LOFO rows as not run with the reason, while
     its main fit and final model are present.
 - **Depends on:** M7.T5, M4.T8.
-- **Status:** todo
+- **Status:** done
 
 ### M7.T7: Re-run on real data and report
 

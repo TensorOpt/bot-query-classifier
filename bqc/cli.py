@@ -86,7 +86,8 @@ MLP_FIT_LIMIT_SECONDS = 300
 
 
 class CommandError(Exception):
-    """`generate`, `evaluate` or `cluster` can't finish; the message holds no sanity or removed text."""
+    """`generate`, `evaluate` or `cluster` can't finish; the message holds no sanity or removed
+    text."""
 
 
 def build_parser() -> argparse.ArgumentParser:

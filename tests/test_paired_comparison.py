@@ -203,7 +203,8 @@ class HandSignTest(unittest.TestCase):
         self.assertEqual(swapped["recall"]["differences"], [-0.25] * 4)
         self.assertFalse(swapped["justified"])
         self.assertTrue(swapped["worse"])
-        self.assertFalse(swapped["fpr_gate"]["holds"] and swapped["fpr"]["mean"] > 0)
+        self.assertEqual(swapped["fpr"]["differences"], [0.125] * 4)  # lr minus lr_hand
+        self.assertFalse(swapped["fpr_gate"]["holds"])  # a rise beyond noise: mean 0.125, se 0
 
 
 class ReportSectionsTest(unittest.TestCase):
@@ -213,6 +214,11 @@ class ReportSectionsTest(unittest.TestCase):
         """Scores by length alone, so its folds differ from LengthScorer's."""
         def score(self, texts):
             return FakeScorer().score(texts) * 0 + [(len(t) % 7) / 7 for t in texts]
+
+    class Mid(LengthScorer):
+        """A third scorer, so its folds differ from both LengthScorer's and Low's."""
+        def score(self, texts):
+            return FakeScorer().score(texts) * 0 + [(len(t) % 5) / 5 for t in texts]
 
     BOTH = {"lr": LengthScorer, "mlp": Low}
 
@@ -279,9 +285,10 @@ class ReportSectionsTest(unittest.TestCase):
             self.assertEqual(set(body["arm_comparison"]), set(models))
 
     def test_model_comparison_hand_is_lr_hand_minus_lr_under_each_arm(self):
-        models = {"lr": LengthScorer, "lr_hand": self.Low, "mlp": self.Low}
+        models = {"lr": LengthScorer, "lr_hand": self.Mid, "mlp": self.Low}
         _, body = build(arms=[PRIMARY, COMPARISON], models=models)
         for arm in (PRIMARY, COMPARISON):
+            self.assertNotEqual(body[arm]["model_comparison_hand"], body[arm]["model_comparison"])
             hand, lr = (body[arm]["models"][m]["folds"] for m in ("lr_hand", "lr"))
             self.assertEqual(body[arm]["model_comparison_hand"], paired_comparison(hand, lr))
             self.assertEqual(body[arm]["model_comparison_hand"]["recall"]["differences"], [

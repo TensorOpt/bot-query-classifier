@@ -56,6 +56,7 @@ COMPARISON = "real"
 ARMS = (PRIMARY, COMPARISON)
 LR = "lr"  # the model names of 6.1 and 6.2; the CLI's MODEL_FACTORIES keys
 MLP = "mlp"
+LR_HAND = "lr_hand"  # 6.5; the fourth MODEL_FACTORIES key
 N_SPLITS = 5
 REPEATS = 3
 TEST_PER_TEMPLATE = 100

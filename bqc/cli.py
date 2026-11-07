@@ -13,6 +13,7 @@ from bqc.evaluate import (
     ARMS,
     COMPARISON,
     LR,
+    LR_HAND,
     MLP,
     PRIMARY,
     FoldError,
@@ -23,7 +24,7 @@ from bqc.evaluate import (
     sanity_section,
     save_final_model,
 )
-from bqc.models import LogisticRegressionScorer, MLPScorer, Scorer, TrivialScorer
+from bqc.models import LogisticRegressionScorer, LRHandScorer, MLPScorer, Scorer, TrivialScorer
 from bqc.negatives import (
     DEFAULT_N,
     VOCABULARY_CAP,
@@ -76,7 +77,8 @@ MIN_DISTINCT_SHARE = 0.5  # a template under this share of distinct strings is a
 TRAINING_TEMPLATE_COUNT = 24  # templates of A-D: positives per template are n // 24
 
 MODEL_FACTORIES: dict[str, Callable[[], Scorer]] = {
-    LR: LogisticRegressionScorer, MLP: MLPScorer, "trivial": TrivialScorer}
+    LR: LogisticRegressionScorer, MLP: MLPScorer, "trivial": TrivialScorer,
+    LR_HAND: LRHandScorer}  # section 10 order: also the default --models
 DEFAULT_TARGET_FPR = 0.01
 # Section 10: above this per fit, the M6 invocation leaves the MLP out of --lofo and
 # --catalogue-gap. `evaluate` only reports a fit over it; it applies no rule.

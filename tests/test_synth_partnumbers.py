@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -11,6 +12,7 @@ from bqc.synth.partnumbers import (
     LABEL,
     PER_SHAPE,
     SHAPE_IDS,
+    SHAPES,
     generate_part_numbers,
 )
 from bqc.synth.registry import (
@@ -135,6 +137,21 @@ class PartNumbersTest(unittest.TestCase):
 
     def test_no_collision_with_fixture_sanity_by_default(self):
         self.assertEqual(len(gen(negatives=VOCAB, sanity=SANITY)), 100)
+
+
+
+class ShapeTableTest(unittest.TestCase):
+    def test_shapes_are_public_and_match_shape_ids(self):
+        self.assertEqual(tuple(name for name, _ in SHAPES), SHAPE_IDS)
+        self.assertTrue(all(callable(render) for _, render in SHAPES))
+
+    def test_generate_part_numbers_output_is_pinned(self):
+        # Digest taken before SHAPES was made public (M7.T2).
+        samples = generate_part_numbers(
+            ["chair", "sofa", "leather", "table", "oak", "w1"], 42, [], [])
+        digest = hashlib.sha256("\n".join(s.text for s in samples).encode()).hexdigest()
+        self.assertEqual(
+            digest, "dec1b9429be4aff3170ddce2c943e6b830d177d8c2f1e46dfce4fb91debba128")
 
 
 if __name__ == "__main__":

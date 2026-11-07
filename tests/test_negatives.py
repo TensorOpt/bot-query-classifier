@@ -10,13 +10,20 @@ from unittest import mock
 from bqc import negatives
 from bqc.negatives import (
     LENGTH_COUNTS,
+    PART_NUMBER_CAP_FACTOR,
+    PART_NUMBER_COUNT,
+    PART_NUMBER_REMOVAL_KINDS,
+    PART_NUMBER_SEED_OFFSET,
+    PART_NUMBER_SOURCE,
     VOCABULARY_CAP,
     PoolExhausted,
+    build_part_number_negatives,
     build_spans,
     fold_ascii,
     token_occurrences,
 )
 from bqc.preprocess import normalise
+from bqc.synth.partnumbers import SHAPE_IDS, SHAPES
 from bqc.wands import WandsProduct
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -263,6 +270,149 @@ class ModuleRulesTest(unittest.TestCase):
                 self.assertNotIn(name, ("pathlib", "io", "csv"))
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 self.assertNotEqual(node.func.id, "open")
+
+
+
+
+VOCAB = ["leather", "sofa", "area", "rug", "accent", "chair", "oak", "desk"]
+SEED_PN = 7 + PART_NUMBER_SEED_OFFSET
+
+
+def pn(vocab=VOCAB, seed=SEED_PN, training=(), real=(), parts=(), sanity=()):
+    return build_part_number_negatives(vocab, seed, training, real, parts, sanity)
+
+
+def sequence_shape(prefix):
+    """A shape that emits each string twice in a row: s0, s0, s1, s1, ..."""
+    calls = []
+
+    def render(rng, vocabulary):
+        text = f"{prefix}{len(calls) // 2}"
+        calls.append(text)
+        return text
+
+    render.calls = calls
+    return render
+
+
+class PartNumberNegativesTest(unittest.TestCase):
+    def test_constants(self):
+        self.assertEqual(PART_NUMBER_SEED_OFFSET, 100_000)
+        self.assertEqual(PART_NUMBER_COUNT, 100)
+        self.assertEqual(PART_NUMBER_CAP_FACTOR, 20)
+        self.assertEqual(PART_NUMBER_SOURCE, "part_number")
+
+    def test_hundred_outputs_25_per_shape_in_order(self):
+        out, counts = pn()
+        self.assertEqual(len(out), 100)
+        self.assertEqual([o.template_id for o in out[::25]], list(SHAPE_IDS))
+        for i, shape in enumerate(SHAPE_IDS):
+            self.assertEqual({o.template_id for o in out[i * 25:(i + 1) * 25]}, {shape})
+        self.assertEqual({o.source for o in out}, {"part_number"})
+        self.assertEqual({o.seed for o in out}, {SEED_PN})
+        self.assertEqual(len({o.text for o in out}), 100)
+        self.assertEqual(tuple(counts), PART_NUMBER_REMOVAL_KINDS)
+        self.assertEqual(sum(counts.values()), 0)
+
+    def test_same_seed_same_list_and_offset_seeds_differ(self):
+        base = 42 + PART_NUMBER_SEED_OFFSET
+        self.assertEqual(pn(seed=base), pn(seed=base))
+        texts = [[o.text for o in pn(seed=base + r)[0]] for r in (0, 1)]
+        self.assertNotEqual(texts[0], texts[1])
+
+    def test_words_come_only_from_the_vocabulary(self):
+        vocab = ["chair"] * 5 + ["zzsentinel"]
+        out, _ = pn(vocab)
+        rows = [o.text.split() for o in out if o.template_id == "words_part_number"]
+        words = [w for row in rows for w in row[:-1]]
+        self.assertTrue(set(words) <= set(vocab))
+        self.assertIn("zzsentinel", words)
+        others = [o.text for o in out if o.template_id != "words_part_number"]
+        self.assertFalse(any("chair" in t or "zzsentinel" in t for t in others))
+
+    def test_vocabulary_is_sampled_by_occurrence(self):
+        out, _ = pn(["chair"] * 10 + ["zen"])
+        words = [
+            w
+            for o in out
+            if o.template_id == "words_part_number"
+            for w in o.text.split()[:-1]
+        ]
+        self.assertGreater(words.count("chair"), 3 * words.count("zen"))
+
+    def test_collisions_are_dropped_and_counted_without_text(self):
+        first, _ = pn()
+        # All four from shape one's first batch, which is drawn identically again.
+        train, real, parts, sanity = (first[i].text for i in range(4))
+        out, counts = pn(
+            training=[train.upper()],
+            real=[f"  {real}"],
+            parts=[parts],
+            sanity=[sanity],
+        )
+        self.assertEqual(len(out), 100)
+        self.assertEqual(
+            counts,
+            {"training_negatives": 1, "real_queries": 1, "part_numbers": 1,
+             "sanity": 1, "earlier": 0},
+        )
+        texts = {o.text for o in out}
+        for removed in (train, real, parts, sanity):
+            self.assertNotIn(removed, texts)
+            self.assertNotIn(removed, repr(counts))
+        self.assertEqual(len(texts), 100)
+
+    def test_earlier_candidate_is_counted_not_kept(self):
+        shapes = tuple((f"s{i}", sequence_shape(f"k{i}_")) for i in range(4))
+        with mock.patch.object(negatives, "SHAPES", shapes):
+            out, counts = pn()
+        self.assertEqual(len(out), 100)
+        self.assertEqual(len({o.text for o in out}), 100)
+        self.assertEqual(counts["earlier"], 4 * 24)  # 49 draws per shape, 25 kept
+        self.assertEqual([o.template_id for o in out[::25]], [f"s{i}" for i in range(4)])
+
+    def test_constant_shape_exhausts_the_pool_at_the_cap(self):
+        calls = []
+
+        def constant(rng, vocabulary):
+            calls.append(1)
+            return "secretconst 123"
+
+        shapes = (("c", constant),) + tuple(SHAPES[1:])
+        with mock.patch.object(negatives, "SHAPES", shapes):
+            with self.assertRaises(PoolExhausted) as ctx:
+                pn()
+        self.assertEqual(ctx.exception.reached, 1)
+        self.assertEqual(len(calls), PART_NUMBER_CAP_FACTOR * PART_NUMBER_COUNT)
+        self.assertNotIn("secretconst", str(ctx.exception))
+        self.assertNotIn("123", str(ctx.exception))
+
+    def test_cap_counts_candidates_over_the_whole_call(self):
+        # Every shape drops half of its draws: 200 draws per shape stays under the cap.
+        calls = []
+
+        def twice(rng, vocabulary):
+            calls.append(1)
+            return f"x{len(calls) // 2}"
+
+        with mock.patch.object(negatives, "SHAPES", tuple((f"s{i}", twice) for i in range(4))):
+            out, _ = pn()
+        self.assertEqual(len(out), 100)
+        self.assertLessEqual(len(calls), 2000)
+
+    def test_outputs_are_ascii_and_normalised(self):
+        out, _ = pn()
+        for o in out:
+            self.assertTrue(o.text.isascii())
+            self.assertEqual(o.text, normalise(o.text))
+
+    def test_empty_vocabulary_raises(self):
+        with self.assertRaises(ValueError):
+            pn([])
+
+    def test_opens_no_file(self):
+        with mock.patch("builtins.open", side_effect=AssertionError("open")):
+            pn()
 
 
 if __name__ == "__main__":

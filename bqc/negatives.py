@@ -10,6 +10,7 @@ from typing import NamedTuple
 
 from bqc.preprocess import normalise
 from bqc.synth.audit import drop_exact
+from bqc.synth.partnumbers import SHAPES
 from bqc.wands import WandsProduct
 
 # Word-count distribution of the 480 real queries (DESIGN.md 3.2, 13.1): k -> count.
@@ -21,6 +22,13 @@ VOCABULARY_CAP = 10_000
 BATCH_SIZE = 100
 MAX_STALLED_BATCHES = 20
 
+# Part-number hard negatives (DESIGN.md 3.3): seed offset, count, cap factor, source tag.
+PART_NUMBER_SEED_OFFSET = 100_000
+PART_NUMBER_COUNT = 100
+PART_NUMBER_CAP_FACTOR = 20
+PART_NUMBER_SOURCE = "part_number"
+PART_NUMBER_REMOVAL_KINDS = ("training_negatives", "real_queries", "part_numbers", "sanity", "earlier")
+
 REMOVAL_KINDS = ("empty", "drawn", "real_queries", "part_numbers", "sanity")
 
 
@@ -28,6 +36,13 @@ class Span(NamedTuple):
     text: str
     product_id: int
     k: int
+    seed: int
+
+
+class PartNumberNegative(NamedTuple):
+    text: str
+    source: str
+    template_id: str
     seed: int
 
 
@@ -131,3 +146,65 @@ def token_occurrences(strings: Iterable[str], cap: int | None = None) -> list[st
         if cap is not None and len(tokens) >= cap:
             return tokens[:cap]
     return tokens
+
+
+def build_part_number_negatives(
+    vocabulary: Sequence[str],
+    seed: int,
+    training_negatives: Iterable[str],
+    real_queries: Iterable[str],
+    part_numbers: Iterable[str],
+    sanity: Iterable[str],
+) -> tuple[list[PartNumberNegative], dict[str, int]]:
+    """Build the 100 part-number hard negatives of one training side (3.3).
+
+    25 per shape, in SHAPES order, drawn with one `random.Random(seed)`. `vocabulary`
+    is an occurrence list used as given (product words are sampled uniformly from it);
+    an empty one raises ValueError. A candidate equal, after normalise(), to a string
+    of `training_negatives`, `real_queries`, `part_numbers` or `sanity`, or to an
+    earlier candidate, is dropped through `drop_exact`. Returns the negatives and a
+    count per kind in PART_NUMBER_REMOVAL_KINDS; no removed text is returned.
+
+    Raises PoolExhausted, with the count reached and no candidate text in the message,
+    if PART_NUMBER_CAP_FACTOR x PART_NUMBER_COUNT candidates were drawn over the whole
+    call before PART_NUMBER_COUNT survived. Never pads.
+    """
+    if not vocabulary:
+        raise ValueError("vocabulary is empty")
+    rng = random.Random(seed)
+    per_shape = PART_NUMBER_COUNT // len(SHAPES)
+    cap = PART_NUMBER_CAP_FACTOR * PART_NUMBER_COUNT
+    fixed = {
+        "training_negatives": list(training_negatives),
+        "real_queries": list(real_queries),
+        "part_numbers": list(part_numbers),
+        "sanity": list(sanity),
+    }
+    kept: list[PartNumberNegative] = []
+    counts = {kind: 0 for kind in PART_NUMBER_REMOVAL_KINDS}
+    drawn = 0
+    for shape_id, render in SHAPES:
+        shape_kept = 0
+        while shape_kept < per_shape:
+            if drawn >= cap:
+                raise PoolExhausted(
+                    f"reached {len(kept)} of {PART_NUMBER_COUNT} part-number negatives "
+                    f"after {drawn} candidates",
+                    len(kept),
+                )
+            batch = min(per_shape - shape_kept, cap - drawn)
+            texts = [normalise(render(rng, vocabulary)) for _ in range(batch)]
+            drawn += batch
+            lists = {**fixed, "earlier": [n.text for n in kept]}
+            survivors, removed = drop_exact(texts, lists)
+            for kind, count in removed.items():
+                counts[kind] += count
+            seen: set[str] = set()
+            for text in survivors:
+                if text in seen:
+                    counts["earlier"] += 1
+                else:
+                    seen.add(text)
+                    kept.append(PartNumberNegative(text, PART_NUMBER_SOURCE, shape_id, seed))
+                    shape_kept += 1
+    return kept, counts

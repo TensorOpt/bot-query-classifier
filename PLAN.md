@@ -33,8 +33,8 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T6 corrections (items 1-2 under M7.T6), then M7.T7. M7.T1 to M7.T5 are
-validated (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
+**Next task:** M7.T7. M7.T1 to M7.T6 are validated (PQ-7 to PQ-9 are ruled, `DESIGN.md`
+`cbc2169`).
 
 ### Order constraints
 
@@ -3373,7 +3373,7 @@ cost little and aren't optimised.
     catalogue gap; `--lofo lr,trivial` reports `lr_hand`'s LOFO rows as not run with the reason, while
     its main fit and final model are present.
 - **Depends on:** M7.T5, M4.T8.
-- **Status:** done
+- **Status:** validated
 - **Validation (`opus`, 2026-11-07, `b68076b`): CHANGES REQUESTED.** `.venv/bin/python -m
   unittest discover -s tests`: 941 tests OK (820 s, on a host shared with four parallel mutation
   runs; not a timing figure). Criterion 1: one loop over `("model_comparison", MLP)` and
@@ -3416,6 +3416,14 @@ cost little and aren't optimised.
   tests, `DeterminismTest` keeping the real models (11.18). (d) The body key-set pins in
   `tests/test_run_report.py` cover `lr`/`mlp` runs only, where no `model_comparison_hand` appears,
   so leaving them unchanged is right; the absence is pinned by the new presence test.
+  Re-validation of `bf3ee5f` (opus): PASS. Item 1: `lr_hand` is the new `Mid` scorer (`len % 5`),
+  apart from `lr` and `mlp` (`Low`), and the test asserts `model_comparison_hand !=
+  model_comparison` under each arm. The surviving mutant (the hand pair's first side is the MLP's
+  folds whenever `mlp` ran), alone on `bqc/evaluate.py:943`, now fails
+  `test_model_comparison_hand_is_lr_hand_minus_lr_under_each_arm`; reverted. Item 2: checked by
+  hand. `sides([-0.125] * 4, metric="fpr")` gives `lr_hand` FPR 0.125 and `lr` 0.25, so `lr` minus
+  `lr_hand` is 0.125 on every fold (mean 0.125, se 0) and the gate fails, as asserted. Suite: 941
+  tests OK. New lines within 100 columns.
 
 ### M7.T7: Re-run on real data and report
 

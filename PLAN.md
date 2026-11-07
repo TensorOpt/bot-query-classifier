@@ -33,7 +33,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T3. M7.T1 and M7.T2 are validated; M7.T3 to M7.T7 follow in id order (PQ-7 to
+**Next task:** M7.T4. M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow in id order (PQ-7 to
 PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
@@ -3120,7 +3120,65 @@ cost little and aren't optimised.
     non-zero with the count.
   - Existing degenerate-fold, sanity-collision and determinism tests still pass (11.7, 11.16, 11.18).
 - **Depends on:** M7.T2.
-- **Status:** done (sonnet, 2026-11-07)
+- **Status:** validated (opus, 2026-11-07). Implementation `6fe85a6`. Full suite 908 OK; 28 mutants,
+  all killed.
+- **Validation (`opus`, 2026-11-07, `6fe85a6`): PASS.** `.venv/bin/python -m unittest discover -s
+  tests`: 908 tests OK (211 s). Criteria 1 to 8 are met and pinned:
+  `iter_fold_data` builds once per repeat in the primary arm from the spans' capped occurrences and
+  per fold in the comparison arm and the gap pass, all with `seed + 100_000 + repeat`. The drop
+  lists are the arm's negatives, all real queries, the P strings and the sanity queries. The rows
+  sit between the negatives and the positives with label 0, family `"part_number"` and group
+  `("part_number", shape)`. They never reach `threshold_texts`, the test side or E. The comparison
+  threshold still takes `f is None` rows only (`bqc/evaluate.py:574`). The training positives are
+  screened under `part_number_negatives` and the test side is not. The quota follows PQ-7a. The
+  fold report gains `part_number_negatives`, and `parameters` gains `part_number_count` and
+  `part_number_seed_offset`. `bqc/cluster.py` and `bqc/cli.py` are unchanged (`git diff
+  6fe85a6~1 6fe85a6`; no `part_number` in `cluster.py`). The determinism tests were not edited.
+
+  Mutation pass: each mutant was applied alone in a scratch copy (`git archive 6fe85a6`) and run
+  against `test_folds`, `test_runner_comparison`, `test_catalogue_gap`, `test_run_report` and
+  `test_lofo` (`test_cli_evaluate.FailureTest` for the message mutant). All 28 were killed by
+  failing tests:
+  - Screening: the positives not screened against the rows (built after); the drop kind renamed;
+    the test side screened against the rows; the rows put on the test side.
+  - Build frequency: the primary arm built per fold; the gap pass's primary arm built once per
+    repeat.
+  - Vocabulary: the comparison vocabulary taken from all 480 queries; the primary builder given an
+    uncapped vocabulary; part-number tokens added to the positives' vocabulary.
+  - Report: `removals` zeroed; `per_shape` miscounted; `train.negatives` counting the 100; one
+    `parameters` key missing.
+  - Tags and threshold: family `None`; one group per row; the rows in the comparison threshold
+    set; the rows in `threshold_texts`.
+  - LOFO: the builder skipped in the comparison arm and, separately, in the primary arm.
+  - Seed: the offset dropped; the repeat dropped.
+  - Quota: the primary arm on the old formula; the comparison LOFO pass on the old formula; the
+    comparison main run on the new formula.
+  - Drop lists: the comparison arm dropping against the spans; against the training queries only
+    instead of all 480; sanity omitted; the primary arm dropping without the P strings.
+  - Exit message: the builder's message without "part-number".
+
+  Rulings: (a) the `NoRemovedTextTest` fixture moving to `n_splits=5` is accepted. Reverted
+  alone, the test errors with `FoldError: training fold lacks families ['A']`, the stub effect 13.24
+  describes. At five folds it still runs both arms and asserts `dropped > 0`, so it loses no
+  coverage. No other test changed `n_splits`. The inner 11.16 guard is still pinned by
+  `tests/test_runner_comparison.py:170` (`lacks families ['D']`), which this commit did not touch.
+  (b) The sub-keys `{count, per_shape, removals}` stand. `removals` is the builder's dict verbatim
+  (`PART_NUMBER_REMOVAL_KINDS`) and parallels `span_removals`. (c) The primary quota divides by
+  `len(train_templates)`, which is correct: 3.3 says `n_training_templates`, and the literal 24
+  belongs only to the final model (M7.T4). (d) The two lines over 100 columns
+  (`tests/test_folds.py:425`, `tests/test_runner_comparison.py:131`) date from `9c7eb85`/`8ca9124`
+  and were not touched; noted only. (e) `cli.py` is unchanged and correct: `PoolExhausted` is
+  already caught at `bqc/cli.py:481`. The builder's message reads `reached N of 100 part-number
+  negatives after M candidates` (`bqc/negatives.py:197`), and
+  `test_exhausted_part_number_pool_exits_non_zero_with_its_count` pins "part-number", the count and
+  the absence of the candidate text.
+
+  Notes, not corrections:
+  - The primary builder runs even in a comparison-only main run. This matches `build_spans` there.
+  - `tests/test_folds.py` restates the removal kinds as `REMOVAL_KINDS_PN` where `test_run_report`
+    imports `PART_NUMBER_REMOVAL_KINDS`. This is acceptable as a pin of the M7.T2 key ruling.
+  - A stray blank line was added after `class DegenerateFoldTest` (`tests/test_folds.py:712`).
+  - 13.24 gives "Python 3.13" without the patch version.
 
 ### M7.T4: Part-number hard negatives in the final models
 

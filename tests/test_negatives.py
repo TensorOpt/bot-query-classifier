@@ -1,6 +1,7 @@
 import ast
 import collections
 import os
+import random
 import subprocess
 import sys
 import unittest
@@ -273,7 +274,6 @@ class ModuleRulesTest(unittest.TestCase):
 
 
 
-
 VOCAB = ["leather", "sofa", "area", "rug", "accent", "chair", "oak", "desk"]
 SEED_PN = 7 + PART_NUMBER_SEED_OFFSET
 
@@ -401,10 +401,48 @@ class PartNumberNegativesTest(unittest.TestCase):
         self.assertLessEqual(len(calls), 2000)
 
     def test_outputs_are_ascii_and_normalised(self):
-        out, _ = pn()
-        for o in out:
-            self.assertTrue(o.text.isascii())
-            self.assertEqual(o.text, normalise(o.text))
+        for vocab in (VOCAB, ["Leather", "SOFA", "Oak"]):
+            out, _ = pn(vocab)
+            for o in out:
+                self.assertTrue(o.text.isascii())
+                self.assertEqual(o.text, normalise(o.text))
+                self.assertEqual(o.text, o.text.lower())
+        words = {
+            w
+            for o in out
+            if o.template_id == "words_part_number"
+            for w in o.text.split()[:-1]
+        }
+        self.assertTrue(words <= {"leather", "sofa", "oak"})
+
+    def test_cap_fails_fast_when_survivors_are_slower_than_candidates(self):
+        # Each shape yields a new string once in 30 draws: ~720 draws fill one shape, but
+        # the call needs ~2,900 and must stop at 2,000 candidates with fewer than 100 kept.
+        calls = []
+
+        def slow(index):
+            count = [0]
+
+            def render(rng, vocabulary):
+                calls.append(1)
+                count[0] += 1
+                return f"s{index}k{count[0] // 30}"
+
+            return render
+
+        shapes = tuple((f"s{i}", slow(i)) for i in range(4))
+        with mock.patch.object(negatives, "SHAPES", shapes):
+            with self.assertRaises(PoolExhausted) as ctx:
+                pn()
+        self.assertEqual(len(calls), PART_NUMBER_CAP_FACTOR * PART_NUMBER_COUNT)
+        self.assertLess(ctx.exception.reached, 100)
+
+    def test_one_generator_is_built_and_shared_by_the_shapes(self):
+        with mock.patch.object(
+            negatives.random, "Random", wraps=random.Random
+        ) as built:
+            pn()
+        built.assert_called_once_with(SEED_PN)
 
     def test_empty_vocabulary_raises(self):
         with self.assertRaises(ValueError):

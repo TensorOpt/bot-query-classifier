@@ -3014,6 +3014,7 @@ cost little and aren't optimised.
   (YAGNI). M7.T3 asserts it on its outputs in both arms instead (added to its tests). (d) The "Next
   task" move to M7.T3 was premature while M7.T2 is under review; it now reads M7.T2 (corrections),
   then M7.T3.
+- **Corrections (`sonnet`, 2026-11-07):** items 1 to 4 above are done in a follow-up `test(M7.T2)` commit.
 
 ### M7.T3: Part-number hard negatives in the outer folds
 

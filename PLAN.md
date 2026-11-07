@@ -33,7 +33,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T4 (corrections), then M7.T5. M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow
+**Next task:** M7.T5. M7.T1 to M7.T4 are validated; M7.T5 to M7.T7 follow
 in id order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
@@ -3216,10 +3216,8 @@ cost little and aren't optimised.
   - Rule 4: a template patched to emit a final-model part-number negative has that positive dropped and
     counted.
 - **Depends on:** M7.T2, M7.T3.
-- **Status:** done (`sonnet`, 2026-11-07). Full suite 917 tests OK. Mutants: 9, all killed
-  (threshold slice taking the rows, old quota, seed offset, per-row groups, drop not counted, report
-  block missing, rows in the primary threshold scores, new quota in the comparison arm, rows untagged
-  `None`).
+- **Status:** validated (`opus`, 2026-11-07, `801b08f`). Corrections 1 and 2 verified; see the
+  re-validation note below.
 - **Validation (`opus`, 2026-11-07, `9fba29c`): CHANGES REQUESTED.** `.venv/bin/python -m unittest
   discover -s tests`: 917 tests OK (240 s). The code meets criteria 1 to 4: one builder call per fit
   with `SEED + PART_NUMBER_SEED_OFFSET` on the fit's vocabulary and the PQ-8c drop lists; the rows
@@ -3267,6 +3265,17 @@ cost little and aren't optimised.
   builder's own drop tests (M7.T2). The "no real queries" mutant is killed. (c) "Next task" now
   reads M7.T4 (corrections), then M7.T5.
   Addressed in the `test(M7.T4)` correction commit (items 1 and 2).
+- **Re-validation (`opus`, 2026-11-07, `801b08f`): PASS.** `.venv/bin/python -m unittest discover
+  -s tests`: 917 tests OK (182 s). Item 1: `fit` forwards `**kwargs` (so `vocabulary_cap`) to
+  `fit_final_model`. `test_the_builder_runs_on_the_fits_vocabulary` runs both arms with cap 6,
+  asserts that the capped and uncapped span occurrences differ, and pins the primary call to
+  `token_occurrences(span_texts, cap=6)` and the comparison call to `token_occurrences(REAL)`
+  (uncapped). Item 2: no line over 100 columns in `bqc/evaluate.py` or
+  `tests/test_final_model.py`. The `bqc/evaluate.py` diff is the docstring rewrap only. Survivors
+  from (i), each applied alone to a `git archive 801b08f` copy and run against `test_final_model`:
+  the primary builder given the uncapped span vocabulary (`bqc/evaluate.py:1103`) and the
+  comparison builder given a capped one (`:1107`). Both are killed by
+  `test_the_builder_runs_on_the_fits_vocabulary` (29 tests, 1 failure each).
 
 ### M7.T5: `lr_hand` adapter
 

@@ -27,7 +27,13 @@ PART_NUMBER_SEED_OFFSET = 100_000
 PART_NUMBER_COUNT = 100
 PART_NUMBER_CAP_FACTOR = 20
 PART_NUMBER_SOURCE = "part_number"
-PART_NUMBER_REMOVAL_KINDS = ("training_negatives", "real_queries", "part_numbers", "sanity", "earlier")
+PART_NUMBER_REMOVAL_KINDS = (
+    "training_negatives",
+    "real_queries",
+    "part_numbers",
+    "sanity",
+    "earlier",
+)
 
 REMOVAL_KINDS = ("empty", "drawn", "real_queries", "part_numbers", "sanity")
 

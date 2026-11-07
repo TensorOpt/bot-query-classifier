@@ -33,8 +33,8 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T4 (validation). M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow in id order (PQ-7 to
-PQ-9 are ruled, `DESIGN.md` `cbc2169`).
+**Next task:** M7.T4 (corrections), then M7.T5. M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow
+in id order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
 
@@ -3220,6 +3220,52 @@ cost little and aren't optimised.
   (threshold slice taking the rows, old quota, seed offset, per-row groups, drop not counted, report
   block missing, rows in the primary threshold scores, new quota in the comparison arm, rows untagged
   `None`).
+- **Validation (`opus`, 2026-11-07, `9fba29c`): CHANGES REQUESTED.** `.venv/bin/python -m unittest
+  discover -s tests`: 917 tests OK (240 s). The code meets criteria 1 to 4: one builder call per fit
+  with `SEED + PART_NUMBER_SEED_OFFSET` on the fit's vocabulary and the PQ-8c drop lists; the rows
+  tagged `"part_number"` and grouped by shape through `_side`; the comparison threshold taken from
+  the `None`-family out-of-fold rows (`bqc/evaluate.py:1127`), the primary one from the 480 real
+  queries; the primary quota `(len(negatives) + len(hard)) // 24`, `QUOTA` in the comparison arm;
+  rule 4 under `part_number_negatives`; `report["part_number_negatives"]` from
+  `_part_number_report`. Only `tests/test_final_model.py` changed among the tests, so the
+  M3.T11/M3.T12 diagnostic and sanity tests pass unedited.
+
+  Mutation pass: each mutant was applied alone to a `git archive 9fba29c` copy and run against
+  `test_final_model` (29 tests). 21 of 24 were killed: drop lists without the sanity queries, the P
+  strings or the real queries; the primary builder given the real queries as training negatives;
+  the comparison threshold taken by position (`[:len(negatives)]`) after `_side` puts the rows
+  first; the slice `[:len(negatives) + len(hard)]`; the filter `f != "part_number"`; `per_shape`
+  keyed by source; `per_shape` over 99 rows; the block under `part_numbers`; the block nested in
+  `dropped`; `removals` zeroed; a second builder call, used or discarded; the seed without `SEED`;
+  the rule-4 list missing; the rule-4 kind renamed; part-number tokens in the positives'
+  vocabulary; the rows left out of the primary fit. Survivors: (i) **the primary builder given the
+  uncapped span vocabulary**, and likewise the comparison builder given a capped one: the fixture
+  never reaches the cap (120 spans against `VOCABULARY_CAP` 10 000), so capped and uncapped are
+  equal (item 1). (ii) The `per_shape` counts swapped between shapes is an equivalent mutant (all
+  25). (iii) `(n + 99) // 24` equals `(n + 100) // 24` at `n = 299`, so it is not distinguishable
+  there. That is acceptable: the criterion asks only for an `n` where the result differs from
+  `n // 24`, and the code uses `len(hard)`. The `earlier` mutant lives in the builder, which the
+  test and its oracle (`expected_hard`) share, so it was skipped here. `test_negatives` (M7.T2)
+  pins it.
+
+  Corrections:
+  1. `tests/test_final_model.py:239-252` (`test_the_builder_runs_on_the_fits_vocabulary`) and the
+     `fit` helper at `:59`: the cap never binds, so the builder could receive the uncapped span
+     vocabulary (criterion 1, "spans' capped occurrences") without a failing test. Required fix:
+     let `fit` pass `vocabulary_cap`, run this test with a cap smaller than the spans' token count
+     (for example 6), assert that the capped and uncapped span occurrences differ (the cap binds),
+     and assert `primary.args[0] == token_occurrences(span_texts, cap=6)` and
+     `comparison.args[0] == token_occurrences(REAL)` (uncapped).
+  2. `bqc/evaluate.py:1092`: the edited docstring line is 113 columns, and the project wraps at 100
+     (see the M7.T2 correction `a5fc42f`). Required fix: rewrap the docstring.
+
+  Rulings: (a) F1, process: the TDD order slipped (implementation before tests). The mutation
+  pass is not enough evidence on its own, because of item 1. With item 1 fixed it will be, and no
+  rework beyond item 1 is needed. (b) Comparison-arm real-query collision: forcing a collision
+  there would need a candidate equal to a real query, which is also the comparison vocabulary. The
+  drop-list assertion `list(call.args[3]) == REAL` for both calls is enough, together with the
+  builder's own drop tests (M7.T2). The "no real queries" mutant is killed. (c) "Next task" now
+  reads M7.T4 (corrections), then M7.T5.
 
 ### M7.T5: `lr_hand` adapter
 

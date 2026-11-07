@@ -3014,7 +3014,29 @@ cost little and aren't optimised.
   (YAGNI). M7.T3 asserts it on its outputs in both arms instead (added to its tests). (d) The "Next
   task" move to M7.T3 was premature while M7.T2 is under review; it now reads M7.T2 (corrections),
   then M7.T3.
-- **Corrections (`sonnet`, 2026-11-07):** items 1 to 4 above are done in a follow-up `test(M7.T2)` commit.
+- **Corrections (`sonnet`, 2026-11-07):** items 1 to 4 above are done in a follow-up `test(M7.T2)`
+  commit.
+- **Re-validation (`opus`, 2026-11-07, `908b955`): CHANGES REQUESTED.** Full suite: 865 tests OK
+  (141 s). `908b955` changes tests, blank lines and final newlines only, and items 1 to 4 are done:
+  `test_one_generator_is_built_and_shared_by_the_shapes` wraps `random.Random` and asserts one call
+  with `SEED_PN`; `test_outputs_are_ascii_and_normalised` also runs `["Leather", "SOFA", "Oak"]` and
+  checks lower case and the `words_part_number` words;
+  `test_cap_fails_fast_when_survivors_are_slower_than_candidates` asserts `PoolExhausted`, exactly
+  2,000 render calls and `reached < 100`; the blank lines and both final newlines are fixed. The
+  three surviving mutants, each run alone in a scratch copy under `timeout` and then reverted, are
+  now caught: per-shape `random.Random(f"{seed}/{shape_id}")` fails
+  `test_one_generator_is_built_and_shared_by_the_shapes`; dropping `normalise()` on the output fails
+  `test_outputs_are_ascii_and_normalised`; counting survivors fails
+  `test_cap_fails_fast_when_survivors_are_slower_than_candidates` in 0.04 s ("PoolExhausted not
+  raised"). The module run still hangs on the constant-shape test, which was accepted. One item is
+  left, from `0ebc041` and missed in the first review:
+  1. `bqc/negatives.py:30` is 103 columns (`PART_NUMBER_REMOVAL_KINDS = (...)` on one line); every
+     other line of the four task files is within 100. Wrap the tuple over several lines, one kind
+     per line or as the file wraps other long tuples, with no change to its value or order.
+
+  Process deviations, as at M3.T9: the correction commit carries the `fable` co-author trailer, and
+  it adds a line to `PLAN.md`, which `opus` owns (rewrapped here to 100 columns). Neither changes
+  the code.
 
 ### M7.T3: Part-number hard negatives in the outer folds
 

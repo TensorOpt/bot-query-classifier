@@ -139,7 +139,6 @@ class PartNumbersTest(unittest.TestCase):
         self.assertEqual(len(gen(negatives=VOCAB, sanity=SANITY)), 100)
 
 
-
 class ShapeTableTest(unittest.TestCase):
     def test_shapes_are_public_and_match_shape_ids(self):
         self.assertEqual(tuple(name for name, _ in SHAPES), SHAPE_IDS)

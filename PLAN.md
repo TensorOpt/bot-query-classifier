@@ -3455,4 +3455,438 @@ cost little and aren't optimised.
      decides.
 - **Tests:** none (no code). The determinism tests cover reproducibility.
 - **Depends on:** M7.T1 to M7.T6.
-- **Status:** todo
+- **Status:** done
+
+#### Report (run on 2026-11-07 by `sonnet`)
+
+Clean clone `/tmp/claude-0/-home-user-bot-query-classifier/23a87975-f427-5451-b1ca-6a3bd01b7bc3/scratchpad/m7/clone`
+at `4d19467` (branch `claude/dev-progress-checkpoint-xyqu11`, the commit after M7.T6), fresh `.venv`
+(`pip install -e .`). The run JSON records `git_commit` `4d194673b59064b1059251fb63b75ea2a38214e5`, python
+3.13.18, numpy 2.5.4, scikit-learn 1.9.1, seed 20261105, models `lr, mlp, trivial, lr_hand`,
+`config_hash` `baef3189eaa6...`. Nothing under `results/` or `data/raw/` is committed. Arm `product` =
+primary arm (headline), `real` = comparison arm. Differences are first minus second (`arm_comparison` =
+product minus real; `model_comparison` = MLP minus `lr`; `model_comparison_hand` = `lr_hand` minus `lr`).
+Recall has no CI (8.5); FPR is pooled FP / (3 x 480) with the Wilson interval at n = 480. Tables are
+generated from the JSON by a script outside the repo (`.../scratchpad/m7/rep.py`).
+
+**Commands, wall times, outputs** (all exit 0; logs `.../scratchpad/m7/{fetch,generate,evaluate,cluster}.log`;
+JSONs in `.../scratchpad/m7/clone/results/`):
+
+| step | wall time | output |
+|---|---|---|
+| `fetch` (downloaded; checksums matched; no copy from the main repo) | 3.3 s | `data/raw/{query,product}.csv` |
+| `generate` | 66.5 s | `generate-d027b2b75274-20261107T105505598293Z.json` |
+| `evaluate --negatives product,real --lofo --catalogue-gap` (default, all four models) | **79 min 35 s** (4,774.3 s; `user` 262 min) | `evaluate-baef3189eaa6-20261107T121450246509Z.json` (+ 8 `final-<arm>-<model>-*.pkl`) |
+| `cluster` | 5.7 s | `cluster-8ec66f12e0d1-20261107T121522859124Z.json` |
+
+**MLP fit time (section 10, 5-minute rule).** The final primary-arm MLP fit took 37.1 s
+(`timing.mlp_final_fit_seconds`; M6: 38.4 s, M4.T4: 39.7 s), far under 5 minutes, so the MLP ran in every
+place the design allows (comparison-arm LOFO is never run for it, 8.6 item 1: `not run` in the JSON).
+Its primary arm is 91 fits by construction (15 outer + 60 LOFO + 15 catalogue gap + 1 final); I did not
+instrument the count. The full invocation took 79 min 35 s against M6's 64 min 58 s for three models:
+`lr_hand` and the extra 100 negatives per fit account for the increase (not itemised). **13.9 should get
+the new wall time, about 80 minutes for the four-model invocation** (the 5-minute rule is unaffected).
+
+##### Headline, per-family and per-template recall (criterion 2)
+
+
+##### Headline, arm `product`
+
+| model | recall | caught/n | FPR (pooled) | FP/n | Wilson 95% CI (n=480) | ROC-AUC pooled |
+|---|---|---|---|---|---|---|
+| lr | 75.3% | 5424/7199 | 0.62% | 9/480 | 0.21% to 1.82% | 0.973 |
+| lr_hand | 81.9% | 5899/7199 | 0.69% | 10/480 | 0.25% to 1.92% | 0.953 |
+| mlp | 73.5% | 5294/7199 | 0.83% | 12/480 | 0.32% to 2.12% | 0.967 |
+| trivial | 61.1% | 4400/7199 | 0.76% | 11/480 | 0.29% to 2.02% | 0.854 |
+
+Per-family recall, arm `product` (E evaluation-only):
+
+| model | A | B | C | D | E |
+|---|---|---|---|---|---|
+| lr | 64.7% | 64.6% | 90.6% | 81.5% | 19.6% |
+| lr_hand | 84.4% | 75.5% | 84.7% | 83.1% | 9.0% |
+| mlp | 64.4% | 60.8% | 85.7% | 83.3% | 16.9% |
+| trivial | 37.9% | 59.4% | 75.9% | 71.2% | 5.8% |
+
+Per-template recall, arm `product`:
+
+| template | lr | lr_hand | mlp | trivial |
+|---|---|---|---|---|
+| A.alnum | 95.0% | 100.0% | 96.3% | 88.7% |
+| A.hard_mash | 21.0% | 43.0% | 29.7% | 2.3% |
+| A.hard_repeat | 25.7% | 69.0% | 35.0% | 20.3% |
+| A.hex | 61.3% | 100.0% | 41.0% | 100.0% |
+| A.mash | 96.0% | 97.0% | 98.0% | 16.3% |
+| A.repeat | 89.3% | 97.7% | 86.7% | 0.0% |
+| B.hard_nosql | 39.3% | 84.0% | 45.3% | 84.3% |
+| B.hard_sql | 61.7% | 70.7% | 62.3% | 22.7% |
+| B.script | 83.7% | 100.0% | 75.3% | 100.0% |
+| B.sql | 71.7% | 74.3% | 75.0% | 26.3% |
+| B.template | 32.7% | 24.0% | 20.3% | 23.3% |
+| B.traversal | 98.7% | 100.0% | 86.3% | 100.0% |
+| C.hard_fragment | 87.3% | 99.3% | 86.3% | 95.7% |
+| C.hard_search_url | 93.7% | 100.0% | 73.7% | 100.0% |
+| C.paging | 100.0% | 100.0% | 100.0% | 85.3% |
+| C.path | 82.0% | 85.3% | 74.0% | 94.3% |
+| C.random_keys | 100.0% | 100.0% | 100.0% | 79.7% |
+| C.walk | 80.3% | 23.4% | 79.9% | 0.0% |
+| D.email | 100.0% | 100.0% | 100.0% | 100.0% |
+| D.hard_contact | 85.3% | 94.0% | 87.3% | 65.7% |
+| D.hard_url | 100.0% | 100.0% | 99.0% | 99.3% |
+| D.phone | 100.0% | 100.0% | 100.0% | 62.3% |
+| D.promo | 3.7% | 4.7% | 13.3% | 0.0% |
+| D.url | 100.0% | 100.0% | 100.0% | 100.0% |
+
+##### Headline, arm `real`
+
+| model | recall | caught/n | FPR (pooled) | FP/n | Wilson 95% CI (n=480) | ROC-AUC pooled |
+|---|---|---|---|---|---|---|
+| lr | 64.0% | 4604/7199 | 0.76% | 11/480 | 0.29% to 2.02% | 0.937 |
+| lr_hand | 79.3% | 5710/7199 | 0.62% | 9/480 | 0.21% to 1.82% | 0.911 |
+| mlp | 57.9% | 4166/7199 | 0.35% | 5/480 | 0.09% to 1.40% | 0.924 |
+| trivial | 58.5% | 4215/7199 | 0.49% | 7/480 | 0.15% to 1.61% | 0.861 |
+
+Per-family recall, arm `real` (E evaluation-only):
+
+| model | A | B | C | D | E |
+|---|---|---|---|---|---|
+| lr | 33.4% | 64.1% | 82.8% | 75.6% | 20.9% |
+| lr_hand | 56.3% | 96.1% | 82.8% | 82.1% | 16.0% |
+| mlp | 23.7% | 57.2% | 72.2% | 78.3% | 14.6% |
+| trivial | 34.7% | 59.3% | 69.7% | 70.5% | 5.8% |
+
+Per-template recall, arm `real`:
+
+| template | lr | lr_hand | mlp | trivial |
+|---|---|---|---|---|
+| A.alnum | 28.0% | 87.0% | 18.7% | 81.0% |
+| A.hard_mash | 9.7% | 16.7% | 7.3% | 2.7% |
+| A.hard_repeat | 15.7% | 41.7% | 6.3% | 13.0% |
+| A.hex | 2.0% | 100.0% | 7.7% | 100.0% |
+| A.mash | 79.7% | 60.7% | 40.3% | 11.3% |
+| A.repeat | 65.3% | 32.0% | 62.0% | 0.0% |
+| B.hard_nosql | 34.3% | 100.0% | 24.3% | 83.3% |
+| B.hard_sql | 54.3% | 83.3% | 56.0% | 28.7% |
+| B.script | 88.0% | 100.0% | 47.7% | 100.0% |
+| B.sql | 71.0% | 93.3% | 77.0% | 20.0% |
+| B.template | 37.0% | 100.0% | 47.3% | 24.0% |
+| B.traversal | 100.0% | 100.0% | 91.0% | 100.0% |
+| C.hard_fragment | 77.3% | 100.0% | 77.3% | 93.7% |
+| C.hard_search_url | 77.0% | 100.0% | 46.3% | 96.7% |
+| C.paging | 99.7% | 99.3% | 98.3% | 77.3% |
+| C.path | 75.3% | 97.3% | 70.0% | 84.7% |
+| C.random_keys | 100.0% | 99.7% | 89.0% | 65.7% |
+| C.walk | 67.2% | 0.0% | 52.2% | 0.0% |
+| D.email | 99.7% | 100.0% | 100.0% | 100.0% |
+| D.hard_contact | 62.7% | 85.7% | 72.0% | 66.0% |
+| D.hard_url | 98.7% | 100.0% | 99.3% | 100.0% |
+| D.phone | 88.0% | 100.0% | 90.3% | 54.0% |
+| D.promo | 4.3% | 6.7% | 8.3% | 3.0% |
+| D.url | 100.0% | 100.0% | 100.0% | 100.0% |
+
+
+##### LOFO, arm `product` (recall on held-out family F; FPR; paired difference to main run's recall on F)
+
+| model | F | LOFO recall | FPR | main recall on F | diff |
+|---|---|---|---|---|---|
+| lr | A | 61.1% | 1.04% | 64.7% | -3.7 pp |
+| lr | B | 37.9% | 0.83% | 64.6% | -26.7 pp |
+| lr | C | 69.3% | 0.69% | 90.6% | -21.2 pp |
+| lr | D | 22.8% | 0.90% | 81.5% | -58.7 pp |
+| lr_hand | A | 78.3% | 0.90% | 84.4% | -6.2 pp |
+| lr_hand | B | 49.7% | 0.49% | 75.5% | -25.8 pp |
+| lr_hand | C | 82.5% | 0.69% | 84.7% | -2.2 pp |
+| lr_hand | D | 70.8% | 0.56% | 83.1% | -12.3 pp |
+| mlp | A | 50.7% | 1.04% | 64.4% | -13.8 pp |
+| mlp | B | 30.6% | 0.83% | 60.8% | -30.2 pp |
+| mlp | C | 52.6% | 0.76% | 85.7% | -33.0 pp |
+| mlp | D | 14.9% | 1.18% | 83.3% | -68.4 pp |
+| trivial | A | 35.0% | 0.83% | 37.9% | -2.9 pp |
+| trivial | B | 49.3% | 0.69% | 59.4% | -10.2 pp |
+| trivial | C | 70.2% | 0.69% | 75.9% | -5.7 pp |
+| trivial | D | 69.4% | 0.76% | 71.2% | -1.8 pp |
+
+##### LOFO, arm `real` (recall on held-out family F; FPR; paired difference to main run's recall on F)
+
+| model | F | LOFO recall | FPR | main recall on F | diff |
+|---|---|---|---|---|---|
+| lr | A | 17.5% | 0.97% | 33.4% | -15.9 pp |
+| lr | B | 39.9% | 0.90% | 64.1% | -24.2 pp |
+| lr | C | 47.5% | 0.76% | 82.8% | -35.3 pp |
+| lr | D | 22.1% | 0.62% | 75.6% | -53.4 pp |
+| lr_hand | A | 26.7% | 0.69% | 56.3% | -29.7 pp |
+| lr_hand | B | 87.4% | 0.28% | 96.1% | -8.7 pp |
+| lr_hand | C | 76.2% | 0.42% | 82.8% | -6.6 pp |
+| lr_hand | D | 72.8% | 0.56% | 82.1% | -9.2 pp |
+| mlp | all | not run: the MLP is never run in the comparison arm's leave-one-family-out (8.6 item 1) | | | |
+| trivial | A | 28.7% | 0.42% | 34.7% | -6.0 pp |
+| trivial | B | 49.5% | 0.69% | 59.3% | -9.8 pp |
+| trivial | C | 56.5% | 0.49% | 69.7% | -13.2 pp |
+| trivial | D | 70.7% | 0.56% | 70.5% | +0.2 pp |
+
+##### Comparisons (criterion 3)
+
+`justified`: recall difference positive and beyond 2 se, and the FPR gate holds (section 7). `worse`:
+recall difference negative and beyond 2 se. The AUC cells are informational.
+
+
+| comparison | recall | FPR | fpr_gate | ROC-AUC | justified | worse |
+|---|---|---|---|---|---|---|
+| arm_comparison lr (product - real) | +11.31 pp (se 2.55, wins 14/15) | -0.14 pp (se 0.22) | holds=True | +0.0358 (se 0.0139; just=True, worse=False) | True | False |
+| arm_comparison lr_hand (product - real) | +2.73 pp (se 1.97, wins 10/15) | +0.07 pp (se 0.26) | holds=True | +0.0413 (se 0.0173; just=True, worse=False) | False | False |
+| arm_comparison mlp (product - real) | +15.84 pp (se 2.78, wins 15/15) | +0.49 pp (se 0.32) | holds=True | +0.0195 (se 0.0054; just=True, worse=False) | True | False |
+| arm_comparison trivial (product - real) | +2.58 pp (se 1.04, wins 10/15) | +0.28 pp (se 0.28) | holds=True | -0.0060 (se 0.0077; just=False, worse=False) | True | False |
+| model_comparison product (mlp - lr) | -1.80 pp (se 1.02, wins 5/15) | +0.21 pp (se 0.27) | holds=True | -0.0033 (se 0.0033; just=False, worse=False) | False | False |
+| model_comparison_hand product (lr_hand - lr) | +6.24 pp (se 2.49, wins 12/15) | +0.07 pp (se 0.26) | holds=True | -0.0201 (se 0.0100; just=False, worse=True) | True | False |
+| model_comparison real (mlp - lr) | -6.33 pp (se 2.46, wins 3/15) | -0.42 pp (se 0.14) | holds=True | +0.0130 (se 0.0117; just=False, worse=False) | False | True |
+| model_comparison_hand real (lr_hand - lr) | +14.82 pp (se 3.87, wins 11/15) | -0.14 pp (se 0.35) | holds=True | -0.0256 (se 0.0290; just=False, worse=False) | True | False |
+
+`model_comparison_hand`, primary arm: `lr_hand` minus `lr` recall **+6.24 pp (se 2.49, wins 12 of 15
+folds)**, which is 2.5 se; FPR gate holds (mean FPR difference +0.07 pp, se 0.26); `justified` **true**,
+`worse` false. ROC-AUC is the other direction: -0.0201 (se 0.0100), AUC `worse` true (pooled AUC 0.953
+against 0.973), so the gain is at the operating point, not in ranking. Comparison arm: +14.82 pp (se 3.87,
+wins 11/15), gate holds, `justified` true. `model_comparison` (MLP minus `lr`): primary -1.80 pp (se 1.02),
+not justified, not worse (within noise); comparison arm -6.33 pp (se 2.46), `worse` true. `arm_comparison`
+(product minus real): `lr` and the MLP and the trivial baseline `justified` true; **`lr_hand` `justified`
+false** (+2.73 pp, se 1.97, 10/15 wins): the span-vs-real-query arm difference disappears for `lr_hand`
+because its comparison arm is itself strong (79.3% recall).
+
+##### LOFO, `lr_hand` against `lr` (criterion 4)
+
+(diff = `lr_hand` LOFO recall minus `lr` LOFO recall on the held-out family; the two last columns are each
+model's own LOFO minus main-run recall on F.)
+
+
+| arm | F | lr LOFO | lr_hand LOFO | diff (hand - lr) | lr FPR | lr_hand FPR | lr drop vs main | lr_hand drop vs main |
+|---|---|---|---|---|---|---|---|---|
+| product | A | 61.1% | 78.3% | +17.2 pp | 1.04% | 0.90% | -3.7 | -6.2 |
+| product | B | 37.9% | 49.7% | +11.7 pp | 0.83% | 0.49% | -26.7 | -25.8 |
+| product | C | 69.3% | 82.5% | +13.2 pp | 0.69% | 0.69% | -21.2 | -2.2 |
+| product | D | 22.8% | 70.8% | +47.9 pp | 0.90% | 0.56% | -58.7 | -12.3 |
+| real | A | 17.5% | 26.7% | +9.2 pp | 0.97% | 0.69% | -15.9 | -29.7 |
+| real | B | 39.9% | 87.4% | +47.5 pp | 0.90% | 0.28% | -24.2 | -8.7 |
+| real | C | 47.5% | 76.2% | +28.7 pp | 0.76% | 0.42% | -35.3 | -6.6 |
+| real | D | 22.1% | 72.8% | +50.7 pp | 0.62% | 0.56% | -53.4 | -9.2 |
+
+Held-out recall improves for `lr_hand` on every family in both arms, **including B (+11.7 pp product,
++47.5 pp real) and D (+47.9 pp product, +50.7 pp real)**, the two families where `lr` transferred worst
+(37.9% and 22.8% in the primary arm; M6: 34.1% and 29.7%). In the primary arm `lr_hand` holds B at 49.7% and
+D at 70.8%, i.e. at the trivial baseline's 49.3% and 69.4%; on B it is still 25.8 pp below its own main-run
+recall, on D 12.3 pp. FPR at the LOFO thresholds is no higher than `lr`'s in any cell (0.28% to 0.90%).
+The only family where `lr_hand` falls further below its own main run than `lr` does is A (primary -6.2 pp
+against -3.7; comparison -29.7 pp against -15.9, held-out 26.7% against 17.5%). So 6.5's goal (length and punctuation transfer to an
+unseen family) is met on B and D.
+
+##### Cluster (`cluster`, 960 rows; same grid as M6)
+
+
+| n_comp | min_size | clusters | noise | ARI | AMI | homog | compl | seed rule k=10/20/40 acc/FPR/recall |
+|---|---|---|---|---|---|---|---|---|
+| 20 | 10 | 2 | 0.000 | 0.002 | 0.036 | 0.021 | 0.145 | 0.499/0.45/0.45 ; 0.500/0.45/0.45 ; 0.507/0.40/0.41 |
+| 20 | 15 | 2 | 0.008 | 0.002 | 0.036 | 0.022 | 0.147 | 0.495/0.45/0.44 ; 0.496/0.45/0.44 ; 0.505/0.35/0.36 |
+| 20 | 30 | 4 | 0.796 | 0.376 | 0.469 | 0.729 | 0.351 | 0.550/0.00/0.10 ; 0.572/0.01/0.16 ; 0.602/0.02/0.22 |
+| 50 | 10 | 2 | 0.000 | 0.002 | 0.036 | 0.021 | 0.145 | 0.499/0.45/0.45 ; 0.500/0.45/0.45 ; 0.507/0.40/0.41 |
+| 50 | 15 | 2 | 0.015 | 0.002 | 0.030 | 0.017 | 0.141 | 0.492/0.45/0.43 ; 0.493/0.45/0.44 ; 0.499/0.35/0.35 |
+| 50 | 30 | 2 | 0.848 | 0.867 | 0.790 | 0.795 | 0.787 | 0.542/0.00/0.09 ; 0.568/0.00/0.14 ; 0.576/0.00/0.15 |
+| 100 | 10 | 3 | 0.033 | 0.005 | 0.045 | 0.029 | 0.139 | 0.487/0.40/0.37 ; 0.487/0.40/0.37 ; 0.500/0.25/0.25 |
+| 100 | 15 | 3 | 0.848 | 0.433 | 0.558 | 0.793 | 0.435 | 0.535/0.00/0.07 ; 0.562/0.00/0.12 ; 0.589/0.00/0.18 |
+| 100 | 30 | 2 | 0.844 | 0.895 | 0.847 | 0.843 | 0.851 | 0.519/0.01/0.05 ; 0.533/0.01/0.07 ; 0.560/0.00/0.12 |
+
+Identical to M6 in every cell (the experiment does not use the training negatives): at the default cell
+(50, 15) 2 clusters, 1.5% noise, ARI 0.002, seed rule at chance; only 84-85% noise cells reach ARI 0.87 to
+0.90, where the seed rule's recall is 0.05 to 0.15. F14 reproduced.
+
+##### Sanity set (both views)
+
+Labels: 37 legitimate, 13 illegitimate. Rows above Jaccard 0.5 in the `generate` report (excluded from the
+second view): **ids 5, 7 and 28** (max Jaccard 1.0, 1.0, 0.714), all labelled 1, so the second view has 47
+rows (37 / 10). No model disagrees on any of them (all caught), so the second view differs from the first
+only by 3 fewer true positives. Matrices are raw counts `[[TN, FP], [FN, TP]]`, rows = user label.
+
+
+| arm | model | threshold | all 50 | at or below 0.5 (47) |
+|---|---|---|---|---|
+| product | lr | 0.511 | [[33, 4], [3, 10]] | [[33, 4], [3, 7]] |
+| product | lr_hand | 0.403 | [[34, 3], [3, 10]] | [[34, 3], [3, 7]] |
+| product | mlp | 0.557 | [[36, 1], [3, 10]] | [[36, 1], [3, 7]] |
+| product | trivial | 0.660 | [[36, 1], [6, 7]] | [[36, 1], [6, 4]] |
+| real | lr | 0.485 | [[36, 1], [4, 9]] | [[36, 1], [4, 6]] |
+| real | lr_hand | 0.447 | [[35, 2], [2, 11]] | [[35, 2], [2, 8]] |
+| real | mlp | 0.624 | [[37, 0], [4, 9]] | [[37, 0], [4, 6]] |
+| real | trivial | 0.645 | [[36, 1], [6, 7]] | [[36, 1], [6, 4]] |
+
+Disagreements (id, query, user label, score), identical in both views because no excluded id is among them:
+
+- product lr: 8 `1; DROP TABLE users;--` (1, 0.29); 10 `union jack rug` (0, 0.52); 16 `wf-2049x desk` (0, 0.61); 39 `SKU000124` (0, 0.79); 43 `SKU000123` (0, 0.77); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.19); 49 `best casino bonus free spins sofa` (1, 0.30) [excluded ids among them: []]
+- product lr_hand: 8 `1; DROP TABLE users;--` (1, 0.20); 16 `wf-2049x desk` (0, 0.43); 39 `SKU000124` (0, 0.66); 43 `SKU000123` (0, 0.62); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.14); 49 `best casino bonus free spins sofa` (1, 0.14) [excluded ids among them: []]
+- product mlp: 8 `1; DROP TABLE users;--` (1, 0.16); 39 `SKU000124` (0, 0.72); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.03); 49 `best casino bonus free spins sofa` (1, 0.04) [excluded ids among them: []]
+- product trivial: 1 `xk9qz7vplm` (1, 0.38); 8 `1; DROP TABLE users;--` (1, 0.41); 20 `asdfghjkl qwerty zxcv` (1, 0.34); 22 `loveseat/recliner combo` (0, 0.75); 25 `qqqqwwwweeee 8374651` (1, 0.57); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.03); 49 `best casino bonus free spins sofa` (1, 0.08) [excluded ids among them: []]
+- real lr: 8 `1; DROP TABLE users;--` (1, 0.33); 16 `wf-2049x desk` (0, 0.54); 25 `qqqqwwwweeee 8374651` (1, 0.47); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.38); 49 `best casino bonus free spins sofa` (1, 0.36) [excluded ids among them: []]
+- real lr_hand: 16 `wf-2049x desk` (0, 0.52); 22 `loveseat/recliner combo` (0, 0.50); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.06); 49 `best casino bonus free spins sofa` (1, 0.11) [excluded ids among them: []]
+- real mlp: 8 `1; DROP TABLE users;--` (1, 0.33); 25 `qqqqwwwweeee 8374651` (1, 0.42); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.20); 49 `best casino bonus free spins sofa` (1, 0.30) [excluded ids among them: []]
+- real trivial: 1 `xk9qz7vplm` (1, 0.29); 8 `1; DROP TABLE users;--` (1, 0.43); 20 `asdfghjkl qwerty zxcv` (1, 0.30); 22 `loveseat/recliner combo` (0, 0.68); 25 `qqqqwwwweeee 8374651` (1, 0.49); 47 `sofa sofa sofa sofa sofa sofa sofa` (1, 0.04); 49 `best casino bonus free spins sofa` (1, 0.10) [excluded ids among them: []]
+
+Part-number rows (user label 0, "flagged" = false positive): see the next table. Rows 8, 47, 49 (SQL payload,
+repeated word, casino spam on a furniture word) are still missed by every model in both arms, except that
+`lr_hand` in the comparison arm catches row 8; no model catches 47 or 49.
+
+##### Part-number diagnostic, before (M6) and after (criterion 5)
+
+Fraction of the 100 generated part-number strings flagged at each final model's threshold. Shapes in order:
+prefix+digits / bare digits / prefix-digits-suffix / product words + part number (25 each). "M6" is the M6.T1
+run (`a20073f`, three models, no part-number negatives), "M7" this run; not a paired comparison (different
+code, different draws), and `lr_hand` has no M6 figure.
+
+| arm | model | M6 flagged | M6 per shape | M7 flagged | M7 per shape | M7 score min / median / max | sanity 16 `wf-2049x desk` | sanity 39 `SKU000124` | sanity 43 `SKU000123` |
+|---|---|---|---|---|---|---|---|---|---|
+| product | lr | 85% | 100 / 100 / 100 / 40 | 78% | 100 / 100 / 100 / 12 | 0.086 / 0.719 / 0.938 | flagged (0.61) | flagged (0.79) | flagged (0.77) |
+| product | lr_hand | n/a | n/a | 61% | 88 / 44 / 100 / 12 | 0.058 / 0.468 / 0.939 | flagged (0.43) | flagged (0.66) | flagged (0.62) |
+| product | mlp | 76% | 92 / 84 / 100 / 28 | 32% | 40 / 12 / 72 / 4 | 0.001 / 0.285 / 0.990 | not flagged | flagged (0.72) | not flagged |
+| product | trivial | 3% | 0 / 0 / 8 / 4 | 3% | 0 / 0 / 8 / 4 | 0.127 / 0.303 / 0.718 | not flagged | not flagged | not flagged |
+| real | lr | 85% | 100 / 100 / 100 / 40 | 26% | 20 / 8 / 76 / 0 | 0.149 / 0.404 / 0.713 | flagged (0.54) | not flagged | not flagged |
+| real | lr_hand | n/a | n/a | 19% | 0 / 0 / 72 / 4 | 0.041 / 0.138 / 0.733 | flagged (0.52) | not flagged | not flagged |
+| real | mlp | 81% | 100 / 100 / 100 / 24 | 8% | 0 / 0 / 32 / 0 | 0.042 / 0.304 / 0.788 | not flagged | not flagged | not flagged |
+| real | trivial | 2% | 0 / 0 / 8 / 0 | 0% | 0 / 0 / 0 / 0 | 0.104 / 0.253 / 0.619 | not flagged | not flagged | not flagged |
+
+M6 sanity rows 16 / 39 / 43 for comparison: product `lr` flagged all three (0.71 / 0.91 / 0.91); product
+MLP flagged 39 and 43 (0.97 / 0.98) but not 16; real `lr` flagged all three (0.76 / 0.88 / 0.88); real MLP
+all three (0.61 / 0.74 / 0.74); trivial none. Reading: the hard negatives help a lot in the comparison arm
+(`lr` 85% to 26%, MLP 81% to 8%) and in the primary arm for the MLP (76% to 32%), but the **primary-arm
+`lr` still flags 100% of the prefix+digits, bare-digit and prefix-digits-suffix shapes** (only the
+product-words shape falls, 40% to 12%), and `lr_hand` flags 88 / 44 / 100 / 12. The two `SKU...` sanity rows
+are still false positives for the primary-arm `lr` and `lr_hand` (scores 0.77 to 0.79 and 0.62 to 0.66 against
+thresholds 0.511 and 0.403) and row 39 for the primary-arm MLP; row 16 stays flagged for `lr` and `lr_hand`
+in both arms.
+
+##### Part-number hard negatives: realised counts and drops (criterion 6)
+
+From the 15 main-run fold reports per arm (`folds[].part_number_negatives`; LOFO, catalogue-gap and final-model
+builds don't write fold reports, so their counts aren't in the JSON). Per arm, summed over the 15 folds:
+
+| arm | requested | realised | per shape (prefix_digits / digits / prefix_digits_suffix / words_part_number) | `removals` (training_negatives, real_queries, part_numbers, sanity, earlier) |
+|---|---|---|---|---|
+| product | 1,500 | 1,500 | 375 / 375 / 375 / 375 | 0 / 0 / 0 / 0 / 0 |
+| real | 1,500 | 1,500 | 375 / 375 / 375 / 375 | 0 / 0 / 0 / 0 / 0 |
+
+No candidate was dropped and no shortfall in either arm (`train.shortfall` and `test.shortfall` sum to 0;
+`train.dropped.part_number_negatives` 0 in both arms). Other non-zero drop kinds in the same reports, none
+involving the part-number negatives: primary arm `train.dropped.training_negatives` 4 (training positives
+equal to a span, dropped by rule 4) and, in both arms, `test.dropped.training_negatives` 1; span removals in
+both arms' reports `drawn` 9,325 and `real_queries` 195 (the 17 per fold seen in `generate`; the `real` arm's report carries the same figures); `empty`,
+`part_numbers`, `sanity` 0.
+
+##### One-word false positives (23 one-word WANDS negatives, 3 repeats)
+
+
+| arm | model | union/23 | mean per repeat | words |
+|---|---|---|---|---|
+| product | lr | 4 | 2.67 | bee, dumbbells, owl, zen |
+| product | lr_hand | 2 | 1.33 | dumbbells, kisner |
+| product | mlp | 4 | 2.33 | dumbbells, kisner, owl, zen |
+| product | trivial | 1 | 0.67 | e12/candelabra |
+| real | lr | 6 | 3.67 | dumbbells, owl, peacock, picasso, printers, zen |
+| real | lr_hand | 1 | 0.33 | dumbbells |
+| real | mlp | 4 | 1.33 | gold, owl, pineapple, zen |
+| real | trivial | 0 | 0.00 | none |
+
+##### False positives (criterion 2, pooled over 3 repeats, `xN` = repeats in which it was flagged)
+
+
+| arm | model | FP (count, distinct) | queries |
+|---|---|---|---|
+| product | lr | 9, 5 | zen x3, dumbbells x3, bee, owl, promo codes or discounts |
+| product | lr_hand | 10, 6 | dumbbells x3, turquoise pillows x2, white splashproof shiplap wallpaper x2, kohler whitehaven farmhouse kitchen sink, kisner, drudge report |
+| product | mlp | 12, 8 | owl x2, mom urn x2, dumbbells x2, zen x2, kisner, turquoise chair, drudge report, rug plum |
+| product | trivial | 11, 5 | artificial orchid arrangement x3, certified international melamine x3, bathroom freestanding cabinet x2, e12/candelabra x2, white splashproof shiplap wallpaper |
+| real | lr | 11, 6 | zen x3, picasso x2, printers x2, peacock x2, owl, dumbbells |
+| real | lr_hand | 9, 6 | zachary 72.5 x2, certified international melamine x2, white splashproof shiplap wallpaper x2, kohler whitehaven farmhouse kitchen sink, dumbbells, outdoor seat/back cushion |
+| real | mlp | 5, 5 | zen, gold, pineapple, owl, sofa with ottoman |
+| real | trivial | 7, 4 | certified international melamine x3, bathroom freestanding cabinet x2, brockham solid blackout thermal grommet curtain panels, bedroom wall decor floral, multicolored with some teal (prints) |
+
+Eye review (13.9): none looks machine-generated; all are real WANDS queries (single nouns and brand names,
+product titles). Borderline only: `drudge report` (off-domain, a human title; `lr_hand` and MLP, primary arm)
+and `promo codes or discounts` (`lr`, primary arm) read like spam-family text near D.promo; `zachary 72.5`
+is a catalogue fragment. New in the `lr_hand` lists: long ordinary product titles (`kohler whitehaven
+farmhouse kitchen sink`, `white splashproof shiplap wallpaper`, `outdoor seat/back cushion`,
+`certified international melamine`), the same length/word-count artefact the trivial baseline shows, which
+the hand features import. `lr_hand`'s one-word false positives fall to 2 (primary) and 1 (comparison) of 23.
+
+##### Catalogue gap (rule of 8.6 item 5: fails only if the Wilson lower bound of the pooled FPR exceeds 1%)
+
+2,852 unclassified products; products removed per fold are in `product.catalogue_gap.folds` (15 entries).
+The comparison arm has no removed-products list.
+
+| arm | model | pooled FPR [Wilson 95%] | FP | recall | verdict |
+|---|---|---|---|---|---|
+| product | lr | 0.76% [0.29, 2.02] | 11 | 75.3% | pass |
+| product | lr_hand | 0.49% [0.15, 1.61] | 7 | 79.9% | pass |
+| product | mlp | 1.04% [0.45, 2.42] | 15 | 71.6% | pass; point estimate above target |
+| product | trivial | 0.42% [0.11, 1.51] | 6 | 58.6% | pass |
+| real | lr | 0.28% [0.06, 1.29] | 4 | 54.5% | pass |
+| real | lr_hand | 0.28% [0.06, 1.29] | 4 | 74.8% | pass |
+| real | mlp | 0.49% [0.15, 1.61] | 7 | 28.9% | pass |
+| real | trivial | 0.49% [0.15, 1.61] | 7 | 52.5% | pass |
+
+No arm or model fails the rule (lower bounds 0.06% to 0.45%). Flagged queries (counts in the JSON,
+`<arm>.catalogue_gap.models.<model>.flagged_queries`). Product arm: `lr`: zen x3, dumbbells x2, printers x2,
+promo codes or discounts, drudge report, bee, gold; `lr_hand`: white splashproof shiplap wallpaper x2,
+dumbbells x2, turquoise pillows, artificial orchid arrangement, e12/candelabra; MLP: zen x3, printers x2, promo
+codes or discounts x2, mom urn x2, owl, kisner, drudge report, marble, turquoise pillows, liberty hardware
+francisco; trivial: certified international melamine x3, bathroom freestanding cabinet, e12/candelabra,
+artificial orchid arrangement. Comparison arm: `lr`: bee, printers, turquoise pillows, dumbbells; `lr_hand`:
+brockham solid blackout thermal grommet curtain panels, white splashproof shiplap wallpaper, bedroom wall decor
+floral, multicolored with some teal (prints), artificial orchid arrangement; MLP: printers x2, capricorn
+chest, kisner, annex dresser, sancroft armchair, bohemian; trivial: certified international melamine x3,
+brockham solid blackout thermal grommet curtain panels x2, bedroom wall decor floral, multicolored with some teal (prints) x2.
+
+##### Recommendation under section 7 (criterion 7)
+
+**Criterion rule:** `lr_hand` replaces `lr` only if `model_comparison_hand` is `justified` in the primary
+arm. It **is** `justified` there (recall +6.24 pp, 2.5 se, 12/15 fold wins, FPR gate holds, `worse` false),
+so under the rule `lr_hand` is the recommendation to put to the user, who decides (nothing is acted on).
+Points for `fable` to weigh, none of which changes the verdict:
+
+1. The gain is at the operating point, not in ranking: pooled ROC-AUC is lower for `lr_hand` (0.953 against
+   0.973 primary, 0.911 against 0.937 comparison; AUC difference -0.020, `worse` true on the informational
+   AUC booleans).
+2. Gains by family (primary arm, main run): A 64.7 to 84.4%, B 64.6 to 75.5%, D 81.5 to 83.1%, but C 90.6 to
+   84.7% and **E (evaluation-only) 19.6 to 9.0%**. Templates: A.hex 61.3 to 100%, B.hard_nosql 39.3 to 84.0%,
+   B.script 83.7 to 100%, but **C.walk 80.3 to 23.4% (0.0% in the comparison arm)** and B.template 32.7 to
+   24.0%. Several of the gains are on templates the trivial baseline already solves at 100% (A.hex, B.script,
+   B.traversal, C.hard_search_url, D.url), i.e. length and punctuation, as 6.5 predicted.
+3. FPR is 0.69% against `lr`'s 0.62%, both under target, CI 0.25% to 1.92%.
+4. LOFO transfer improves everywhere, including B and D (see above).
+5. Part-number behaviour: `lr_hand` flags 61% of the part-number strings in the primary arm against `lr`'s
+   78%, so it is better but nowhere near fixed; the MLP is the best model on this diagnostic (32%).
+6. MLP: `model_comparison` primary arm within noise (-1.80 pp, se 1.02), and it keeps the lowest sanity
+   false-positive count in the primary arm; `lr_hand` also beats the MLP by 8.4 pp on recall at about the
+   same FPR (0.69% against 0.83%).
+
+**M6 to M7 for `lr` itself (context only, NOT a paired comparison: different code, 100 extra negatives, a
+fourth model in the run, different draws):**
+
+| quantity | M6 (`a20073f`) | M7 (`4d19467`) |
+|---|---|---|
+| primary recall / FPR / AUC | 77.0% / 0.49% / 0.971 | 75.3% / 0.62% / 0.973 |
+| primary families A / B / C / D / E | 70.9 / 64.6 / 90.4 / 82.0 / 18.4 | 64.7 / 64.6 / 90.6 / 81.5 / 19.6 |
+| primary B.template (13.22 probes 92% to 60%) | 47.7% | 32.7% |
+| comparison recall / FPR / AUC | 70.4% / 1.04% / 0.955 | 64.0% / 0.76% / 0.937 |
+| comparison families A / B / C / D / E | 60.2 / 67.8 / 78.2 / 75.4 / 19.1 | 33.4 / 64.1 / 82.8 / 75.6 / 20.9 |
+| primary LOFO A / B / C / D | 62.7 / 34.1 / 71.3 / 29.7 | 61.1 / 37.9 / 69.3 / 22.8 |
+| comparison LOFO A / B / C / D | 50.2 / 44.3 / 65.8 / 30.0 | 17.5 / 39.9 / 47.5 / 22.1 |
+| primary catalogue gap FPR [Wilson] / recall | 1.25% [0.57, 2.70] / 78.3% | 0.76% [0.29, 2.02] / 75.3% |
+| primary one-word union / sanity FP (all 50) | 3 (dumbbells, owl, zen) / 4 | 4 (bee, dumbbells, owl, zen) / 4 |
+
+The 13.22 drop (81.7 to 79.7% overall, B 74.4 to 67.3%, B.template 92 to 60%) stays confirmed and deeper in
+the primary arm: 75.3% overall, B 64.6%, B.template 32.7%. Of note for `fable`: the comparison arm's `lr` and
+MLP lose a lot of recall on family A (comparison `lr` A 60.2 to 33.4%; A.hex 100 to 2.0%, A.alnum 100 to
+28.0%; MLP A 55.0 to 23.7%), where the 100 hard negatives are about 21% of the negatives (3.3 PQ-7a) and
+the digit-run and prefix+digits shapes sit close to A.hex and A.alnum. The same pattern shows in the primary
+arm for the MLP (A.hex 96.3 to 41.0%) and, less, `lr` (A.hex 100 to 61.3%). This is the visible cost of
+teaching part numbers as legitimate; I have not isolated it, and `lr_hand` keeps A.hex at 100% in both arms.
+
+**Deviations.** None from the procedure. `fetch` downloaded (no copy from the main repo). The MLP fit count
+(91) was not instrumented. The per-fold part-number report exists for the main run only, so criterion 6's
+counts cover the 15 fold reports per arm. DESIGN.md is untouched; 13.9's wall time (about 65 minutes) is
+now stale (about 80 minutes, four models).
+

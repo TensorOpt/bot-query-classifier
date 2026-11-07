@@ -2872,6 +2872,59 @@ rerun from scratch. MLP fit count not instrumented. Nothing under `results/` or 
 
 ## M7: Part-number hard negatives and the combined-feature adapter (design v2.8)
 
+**Sign-off: 2026-11-07, `fable`, verdict POSITIVE for the milestone** (audited at `ea3b60e`; runs at
+`4d19467`; `DESIGN.md` 13.9 updated). The two decisions it raises are the user's and are listed
+below, not taken.
+
+- Suite at the audited commit: 941 tests, OK in 228 s, run by `fable`.
+- Diff read by `fable`: `build_part_number_negatives` and the M7.T3/M7.T4 changes to
+  `iter_fold_data`, `_side` and `fit_final_model`; `LRHandScorer`; the two-pair comparison loop in
+  `build_run_report`; every M7 review record. Invariants: the 100 hard negatives are training-only
+  (never in `threshold_texts`, the test side, E, the clustering experiment), seeded from `SEED` with
+  the offset, dropped against the arm's negatives, all real queries, the P strings and the sanity
+  queries; positives still render from the spans' or queries' occurrences only; `lr_hand` is a
+  fourth adapter behind the `Scorer` port with the 6.5 composition pinned by `get_params()`; the
+  section 7 rule is applied unchanged to the new pair.
+- Checked by `fable` against `evaluate-baef3189eaa6-20261107T121450246509Z.json`: every headline
+  recall, FPR and AUC, both `model_comparison_hand` verdicts, the `arm_comparison` verdicts, the
+  part-number diagnostic per model, arm and shape, the LOFO rows, the per-fold hard-negative
+  counts, the MLP fit time and the `C.walk` and `B.template` figures match the report.
+- Probes recorded: 13.23 (M7.T1), 13.24 (M7.T3).
+
+Findings and the decisions they need:
+
+1. **`lr_hand` over `lr` (6.5, section 7).** Primary arm: recall +6.24 pp (se 2.49, 12 of 15 folds),
+   FPR gate holds, `justified` true; comparison arm also `justified`. LOFO held-out recall rises on
+   every family (primary: A +17, B +12, C +13, D +48 pp), so the 6.5 goal is met. Costs, verified:
+   pooled ROC-AUC falls (0.973 to 0.953, primary), family E recall halves (19.6% to 9.0%), `C.walk`
+   collapses (80.3% to 23.4%), `B.template` falls (32.7% to 24.0%), and the new false positives are
+   long ordinary product titles, the length artefact of 6.3. Reading: the gain at the operating
+   point is partly length, which is also what makes it transfer. Under the pre-registered rule the
+   recommendation is `lr_hand`; `fable` recommends accepting it with the three losses recorded as
+   the next things to look at (section 14). The user decides.
+2. **Part-number hard negatives (3.3): keep, revise or drop.** The diagnostic moved from 85% to 78%
+   for primary `lr` (only the product-words shape improved, 40% to 12%; the three bare shapes stay
+   at 100%), to 61% for `lr_hand`, 32% for the MLP, and 26% for comparison `lr`. Sanity rows 39 and
+   43 are still flagged. Cost, verified: family A recall in the comparison arm fell from 60.2% to
+   33.4% (`A.hex` 100% to 2%, `A.alnum` 100% to 28%); primary-arm MLP `A.hex` 96% to 41%; `lr_hand`
+   keeps `A.hex` at 100%. The bare shapes sit on the 2.2 boundary with `A.alnum` and `A.hex` by
+   construction, so part of this cost is the taxonomy's, not a bug. `fable` recommends keeping them
+   (the chosen model's A is intact and the diagnostic improved where the fix could work) and
+   recording the bare-shape conflict in section 14. The user decides.
+3. **Not a decision, recorded:** the 13.22 recall drop is deeper again for primary `lr` (75.3%,
+   `B.template` 32.7%); catalogue gap passes everywhere; cluster results identical to M6; no
+   false positive looks machine-generated.
+
+Follow-ups:
+
+- **F1 (process):** TDD order slipped at M7.T4 and M7.T6; the isolated mutation passes stood in,
+  as ruled at M3. Recorded without penalty.
+- **F16 (optional):** `tests/test_cli_evaluate.py` now takes about 170 s because older name-based
+  tests fit the real `lr` and `lr_hand`; fakes under every model name there, keeping the real
+  models only in `DeterminismTest` (11.18), would cut the suite by about a minute.
+- **F17 (section 14 entries, `fable`):** `C.walk`, E and `B.template` under `lr_hand`; the
+  bare-shape conflict between part-number negatives and family A; the 13.22 drop.
+
 Plans `DESIGN.md` v2.8 (`cafa701`): 3.3 (part-number hard negatives, Q12 resolved, 12.1 item 20),
 6.5 (`lr_hand`, 12.1 item 19), section 7 (`model_comparison_hand`), 8.6 item 4 (the diagnostic now
 measures the fix). Logistic regression is the recommended model (12.1 item 18); the MLP stays as the

@@ -1698,7 +1698,9 @@ etc.; `quoting=QUOTE_NONE` returns the raw quoted form. Use default quoting.
   (M6.T1, 2026-11-06, clean clone at `a20073f`, same software.) The full invocation,
   `evaluate --negatives product,real --lofo --catalogue-gap` with all three models, took
   64 min 58 s of wall time; the final primary-arm MLP fit took 38.4 s. `fetch` 6 s, `generate`
-  56 s, `cluster` 7 s.
+  56 s, `cluster` 7 s. (M7.T7, 2026-11-07, clean clone at `4d19467`, four models and the
+  part-number hard negatives.) The same invocation took 79 min 35 s; the final MLP fit 37.1 s;
+  `fetch` 3 s, `generate` 67 s, `cluster` 6 s.
 - The probe agent's `facts.py` coverage numbers (13.18) were read, not re-run.
 - (Closed 2026-11-06.) No WANDS `query_class` contains `|`: checked by `fable` with
   `grep -c '|'` on a `query.csv` whose SHA-256 matches `data/CHECKSUMS`, 0 lines.

@@ -33,7 +33,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T5. M7.T1 to M7.T4 are validated; M7.T5 to M7.T7 follow
+**Next task:** M7.T6. M7.T1 to M7.T5 are validated; M7.T6 and M7.T7 follow
 in id order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
@@ -3314,7 +3314,38 @@ cost little and aren't optimised.
   - CLI: default parse lists four models; `--models lr_hand` is valid; an unknown name is still a usage
     error.
 - **Depends on:** M7.T1, M4.T1, M4.T3, M4.T4.
-- **Status:** done
+- **Status:** validated
+- **Validation (`opus`, 2026-11-07, `d359c6d`): PASS.** `.venv/bin/python -m unittest discover -s
+  tests`: 936 tests OK (238 s, on a host shared with the mutation runs). Criterion 1:
+  `LRHandScorer` is module-level on `_VectorisedScorer`, no constructor arguments; the
+  `FeatureUnion` of `make_vectoriser()` and `make_pipeline(FunctionTransformer(_hand_features),
+  StandardScaler())` is 13.23's sparse composition, and the hand branch gets the base class's
+  normalised text. Criterion 2: base-class `fit` / `score` reused (normalise once, P(1),
+  `NotFittedError` on both paths), pinned with pickle, refit, range, `""`, `"☃☃"` and 10 kB tests.
+  Criterion 3: the three `get_params()` equalities plus `func is _hand_features`. Criterion 4:
+  `LR_HAND` next to `LR` / `MLP`, last in `MODEL_FACTORIES`, so the default is
+  `lr,mlp,trivial,lr_hand`; the comparison-arm LOFO skip and the fit timer key on `MLP` only, and
+  the extended LOFO test asserts `lr_hand` runs A-D in the comparison arm. Criterion 5: the
+  docstring cites 13.23 with date and versions. 11.12: no warning suppression.
+  Mutants, each alone on a `git archive d359c6d` copy, all killed: `StandardScaler(with_mean=False)`,
+  no scaler, hand branch dropped, `C=0.5`, `max_iter=500` (config tests); the hand branch on raw
+  text through a `_hand_features` wrapper (config test, and behaviourally by the `"sofa ​ bed"`
+  test; the scaler-statistics test alone wouldn't catch it, as `TEXTS` is already normalised);
+  `_hand_features` wrapped in a lambda (config and pickle tests); branch order swapped (caught by
+  the positional config and coefficient tests; the scores would be equivalent up to lbfgs
+  rounding, since L2 logistic regression is invariant to column order); `LR_HAND = "lr_hnad"` (15
+  errors and 3 failures in `test_cli_evaluate`); `lr_hand` left out of the default but registered,
+  and `lr_hand` placed second in `MODEL_FACTORIES` (`test_defaults`,
+  `test_bare_flags_cover_all_of_models`); the MLP fit timer applied to `lr_hand` (the
+  perf-counter test runs out of its two ticks); the comparison-arm LOFO skip applied to `lr_hand`
+  (the extended LOFO test).
+  Rulings: (a) real `lr_hand` in the name-based CLI tests: a note, not a correction. Per-test
+  timing against `d359c6d^`: 14 s of the increase is `DeterminismTest`, which keeps the real models
+  (11.18, as in the M4.T4 ruling); the comparison-arm LOFO test adds 3.8 s and every other test 1.1 s
+  or less. The M4.T4 corrections faked tests costing 6-14 s each, so a fake here would save little.
+  (b) `bqc/cli.py:89` is 104 columns, unchanged by this task (it was `:87` before): a note for the
+  next task that edits `bqc/cli.py`. (c) The extended LOFO comparison-arm test is good: the
+  `lofo_skip_lrhand` mutant shows it pins the MLP-only rule.
 
 ### M7.T6: `model_comparison_hand` and section coverage for `lr_hand`
 

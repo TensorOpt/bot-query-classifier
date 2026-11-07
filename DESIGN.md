@@ -652,6 +652,9 @@ variance from the training rows only), joined by a sparse horizontal stack. Mode
 name `lr_hand`; in `--models` by default; it runs everywhere `lr` runs, LOFO and
 the catalogue gap included.
 
+**Outcome (M7.T7, 2026-11-07, 12.1 item 21):** `justified` in both arms; `lr_hand` is
+the recommended model, with its losses listed in section 14.
+
 **Rationale (M6.T1, 2026-11-06):** leave-one-family-out recall of `lr` falls to
 34% on B and 30% on D, and the trivial baseline (6.3) beats both `lr` and the MLP on
 those held-out families (49% and 69%) while trailing them by 15 points on the
@@ -1517,6 +1520,25 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     with every LR and MLP run. The user accepted the 12.2 fix: 100 generated hard
     negatives with their own tag, 3.3.
 
+21. **`lr_hand` is the recommended model (2026-11-07, M7.T7).** Under the section 7
+    rule `model_comparison_hand` is `justified` in the primary arm (recall +6.24 pp,
+    se 2.49, 12 of 15 folds; FPR gate holds) and in the comparison arm; leave-one-
+    family-out recall rises on every family (primary: A +17, B +12, C +13, D +48 pp),
+    which was 6.5's goal. The user accepted `fable`'s recommendation with the losses
+    recorded: pooled ROC-AUC 0.973 to 0.953, family E recall 19.6% to 9.0%, `C.walk`
+    80.3% to 23.4%, `B.template` 32.7% to 24.0%, and the new false positives are
+    long ordinary product titles (the 6.3 length artefact). These are the next things
+    to look at (section 14). `lr` stays in the harness as the baseline of 6.2; the MLP
+    stays as the comparison model (item 18).
+22. **Part-number hard negatives kept (2026-11-07, M7.T7).** The diagnostic moved from
+    85% to 78% flagged for primary `lr` (only the product-words shape improved, 40% to
+    12%; the three bare shapes stay at 100%), to 61% for `lr_hand`, 32% for the MLP
+    and 26% for comparison `lr`; sanity rows 39 and 43 are still flagged. Cost:
+    family A recall in the comparison arm fell from 60.2% to 33.4% (`A.hex` 100% to
+    2%); `lr_hand` keeps `A.hex` at 100%. The bare shapes sit on the 2.2 boundary with
+    `A.alnum` and `A.hex` by construction, so part of the cost is the taxonomy's. The
+    user accepted keeping them as designed in 3.3; the conflict is a section 14 entry.
+
 ### 12.2 Still open
 
 No question is open. Q12 was resolved on 2026-11-07 (12.1 item 20); its text is
@@ -2101,7 +2123,18 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
 - **Per-length quotas for spans** (draw and deduplicate within each word-count
   bucket so the realised mix equals the target), if the one-word false-positive
   count differs between the 5,000 and 20,000 runs (3.2, 13.20).
-- **Isolate the 13.22 recall drop** (T 81.7 -> 79.7%, `B.template` 92 -> 60%)
+- **`lr_hand`'s losses (12.1 item 21):** `C.walk` (80.3% to 23.4%), family E (19.6% to
+  9.0%) and `B.template` (32.7% to 24.0%) under the combined features, and the long
+  product titles among its false positives. First look: whether the length feature
+  alone drives them (a `lr` + length-only variant), then per-template.
+- **Bare part-number shapes against family A (12.1 item 22):** the three bare shapes
+  of 3.3 are flagged 100% by primary `lr` even when trained on them, and they cost
+  `A.hex`/`A.alnum` in the comparison arm. The 2.2 boundary is the question: either a
+  sharper rule for what a bare letter-digit string must look like to be a part
+  number, or accepting that bare part numbers are undecidable per query (the
+  sequential-enumeration note below).
+- **Isolate the 13.22 recall drop** (T 81.7 -> 79.7%, `B.template` 92 -> 60%; deeper
+  in the full runs: 77.0% then 75.3% overall, `B.template` 47.7% then 32.7%)
   by re-running the 13.21 protocol with the M2.T13 templates and with distinct
   rendering switched separately, if the full run's per-template table confirms it.
 - **Dimensionality reduction of the classifier's TF-IDF features**: closed by the

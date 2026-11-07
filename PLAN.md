@@ -33,8 +33,8 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T6. M7.T1 to M7.T5 are validated; M7.T6 and M7.T7 follow
-in id order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
+**Next task:** M7.T6 corrections (items 1-2 under M7.T6), then M7.T7. M7.T1 to M7.T5 are
+validated (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
 
@@ -3374,6 +3374,47 @@ cost little and aren't optimised.
     its main fit and final model are present.
 - **Depends on:** M7.T5, M4.T8.
 - **Status:** done
+- **Validation (`opus`, 2026-11-07, `b68076b`): CHANGES REQUESTED.** `.venv/bin/python -m
+  unittest discover -s tests`: 941 tests OK (820 s, on a host shared with four parallel mutation
+  runs; not a timing figure). Criterion 1: one loop over `("model_comparison", MLP)` and
+  `("model_comparison_hand", LR_HAND)` calls the existing `paired_comparison(challenger, lr)` under
+  each arm, only when `lr` and the challenger both ran; no new comparison code; `model_comparison`
+  unchanged (pinned again in the new test). Criteria 2-3: the sanity, diagnostic, LOFO and gap code
+  iterate over every model, and the CLI fake test pins `lr_hand` rows in each section of both arms
+  (LOFO A-D with 5 fitted folds, so the comparison arm runs it), `arm_comparison` and two final
+  models; `--lofo lr,trivial` gives the not-run row with its reason while the main fit, sanity row
+  and final models stay. `bqc/cli.py`: the docstring wrap only. New lines within 100 columns.
+  Mutants, each alone on a `git archive b68076b` copy (`test_paired_comparison`, `test_run_report`
+  and the two new CLI tests), 14 killed: key misnamed `model_comparison_lr_hand`; the two pairs'
+  keys swapped; `arm_comparison` skipping `lr_hand`; the diagnostic skipping it; the sanity section
+  skipping it; the challenger's folds taken from the first arm; `lr`'s folds taken from the first
+  arm; the sign flipped (`lr` minus challenger); `or` for `and` in the presence condition; the
+  comparison in the first arm only; LOFO skipping `lr_hand` in both arms; LOFO skipping it in the
+  comparison arm (as the MLP); the gap skipping it; the hand pair taking `mlp` as second side.
+  1 survivor (item 1): the hand pair using the MLP's folds as first side whenever `mlp` ran.
+  1. `tests/test_paired_comparison.py:282`: `lr_hand` and `mlp` are both `self.Low`, so their fold
+     lists are identical and the test can't tell `paired_comparison(lr_hand, lr)` from
+     `paired_comparison(mlp, lr)`. The mutant `folds_of[arm][MLP if key.endswith('hand') and MLP in
+     models else challenger]` (`bqc/evaluate.py:943`) passes every test. Required fix: give
+     `lr_hand` (or `mlp`) a scorer whose folds differ from the other two (a third `LengthScorer`
+     variant in the test class, like `Low`), and assert `model_comparison_hand !=
+     model_comparison` in that test so the distinction is pinned.
+  2. `tests/test_paired_comparison.py:206`: `assertFalse(holds and mean > 0)` is a disjunction that
+     passes whenever the gate holds with a non-positive mean, and doesn't state what the swap
+     produces. Required fix: assert `swapped["fpr"]["differences"] == [0.125] * 4` and
+     `assertFalse(swapped["fpr_gate"]["holds"])` (mean 0.125, se 0, so the rise is beyond noise).
+  Rulings: (a) F1, process: the TDD order slipped again (implementation before tests). The tests
+  are hand-computed and the isolated pass kills 14 of 15; with item 1 fixed the evidence is
+  sufficient, and no rework beyond items 1-2. (b) The dropped unit-level LOFO test is accepted:
+  the CLI fake tests run `build_run_report` with LOFO in both arms and pin `lr_hand`'s rows (five
+  fitted folds per family) and the not-run row, and both LOFO-skip mutants are killed there. (c)
+  Suite time: not a correction for this task. Its two CLI tests already fake `lr_hand` and the MLP
+  and cost 10.1 s and 7.6 s alone (the existing MLP not-run test: 8.2 s); the rest of
+  `test_cli_evaluate.py`'s time is earlier name-based tests with the real `lr`/`lr_hand`.
+  Proposed for the M7 sign-off as a follow-up: fakes under every model name in the name-based CLI
+  tests, `DeterminismTest` keeping the real models (11.18). (d) The body key-set pins in
+  `tests/test_run_report.py` cover `lr`/`mlp` runs only, where no `model_comparison_hand` appears,
+  so leaving them unchanged is right; the absence is pinned by the new presence test.
 
 ### M7.T7: Re-run on real data and report
 

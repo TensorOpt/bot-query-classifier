@@ -367,6 +367,31 @@ can coincide with it:
    of section 4 counts them as negatives (positives render at
    `(n + 100) // n_training_templates` each so the training side stays 1:1).
 
+**Rulings on the M7 plan (`fable`, 2026-11-07, PQ-7 to PQ-9; recorded in 12.3):**
+
+- **Quota (PQ-7a).** The 100 count as negatives wherever the negative count sets
+  the positive quota: primary main run and LOFO `(n + 100) // n_training_templates`,
+  comparison LOFO `(384 + 100) // n_remaining`, primary final model
+  `(n + 100) // 24`. The comparison arm's fixed 20 per template (8.2, main run and
+  final model) stays. In the comparison arm the 100 are about 21% of the negatives;
+  accepted: both arms get the same fix so `arm_comparison` keeps isolating spans
+  against real queries, and the diagnostic is reported per arm.
+- **Seed without a repeat (PQ-7b).** The final models use
+  `SEED + PART_NUMBER_SEED_OFFSET`, as their spans use `SEED`.
+- **Inner-split groups (PQ-8a).** One group per shape, `("part_number", shape)`,
+  like a template: rows of one shape are near-duplicates and belong together. They
+  never enter the out-of-fold threshold scores (step 3).
+- **Rule 4 (PQ-8b).** A training positive equal to a part-number negative is
+  dropped and counted, as for any training negative. The test side is unchanged.
+- **"A span" (PQ-8c).** Step 2 drops against the arm's own training negatives (the
+  spans in the primary arm, the training-side real queries in the comparison arm),
+  all 480 real queries, the P strings, the sanity queries and earlier candidates.
+- **Per fold where the vocabulary is per fold (PQ-8d).** The comparison arm and the
+  catalogue-gap pass build them per fold with the repeat's seed, as the gap pass
+  builds its spans; "per repeat" in step 3 describes the primary main run.
+- **`generate` (PQ-9).** Unchanged: it inspects positives, spans and the
+  diagnostic set; the hard negatives are reported by `evaluate`'s fold reports.
+
 **Rationale:** the M6 run's diagnostic (8.6 item 4) flagged 85% of the 100
 part-number strings with the chosen model and both `SKU...` sanity rows, although
 part numbers are legitimate (2.2); WANDS has no bare part-number query (13.15), so
@@ -1173,8 +1198,8 @@ bqc/                      package
   sanity.py               sanity set loader and validity check (8.6.1, 11.20, 11.21)
   synth/                  one module per family + registry + audit; sample metadata
   features.py             vectoriser factory (section 5)
-  models.py               Scorer protocol + three adapters (section 6)
-  negatives.py            product-name spans: ASCII fold, length draw, audit (3.2)
+  models.py               Scorer protocol + four adapters (section 6)
+  negatives.py            product-name spans (3.2) and part-number hard negatives (3.3)
   evaluate.py             folds, cross-fit / nested threshold selection, metrics (section 8)
   cluster.py              HDBSCAN experiment (section 9)
   report.py               write_report(): config fields, naming, no overwrite
@@ -1514,7 +1539,13 @@ kept below for the record.
 abandoned and rejected respectively; 12.1 items 15 and 16. Q12 is the only open
 question.)
 
-### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8)
+### 12.3 Resolved by `fable` on plan review (2026-11-05, OQ-1 to OQ-8; 2026-11-07, PQ-7 to PQ-9)
+
+M7 plan review (2026-11-07, `PLAN.md` at `59379e4`): PQ-7 (quotas and the
+final-model seed), PQ-8 (inner-split groups, rule 4, the drop lists per arm,
+per-fold builds) and PQ-9 (`generate` unchanged; section 10 tree wording) are
+ruled in 3.3 under "Rulings on the M7 plan". None alters a user decision.
+
 
 `opus` raised eight questions while planning (`PLAN.md` at commit `5d76c8e`,
 "Open questions for `fable`"; later plan revisions removed them). None alters a user

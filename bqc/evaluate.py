@@ -1079,14 +1079,17 @@ def fit_final_model(
 ) -> FinalModel:
     """Fit the final model of one arm (8.7); family E is not rendered.
 
-    Primary: `n` spans with seed `SEED`, positives from all A-D templates at `n // 24`
-    each from the spans' token occurrences, one fit, and `t` from the 8.4 rule over all
-    the real queries (none was trained on). Comparison: the real queries as negatives,
-    `QUOTA` positives per template from their token occurrences, `t` from the inner
-    out-of-fold pass (as `run_comparison_fold`, seed `SEED`), then a fit on every row.
+    Primary: `n` spans with seed `SEED`, positives from all A-D templates at
+    `(n + 100) // 24` each from the spans' token occurrences, one fit, and `t` from the 8.4
+    rule over all the real queries (none was trained on). Comparison: the real queries as
+    negatives, `QUOTA` positives per template from their token occurrences, `t` from the
+    inner out-of-fold pass (as `run_comparison_fold`, seed `SEED`) over the real-query rows,
+    then a fit on every row. Both arms add the 100 part-number hard negatives of 3.3 (built
+    once, seed `SEED + PART_NUMBER_SEED_OFFSET`, on the fit's vocabulary; training only, never
+    in the threshold scores); `report["part_number_negatives"]` counts them.
     Rule 4 as in `iter_fold_data`: a positive equal to a sanity query raises FoldError,
-    one equal to a training negative, a real query or a part-number string is dropped and
-    counted in `report["dropped"]`. Every score array goes through `check_finite` with no
+    one equal to a training negative, a real query, a part-number string or a part-number
+    negative is dropped and counted in `report["dropped"]`. Every score array goes through `check_finite` with no
     fold. `FoldError` and `ValueError` as there; an unknown `arm` raises ValueError.
     """
     if arm not in ARMS:
@@ -1097,16 +1100,18 @@ def fit_final_model(
         spans, removals = build_spans(products, n, SEED, real_queries, part_numbers, sanity)
         negatives = [s.text for s in spans]
         vocabulary = token_occurrences(negatives, cap=vocabulary_cap)
-        per_template = n // len(templates)
     else:
         removals = None
         negatives = list(real_queries)
         vocabulary = token_occurrences(negatives)
-        per_template = QUOTA
+    hard, hard_removals = build_part_number_negatives(
+        vocabulary, SEED + PART_NUMBER_SEED_OFFSET, negatives, real_queries, part_numbers,
+        sanity)
+    per_template = (len(negatives) + len(hard)) // len(templates) if arm == PRIMARY else QUOTA
     drop = {"training_negatives": negatives, "real_queries": real_queries,
-            "part_numbers": part_numbers}
+            "part_numbers": part_numbers, "part_number_negatives": [r.text for r in hard]}
     train = _side(negatives, [_render_screened(
-        registry, vocabulary, SEED, templates, per_template, sanity, drop)], per_template)
+        registry, vocabulary, SEED, templates, per_template, sanity, drop)], per_template, hard)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         if arm == PRIMARY:
@@ -1117,12 +1122,13 @@ def fit_final_model(
         else:
             out_of_fold = _inner_out_of_fold(
                 train.texts, train.y, train.families, train.groups, make_scorer, SEED)
-            real_scores = check_finite(
-                out_of_fold, **context, score_set=_score_set("out-of-fold scores", None)
-            )[:len(negatives)]
+            out_of_fold = check_finite(
+                out_of_fold, **context, score_set=_score_set("out-of-fold scores", None))
+            real_scores = out_of_fold[[i for i, f in enumerate(train.families) if f is None]]
             scorer = make_scorer().fit(train.texts, train.y)
     fit_warnings = [f"{w.category.__name__}: {w.message}" for w in caught]
-    report = {**train.report, **({"span_removals": removals} if removals else {})}
+    report = {**train.report, **({"span_removals": removals} if removals else {}),
+              "part_number_negatives": _part_number_report(hard, hard_removals)}
     return FinalModel(
         arm, model, scorer, select_threshold(real_scores, target_fpr), fit_warnings, report)
 

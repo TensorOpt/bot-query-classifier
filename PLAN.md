@@ -33,8 +33,8 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T2 (corrections), then M7.T3. M7.T1 is validated; M7.T3 to M7.T7 follow in id
-order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
+**Next task:** M7.T3. M7.T1 and M7.T2 are validated; M7.T3 to M7.T7 follow in id order (PQ-7 to
+PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
 
@@ -2968,7 +2968,12 @@ cost little and aren't optimised.
   - Outputs are ASCII and normalised (11.4); empty vocabulary raises `ValueError`.
   - `generate_part_numbers` output unchanged (criterion 1).
 - **Depends on:** M2.T9, M2.T11, M2.T12.
-- **Status:** done
+- **Status:** validated (opus, 2026-11-07). Implementation `0ebc041`, corrections `908b955`, wrap
+  `a5fc42f`. Mutants: 19 in the first pass (14 killed by a failing test, 2 only by a hang, 3
+  survived); the three survivors were re-run against `908b955` and are now caught, and the
+  drop-list order mutant stays accepted as equivalent. `a5fc42f` only wraps
+  `PART_NUMBER_REMOVAL_KINDS` one kind per line, value and order unchanged;
+  `awk 'length > 100' bqc/negatives.py` prints nothing; `test_negatives`: 44 tests OK.
 - **Validation (`opus`, 2026-11-07, `0ebc041`): CHANGES REQUESTED.** Full suite: 863 tests OK. The
   `generate_part_numbers` digest was recomputed on the pre-change tree (`git archive 0ebc041~1`):
   `dec1b942...ba128`, equal to the pinned value. Criteria 1, 2, 4, 5 (code), 6 (code) and 7 are met;

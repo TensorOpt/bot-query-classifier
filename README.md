@@ -4,7 +4,7 @@ Tell apart real search queries from ones coming from bot traffic.
 
 The classifier decides from the query text alone whether to serve a search query or discard it. The use case is a furniture and home-goods shop. The costly mistake is discarding a real shopper's query, because that can lose a sale, so the false positive rate (FPR) is capped first and bot detection is maximised within that cap.
 
-> **Status: closed, design v2.8.** Every planned milestone (M1 to M7) is implemented, validated and signed off. The recommended model is `lr_hand`, a logistic regression on character TF-IDF plus three hand features, chosen by a pre-registered rule from the final run of 2026-11-07. All numbers below come from that run and are recorded, with their sources, in `PLAN.md` (the M6.T1 and M7.T7 reports) and `DESIGN.md` (sections 12 and 13). The run outputs themselves live under `results/`, which is not committed.
+> **Status: closed, design v2.8.** Every planned milestone is implemented, validated and signed off. The recommended model is `lr_hand`. How the project got here, with the evidence for each decision and both full runs, is in [REPORT.md](REPORT.md); the decisions themselves are in `DESIGN.md` and the task history in `PLAN.md`.
 
 ## The problem and the data
 
@@ -56,16 +56,6 @@ Generalisation checks (`DESIGN.md` 8.6), `lr_hand` in the primary arm:
 | False positives reviewed by eye | none looks machine-generated |
 
 Known weaknesses of `lr_hand`, recorded for the next piece of work (`DESIGN.md` section 14): lower ranking quality than `lr` (AUC 0.953 against 0.973), the `C.walk` template falls from 80% to 23%, family E halves, and its false positives are long ordinary product titles, which is the length artefact the trivial baseline measures.
-
-## The experiment's journey
-
-1. **v1 design (2026-11-05).** Real WANDS queries as training negatives, generated positives, an MLP against a logistic regression baseline, group-aware folds so no template or query straddles a fold, thresholds chosen on real queries, and a list of anti-inflation checks. Every decision and probe was written down first (`DESIGN.md`, `PLAN.md`), and each task went through implement, validate with a mutation pass, and sign off.
-2. **Probes before models.** Scratch probes settled the vectoriser, the folds, HDBSCAN on TF-IDF, SMOTE (generates nothing on a balanced set), and the Wilson interval (`DESIGN.md` section 13). SMOTE, LLM-generated positives, embeddings and SVD for the classifier were each considered and rejected on evidence (12.1).
-3. **Q13: product-name spans (v2.0).** A probe showed real queries are too few to be training negatives; spans cut from product names with the queries' length distribution transfer (0.2% FPR against 18% for whole names) and 5,000 of them capture most of the gain of 40,000 (13.19). The real queries moved to threshold-setting and testing only, and a catalogue-gap check was added for the new failure mode.
-4. **M1 to M5: the harness.** Loaders with checksums, the sanity set labelled blind, generators with a taxonomy and an exact-match audit, the evaluation harness against a fake scorer (leave-one-family-out, catalogue gap, final models, sanity and part-number sections, paired comparisons), the three adapters, the `evaluate` command, and the HDBSCAN label-discovery experiment.
-5. **M6: the first full run (2026-11-06).** Logistic regression matched the MLP within noise while the MLP failed the FPR gate, so logistic regression became the recommendation (12.1 item 18). Two findings drove the next milestone: held-out-family recall of `lr` was low on B and D while the trivial length-and-punctuation baseline transferred better, and 85% of generated part numbers were flagged although part numbers are legitimate.
-6. **M7: the response (2026-11-07).** Reworking the generators was considered and rejected: it would lower the yardstick without changing what the classifier can see. Instead the three hand features were added to the logistic regression (`lr_hand`), and 100 part-number hard negatives joined the training side. The re-run made `lr_hand` justified over `lr` with held-out recall up on every family, and the part-number diagnostic improved where the fix could work; the costs are listed above.
-7. **Label discovery without labels (section 9).** Clustering the pooled queries with labels hidden does not separate the classes at this feature set: at the default cell HDBSCAN gives 2 clusters, 1.5% noise and an adjusted Rand index of 0.002, and the seed-labelling rule is at chance. Recorded as a finding; the no-label scenario needs behavioural features, which are outside this project.
 
 ## How it works
 
@@ -135,14 +125,12 @@ Solid lines are the pipeline as built. Dashed lines are not usable in this proje
 ## Running it
 
 ```
-python -m venv .venv && .venv/bin/pip install -e .
-.venv/bin/python -m bqc fetch        # WANDS query.csv and product.csv, checksums verified
-.venv/bin/python -m bqc generate     # the training set and its audit report
-.venv/bin/python -m bqc evaluate --negatives product,real --lofo --catalogue-gap
-.venv/bin/python -m bqc cluster      # the label-discovery experiment
-.venv/bin/python -m unittest discover -s tests
+make install          # create .venv and install the package
+make fetch            # download WANDS query.csv and product.csv (checksums verified)
+make test             # run the test suite, about 4 minutes
+make evaluate-quick   # primary arm only, about 15 minutes, estimated
+make evaluate         # full run: both arms, leave-one-family-out, catalogue gap, about 80 minutes
+make help             # list every target (generate, cluster, clean, distclean)
 ```
 
-Every run writes one JSON file under `results/` with the configuration, seed, git commit and library versions, and `evaluate` pickles one final model per arm and model next to it. Two runs with the same configuration give identical JSON apart from the timestamp and the measured fit time. The full `evaluate` invocation with four models took about 80 minutes on 4 cores (`DESIGN.md` 13.9); the test suite takes about 4 minutes.
-
-Dependencies: `numpy` and `scikit-learn`. The workflow that built it (design, plan, implement, validate, sign off, with the roles in `.claude/agents/`) is described in `CLAUDE.md`.
+Every run writes one JSON file under `results/` with the configuration, seed, git commit and library versions, and `evaluate` pickles one final model per arm and model next to it. Two runs with the same configuration give identical JSON apart from the timestamp and the measured fit time. Dependencies: `numpy` and `scikit-learn`. The design-plan-implement-validate workflow that built the project, with its roles in `.claude/agents/`, is described in `CLAUDE.md`.

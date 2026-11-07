@@ -1389,6 +1389,16 @@ The v1 draft asked nine questions. The user's answers, now applied in the body:
 Also noted by the user: the `.claude/agents` files were cleaned of their previous
 project's references in commit `e2e4421`; nothing in this design depends on them.
 
+18. **Logistic regression is the recommended model (2026-11-07).** The M6.T1 run's
+    `model_comparison` (section 7 rule) in the primary arm: recall within noise
+    (-0.77 pp, se 0.93), the MLP fails the FPR gate (1.18% against 1%); in the
+    comparison arm the MLP is `worse`. `fable` recommended logistic regression under
+    6.2 and the user accepted. The MLP stays in the harness as the comparison model;
+    the final model for inspection and any deployment reading is the LR one.
+    Confirmed in the same run: the product-span arm is `justified` for LR
+    (+6.63 pp recall, FPR gate holds), so Q13 stands; the catalogue-gap check
+    passes in every arm and model.
+
 ### 12.2 Still open
 
 12. **Synthetic part-number negatives?** WANDS has no bare part-number query

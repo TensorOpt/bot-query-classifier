@@ -57,10 +57,10 @@ class Memoriser(FakeScorer):
 
 
 def fit(arm, factory=None, registry=None, real=REAL, part_numbers=(), sanity=(), target=TARGET,
-        n=N):
+        n=N, **kwargs):
     return fit_final_model(
         arm, factory or Factory(), target, "lr", real, PRODUCTS, list(part_numbers),
-        list(sanity), n=n, registry=registry or build_registry())
+        list(sanity), n=n, registry=registry or build_registry(), **kwargs)
 
 
 # Distinct scores, rising with the index: the last five real queries hold the top scores, so
@@ -237,14 +237,16 @@ class PartNumberNegativesTest(unittest.TestCase):
             self.assertEqual(Counter(r.template_id for r in rows), dict.fromkeys(SHAPE_IDS, 25))
 
     def test_the_builder_runs_on_the_fits_vocabulary(self):
+        cap = 6  # binds: the capped span vocabulary differs from the uncapped one
         with mock.patch("bqc.evaluate.build_part_number_negatives",
                         wraps=build_part_number_negatives) as spy:
-            fit(PRIMARY)
-            fit(COMPARISON)
+            fit(PRIMARY, vocabulary_cap=cap)
+            fit(COMPARISON, vocabulary_cap=cap)
         primary, comparison = spy.call_args_list
         spans = build_spans(PRODUCTS, N, SEED, REAL, [], [])[0]
         span_texts = [s.text for s in spans]
-        self.assertEqual(primary.args[0], token_occurrences(span_texts, cap=VOCABULARY_CAP))
+        self.assertNotEqual(token_occurrences(span_texts, cap=cap), token_occurrences(span_texts))
+        self.assertEqual(primary.args[0], token_occurrences(span_texts, cap=cap))
         self.assertEqual(list(primary.args[2]), span_texts)
         self.assertEqual(comparison.args[0], token_occurrences(REAL))
         self.assertEqual(list(comparison.args[2]), REAL)

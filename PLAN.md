@@ -3266,6 +3266,7 @@ cost little and aren't optimised.
   drop-list assertion `list(call.args[3]) == REAL` for both calls is enough, together with the
   builder's own drop tests (M7.T2). The "no real queries" mutant is killed. (c) "Next task" now
   reads M7.T4 (corrections), then M7.T5.
+  Addressed in the `test(M7.T4)` correction commit (items 1 and 2).
 
 ### M7.T5: `lr_hand` adapter
 

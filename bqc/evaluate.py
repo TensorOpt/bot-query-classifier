@@ -1089,8 +1089,9 @@ def fit_final_model(
     in the threshold scores); `report["part_number_negatives"]` counts them.
     Rule 4 as in `iter_fold_data`: a positive equal to a sanity query raises FoldError,
     one equal to a training negative, a real query, a part-number string or a part-number
-    negative is dropped and counted in `report["dropped"]`. Every score array goes through `check_finite` with no
-    fold. `FoldError` and `ValueError` as there; an unknown `arm` raises ValueError.
+    negative is dropped and counted in `report["dropped"]`. Every score array goes through
+    `check_finite` with no fold. `FoldError` and `ValueError` as there; an unknown `arm`
+    raises ValueError.
     """
     if arm not in ARMS:
         raise ValueError(f"unknown arm {arm!r}")

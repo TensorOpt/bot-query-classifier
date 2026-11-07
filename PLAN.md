@@ -3120,7 +3120,7 @@ cost little and aren't optimised.
     non-zero with the count.
   - Existing degenerate-fold, sanity-collision and determinism tests still pass (11.7, 11.16, 11.18).
 - **Depends on:** M7.T2.
-- **Status:** todo
+- **Status:** done (sonnet, 2026-11-07)
 
 ### M7.T4: Part-number hard negatives in the final models
 

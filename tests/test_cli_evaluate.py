@@ -19,6 +19,7 @@ from bqc.evaluate import (
     load_final_model,
 )
 from bqc.models import MLPScorer
+from bqc.synth.partnumbers import SHAPES
 
 # Tiny config: 40 fixture queries, 5 folds, one repeat, stub templates, 120 spans.
 TINY = dict(n_splits=5, repeats=1, test_per_template=5, eval_per_template=4)
@@ -532,6 +533,15 @@ class FailureTest(EvaluateTestCase):
         err = self.assert_failed_cleanly()
         self.assertRegex(err, r"\d")
         self.assertIn("evaluate", err)
+
+    def test_exhausted_part_number_pool_exits_non_zero_with_its_count(self):
+        constant = [(shape, lambda rng, vocabulary: "same 1") for shape, _ in SHAPES]
+        with mock.patch("bqc.negatives.SHAPES", constant):
+            err = self.assert_failed_cleanly()
+        self.assertIn("part-number", err)
+        self.assertRegex(err, r"reached 1 of 100")
+        self.assertIn("evaluate", err)
+        self.assertNotIn("same 1", err)
 
     def test_hash_mismatch_exits_non_zero(self):
         self.query_path.write_text(self.query_path.read_text() + "99\textra\tC\n")

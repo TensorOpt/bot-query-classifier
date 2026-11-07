@@ -2056,6 +2056,16 @@ positives; no shortfall, nothing dropped). Texts normalised once, as the adapter
    The fit-time ratio is a few seconds in absolute terms; it adds nothing material to the
    per-fold cost of 13.22.
 
+### 13.24 Inner split with the part-number groups (2026-11-07, `sonnet`, Python 3.13, scikit-learn 1.9.1)
+
+Comparison arm, real fold structure (`assign_folds` over 480 placeholder queries, the registry's
+`group_sizes`, `QUOTA` 20 per template, the 100 part-number rows as 4 groups of 25, inner
+`StratifiedGroupKFold(5, shuffle=True, random_state=SEED + repeat)`): over 15 outer folds x 5 inner
+folds no inner training fold lacks a family of A-D, with and without the part-number groups
+(0 of 75 both ways). With the 6-template stub registry and 3 outer folds a fixture can lose a
+family (family A with two training templates), which is a fixture effect, not the real structure.
+Script: `scratch/probe_inner.py` (gitignored).
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives

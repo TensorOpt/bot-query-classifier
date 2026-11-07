@@ -23,7 +23,16 @@ from bqc.evaluate import (
     run_primary_fold,
     wilson_interval,
 )
-from bqc.negatives import PoolExhausted, build_spans
+from bqc.negatives import (
+    PART_NUMBER_COUNT,
+    PART_NUMBER_SEED_OFFSET,
+    PART_NUMBER_SOURCE,
+    PoolExhausted,
+    build_part_number_negatives,
+    build_spans,
+    token_occurrences,
+)
+from bqc.synth.partnumbers import SHAPE_IDS
 from bqc.wands import WandsProduct
 
 RUNNERS = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
@@ -60,6 +69,11 @@ def gap_data(arms=(PRIMARY, COMPARISON), products=CLASSED, query_classes=QUERY_C
     return list(iter_fold_data(
         REAL, products, [], [], arms=arms, registry=build_registry(),
         query_classes=query_classes, **{**CONFIG, **kw}))
+
+
+def queries_of(data):
+    """The training side's real queries: the label-0 rows with no family tag."""
+    return [t for t, f in zip(data.train_texts, data.train_families) if f is None]
 
 
 def training_queries_kept(fold):
@@ -166,10 +180,86 @@ class AllEmptyClassesTest(unittest.TestCase):
             self.assertEqual(g.test_texts, n.test_texts)
 
 
+class PartNumberGapTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with mock.patch(
+                "bqc.evaluate.build_part_number_negatives",
+                wraps=build_part_number_negatives) as spy:
+            cls.data = gap_data()
+        cls.calls = [dict(zip(
+            ("vocabulary", "seed", "training_negatives", "real_queries", "part_numbers",
+             "sanity"), c.args)) for c in spy.call_args_list]
+
+    def pn(self, data):
+        return [t for t, f in zip(data.train_texts, data.train_families)
+                if f == PART_NUMBER_SOURCE]
+
+    def test_both_arms_hold_100_rows_in_the_gap_pass_and_none_outside_the_training_side(self):
+        self.assertEqual(len(self.data), 6)
+        for d in self.data:
+            self.assertEqual(len(self.pn(d)), PART_NUMBER_COUNT)
+            self.assertEqual({g[1] for g, f in zip(d.train_groups, d.train_families)
+                              if f == PART_NUMBER_SOURCE}, set(SHAPE_IDS))
+            self.assertFalse(set(self.pn(d)) & set(d.threshold_texts))
+            self.assertFalse(set(self.pn(d)) & set(d.test_texts))
+            self.assertNotIn(PART_NUMBER_SOURCE, d.test_families)
+            self.assertEqual(d.report["part_number_negatives"]["count"], PART_NUMBER_COUNT)
+
+    def test_each_fold_builds_its_own_with_the_repeats_seed_in_both_arms(self):
+        self.assertEqual(len(self.calls), 6)  # primary too: its spans change per fold
+        for c in self.calls:
+            self.assertEqual(c["seed"], SEED + PART_NUMBER_SEED_OFFSET)
+
+    def test_primary_vocabulary_is_the_folds_own_spans_and_comparison_the_kept_queries(self):
+        primary = [c for c in self.calls if len(c["training_negatives"]) == CONFIG["n"]]
+        comparison = [c for c in self.calls if len(c["training_negatives"]) != CONFIG["n"]]
+        self.assertEqual(len(primary), 3)
+        for fold, c in enumerate(comparison):
+            self.assertEqual(list(c["training_negatives"]), training_queries_kept(fold))
+            self.assertEqual(c["vocabulary"], token_occurrences(training_queries_kept(fold)))
+        for fold, c in enumerate(primary):
+            removed = removed_ids(fold)
+            spans, _ = build_spans(
+                [p for p in CLASSED if p.product_id not in removed], CONFIG["n"], SEED, REAL,
+                [], [])
+            texts = [s.text for s in spans]
+            self.assertEqual(list(c["training_negatives"]), texts)
+            self.assertEqual(c["vocabulary"], token_occurrences(texts, cap=10_000))
+        self.assertNotEqual(
+            [c["vocabulary"] for c in primary][0], [c["vocabulary"] for c in primary][1])
+
+    def test_a_removed_class_query_token_is_not_in_the_comparison_vocabulary(self):
+        comparison = [c for c in self.calls if len(c["training_negatives"]) != CONFIG["n"]]
+        for fold, c in enumerate(comparison):
+            gone = set(FOLDS[fold].train_queries) - set(training_queries_kept(fold))
+            kept_tokens = set(token_occurrences(training_queries_kept(fold)))
+            self.assertEqual(set(c["vocabulary"]), kept_tokens)
+            self.assertTrue(gone)
+
+    def test_primary_quota_counts_the_100(self):
+        for d in self.data:
+            if d.arm == PRIMARY:
+                templates = len(FOLDS[d.fold].train_templates)
+                self.assertEqual(d.report["train"]["requested_per_template"],
+                                 (CONFIG["n"] + 100) // templates)
+
+    def test_comparison_quota_stays_fixed(self):
+        for d in self.data:
+            if d.arm == COMPARISON:
+                self.assertEqual(d.report["train"]["requested_per_template"], 20)
+
+    def test_builder_exhaustion_stops_the_gap_pass(self):
+        with mock.patch("bqc.evaluate.build_part_number_negatives",
+                        side_effect=PoolExhausted("part-number", 3)):
+            with self.assertRaises(PoolExhausted):
+                gap_data()
+
+
 class ComparisonRemovalTest(unittest.TestCase):
     def test_training_negatives_drop_the_classes_training_queries(self):
         for fold, data in enumerate(gap_data(arms=(COMPARISON,))):
-            negatives = [t for t, y in zip(data.train_texts, data.train_y) if y == 0]
+            negatives = queries_of(data)
             self.assertEqual(negatives, training_queries_kept(fold))
             self.assertEqual(data.threshold_texts, [])
             self.assertNotIn("products_removed", data.report)
@@ -183,13 +273,11 @@ class ComparisonRemovalTest(unittest.TestCase):
             for scorer in factory.made:
                 self.assertFalse(gone & set(scorer.fit_texts))
             # the threshold set is the out-of-fold scores of the kept queries: none removed
-            self.assertEqual(
-                sum(1 for t, y in zip(data.train_texts, data.train_y) if y == 0),
-                len(training_queries_kept(fold)))
+            self.assertEqual(len(queries_of(data)), len(training_queries_kept(fold)))
 
     def test_empty_class_queries_stay_in_the_training_negatives(self):
         for fold, data in enumerate(gap_data(arms=(COMPARISON,))):
-            kept = {t for t, y in zip(data.train_texts, data.train_y) if y == 0}
+            kept = set(queries_of(data))
             empties = {q for q in FOLDS[fold].train_queries if CLASS_OF[q] == ""}
             self.assertLessEqual(empties, kept)
 

@@ -21,10 +21,19 @@ from bqc.evaluate import (
     PRIMARY,
     FoldError,
     build_run_report,
+    iter_fold_data,
     length_mix,
     run_report,
 )
-from bqc.negatives import LENGTH_COUNTS, REMOVAL_KINDS, Span, build_spans
+from bqc.negatives import (
+    LENGTH_COUNTS,
+    PART_NUMBER_REMOVAL_KINDS,
+    PART_NUMBER_SOURCE,
+    REMOVAL_KINDS,
+    Span,
+    build_spans,
+)
+from bqc.synth.partnumbers import SHAPE_IDS
 from bqc.synth.registry import ALL_FAMILIES, EVAL_FAMILY, Registry, Template
 
 ROOT = Path(bqc.evaluate.__file__).resolve().parent
@@ -92,7 +101,29 @@ class StructureTest(unittest.TestCase):
             "arms": list(ARMS), "models": ["lr", "mlp"], "target_fpr": 0.5,
             "negatives_size": 120, "n_splits": 3, "repeats": 2, "test_per_template": 5,
             "eval_per_template": 4, "vocabulary_cap": 10_000, "lofo": False,
-            "catalogue_gap": False})
+            "catalogue_gap": False, "part_number_count": 100,
+            "part_number_seed_offset": 100_000})
+
+    def test_part_number_counts_sit_next_to_the_span_removals_in_every_fold_report(self):
+        for arm in ARMS:
+            for f in self.body[arm]["folds"]:
+                block = f["part_number_negatives"]
+                self.assertEqual(block["count"], 100)
+                self.assertEqual(block["per_shape"], {s: 25 for s in SHAPE_IDS})
+                self.assertEqual(set(block["removals"]), set(PART_NUMBER_REMOVAL_KINDS))
+                self.assertTrue(all(isinstance(v, int) for v in block["removals"].values()))
+                if arm == PRIMARY:
+                    self.assertEqual(f["train"]["negatives"], 120)
+                self.assertIn("span_removals", f)
+
+    def test_no_part_number_text_is_in_the_report(self):
+        texts = {t for d in iter_fold_data(
+            REAL, PRODUCTS, [], [], registry=build_registry(), **CONFIG)
+            for t, fam in zip(d.train_texts, d.train_families) if fam == PART_NUMBER_SOURCE}
+        blob = json.dumps([self.parameters, self.body])
+        self.assertTrue(texts)
+        for text in texts:
+            self.assertNotIn(f'"{text}"', blob)
 
     def test_one_fold_report_per_repeat_fold_and_arm_with_counts(self):
         for arm in ARMS:
@@ -302,7 +333,9 @@ class NoRemovedTextTest(unittest.TestCase):
         part = "kx-9931"
         sanity = ["zzsanity sentinel query"]
         registry = custom_registry([part, *span_of.values(), "fresh one", "fresh two"])
-        _, body = build(registry=registry, part_numbers=[part], sanity=sanity)
+        # five outer folds, as in the real run: with three, the stub's two-template family A
+        # can fall wholly into one inner held-out fold once the 100 part-number rows join the split
+        _, body = build(registry=registry, part_numbers=[part], sanity=sanity, n_splits=5)
         blob = json.dumps(body)
         for text in [part, *span_of.values(), *sanity]:
             self.assertNotIn(text, blob)

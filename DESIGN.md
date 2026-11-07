@@ -1998,6 +1998,64 @@ the wider B positives diluting the family, the distinct rendering, or seed noise
 is not known; the full run's per-template table (8.5) and LOFO are where it will
 show, and 14 lists the isolation as a follow-up.
 
+### 13.23 Combined-feature matrix probe for `lr_hand` (2026-11-07, `sonnet`, Python 3.13.18, scikit-learn 1.9.1, scipy 1.18.1, numpy 2.5.4)
+
+Script `scratch/m7t1_probe.py` (not committed), run with the repo `.venv` on the real
+data under `data/raw/`. Training side as the default primary arm of `fit_final_model`:
+5,000 spans (`build_spans`, seed `SEED`, real queries, part-number strings and sanity
+set as in `evaluate`), `n // 24` = 208 positives per A-D template from the spans'
+token occurrences, screened as `_render_screened`: 9,992 rows (5,000 negatives, 4,992
+positives; no shortfall, nothing dropped). Texts normalised once, as the adapters do.
+
+1. **Sparse stack (criterion 1).**
+   - `TfidfVectorizer` output: `csr_matrix`, float64, 9,992 x 29,425, 710,955 non-zeros.
+   - `scipy.sparse.hstack([T, csr_matrix(hand_scaled)], format="csr")`: `csr_matrix`,
+     float64, 9,992 x 29,428, 740,931 non-zeros (density 0.25%): 8.9 MB against 2.35 GB
+     for the dense equivalent (263 times).
+   - **Pitfall:** `hstack([T, ndarray])` with the dense 3-column array directly (no `format`)
+     returns a `coo_matrix`; with `csr_matrix(...)` and the default format it returns csr.
+     Pass `format="csr"` so the type is not left to scipy's choice.
+   - `LogisticRegression(C=1.0, max_iter=1000).fit(X, y)` accepts the csr input; the input
+     stays `csr_matrix` at every step (also `predict_proba` on a csr batch, which returns an
+     ndarray of shape (n, 2), `classes_` [0, 1]). `coef_` is a dense (1, 29,428) ndarray, as
+     for plain `lr`. Nothing was densified.
+   - **`FeatureUnion([("tfidf", make_vectoriser()), ("hand", make_pipeline(FunctionTransformer(_hand_features), StandardScaler()))])`
+     also keeps the output sparse:** `fit_transform` and `transform` both return a
+     `csr_matrix` float64, 9,992 x 29,428, equal to the manual stack (max abs difference 0.0),
+     and a classifier fitted on it has coefficients within 2e-11 of the manual one. A union
+     of only the dense hand branch returns an ndarray, so sparsity comes from the TF-IDF
+     branch; with it present both compositions keep the matrix sparse. Either composition
+     works; the `FeatureUnion` has the advantage that one `fit_transform` / `transform`
+     owns the scaler's state (item 2). Empty and all-unknown texts give an all-zero TF-IDF
+     part and the (negative) standardised hand values, with no error.
+2. **Scaler on training rows only (criterion 2).** Inside the union, after `fit`,
+   `StandardScaler.mean_` = [24.1496, 2.9410, 0.17654] and `scale_` = [13.4292, 1.6588,
+   0.14250], equal (`np.allclose`) to the mean and population standard deviation of the
+   training rows' hand features, for the manual scaler and the union's. Calling
+   `transform` on two other batches (a batch of long strings and short ones, and 7
+   training rows) left `mean_` and `scale_` bit-identical. A text's score is the same
+   alone, in a batch of 25, and in a batch of 1,905: maximum absolute difference 0.0.
+   Smallest `scale_` 0.1425, so no zero-variance column on this data (a constant column
+   would get `scale_` 1.0 from sklearn, not a division by zero).
+3. **Fit time and convergence (criterion 3).** Wall time of vectoriser + classifier on the
+   9,992 rows, three runs each, on this machine (noisy, shared host):
+
+   | model | fit s (3 runs) | `n_iter_` | `ConvergenceWarning` |
+   |---|---|---|---|
+   | `lr` (TF-IDF only) | 1.15, 1.57, 1.16 | 27 | none |
+   | `lr_hand` (`FeatureUnion`) | 0.98, 2.20, 2.90 | 42 | none |
+
+   `lr_hand` takes more lbfgs iterations (42 against 27), so its classifier fit is slower, by
+   about 1.9 times at the medians; the spread between runs is as large as the difference.
+   Neither is near `max_iter=1000`. Without the scaler (raw length up to hundreds in the
+   stack) the same fit took 132 iterations and 6.0 s, still without a warning, which is why
+   6.5 standardises. A pickled `lr_hand` is 751,305 bytes against 750,446 for `lr`.
+4. **Consequence for M7.T5.** Use `FeatureUnion` or the manual `hstack(..., format="csr")`;
+   both are sparse, and the scaler is fitted in `fit` only. The adapter's `_hand_features`
+   branch must receive normalised text (the one `normalise` call in the base class).
+   The fit-time ratio is a few seconds in absolute terms; it adds nothing material to the
+   per-fold cost of 13.22.
+
 ## 14. Later (deferred, not in scope)
 
 Not in this list because the user rejected them (12.1): LLM-generated positives

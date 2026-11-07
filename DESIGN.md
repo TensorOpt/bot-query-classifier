@@ -1,7 +1,9 @@
 # DESIGN.md: bot-query-classifier
 
-Owner: `fable`. Status: v2.7, 2026-11-06 (Q13: product-name spans are the training
-negatives; the real queries set thresholds and test). The user answered Q1-Q11 and
+Owner: `fable`. Status: v2.8, 2026-11-07 (after the M6 run: logistic regression chosen,
+12.1 item 18; a combined-feature LR adapter, 6.5, and part-number hard negatives, 3.3,
+added for M7). v2.7, 2026-11-06, was Q13: product-name spans are the training
+negatives; the real queries set thresholds and test. The user answered Q1-Q11 and
 Q13 (12.1);
 `opus`'s plan-review questions and additions are resolved in 12.3 and applied in
 the body. One question (12.2, Q12, synthetic part-number negatives) is open; it
@@ -333,6 +335,47 @@ per repeat, so the 480-query Wilson arithmetic of 8.4 is unchanged. Adding real
 queries to the training spans was tested (BP arm) and rejected: no gain, more false
 positives (13.19).
 
+### 3.3 Part-number hard negatives (user decision 2026-11-07, Q12)
+
+**Decision:** every training side also gets **100 part-number hard negatives**
+(label 0), generated, one home in `bqc/negatives.py`, reusing the part-number
+shape machinery of `bqc/synth/partnumbers.py` (8.6 item 4; one home for the
+shapes), seeded by `random.Random(SEED + PART_NUMBER_SEED_OFFSET + repeat_index)`
+with `PART_NUMBER_SEED_OFFSET = 100_000` so no other seed of this design (spans
+`SEED + r`, inner folds `SEED + r`, draws `SEED + i`, the diagnostic set `SEED`)
+can coincide with it:
+
+1. The four shapes of 8.6 item 4 in equal share (25 each): bare prefix+digits, bare
+   digit runs, prefix-digits-suffix, and **product words plus a part number**. The
+   product words are sampled from the token occurrences of the arm's training
+   negatives (the spans in the primary arm, the training-side real queries in the
+   comparison arm), exactly as hard positives are (rule 3 of section 4), so no
+   test-side vocabulary reaches training.
+2. Drop a candidate equal, after `normalise()`, to a span, a real query, a
+   diagnostic P string (8.6 item 4), a sanity query or an earlier candidate, through
+   `drop_exact` (3.2 step 3); counts in the run JSON, text never. Draw until 100
+   survive or a cap of 20 x 100 candidates is reached, then raise (`PoolExhausted`
+   form of 11.25); never pad.
+3. They are **training-only material** like spans: never on the test side, never in
+   a threshold set, never in the clustering experiment (section 9: the scenario is a
+   query log, and these are not queries), rebuilt per repeat, included in both arms
+   and in the final-model fits (8.7). Positives keep rendering from the spans' or
+   queries' occurrences only: part-number tokens never enter a positive's
+   vocabulary, or the model would learn "part number = bot" from the other class.
+4. Metadata: `source="part_number"`, `template_id` = the shape, `seed`. The fold
+   report counts them under their own key next to the spans, and the class ratio
+   of section 4 counts them as negatives (positives render at
+   `(n + 100) // n_training_templates` each so the training side stays 1:1).
+
+**Rationale:** the M6 run's diagnostic (8.6 item 4) flagged 85% of the 100
+part-number strings with the chosen model and both `SKU...` sanity rows, although
+part numbers are legitimate (2.2); WANDS has no bare part-number query (13.15), so
+nothing in the negatives teaches the boundary, and family A teaches the opposite.
+12.2 named this proportionate fix for a large share; 100 rows are 2% of the
+negatives, with their own tag so folds and reports tell them apart. The diagnostic
+set stays disjoint from them (step 2) and is re-reported after the change, so it
+measures the fix rather than memorisation.
+
 ## 4. Synthetic positives
 
 **Decision:** rule/template-based generators in Python, one module per family
@@ -570,9 +613,38 @@ and the generators need rework. It is reported, never selected.
 ### 6.4 Model port
 
 Stages depend on a `Scorer` protocol (`fit(texts, y)`, `score(texts) -> ndarray of
-P(illegitimate)`) that wraps `vectoriser -> estimator`. The three models
-above are three adapters; the evaluation code never imports sklearn estimators
-directly.
+P(illegitimate)`) that wraps `vectoriser -> estimator`. The four models
+of this section are four adapters; the evaluation code never imports sklearn
+estimators directly.
+
+### 6.5 Combined-feature logistic regression, `lr_hand` (fable, user-approved 2026-11-07)
+
+**Decision:** a fourth adapter: `LogisticRegression(C=1.0, max_iter=1000)` (6.2)
+on the section 5 TF-IDF matrix **concatenated with the three hand features of 6.3**
+(character length, word count, non-alphanumeric ratio, computed by the one
+`_hand_features` home), the three columns standardised (`StandardScaler`, mean and
+variance from the training rows only), joined by a sparse horizontal stack. Model
+name `lr_hand`; in `--models` by default; it runs everywhere `lr` runs, LOFO and
+the catalogue gap included.
+
+**Rationale (M6.T1, 2026-11-06):** leave-one-family-out recall of `lr` falls to
+34% on B and 30% on D, and the trivial baseline (6.3) beats both `lr` and the MLP on
+those held-out families (49% and 69%) while trailing them by 15 points on the
+headline. So the headline is not inflated by surface artefacts, but char n-grams
+do not transfer to an unseen family and length and punctuation do. Reworking the
+B and D generators was considered and rejected: it would lower the yardstick (the
+long, punctuation-heavy strings are what scripts, URLs and contact details look
+like) without changing what the classifier can see. Adding the three features to
+the chosen model is the smallest change that targets the finding, and the same
+harness measures it: `model_comparison_hand` (section 7, `lr_hand` minus `lr`)
+decides whether it replaces `lr` as the recommendation; the LOFO rows show whether
+the transfer improves. If the gain is not `justified`, `lr` stays and this
+subsection is the record of the attempt.
+
+**Probe before implementing (section 13):** that `scipy.sparse.hstack` of the
+TF-IDF matrix with the standardised dense columns feeds `LogisticRegression`
+without densifying, that `StandardScaler` on three columns is fitted on the
+training rows only inside the adapter, and the fit time at 5,000 / 5,000.
 
 ## 7. SMOTE (dropped by the user, 2026-11-05)
 
@@ -612,6 +684,10 @@ shape once defined in 7.1 is now stated in 8.2 (`arm_comparison`) and 12.1 item
 - With `justified` false and `worse` false the reading is "within fold-to-fold
   noise"; for `model_comparison` that means the 6.2 recommendation is the
   simpler model.
+- **`model_comparison_hand` (added 2026-11-07, 6.5):** the same shape and rule,
+  first-named `lr_hand`, second-named `lr`, under each arm, present when both ran.
+  `justified` here means `lr_hand` replaces `lr` as the recommended model (the
+  user decides, as for 12.1 item 18); `worse` or within noise keeps `lr`.
 
 A more meaningful augmentation for text (string-level perturbation of real negatives)
 is in section 14.
@@ -853,6 +929,11 @@ WANDS from *these generators*". Five additional checks make that limitation visi
    Reported per model: the **fraction flagged at the model's threshold** (the
    expected FPR on such queries), with min/median/max score. The sanity set
    (8.6.1) gives a second, human-labelled look at legitimate shapes.
+   Since 3.3 (2026-11-07) the training sides hold 100 part-number hard negatives
+   of the same four shapes; the diagnostic strings are kept disjoint from them
+   (3.3 step 2), so the fraction flagged now measures whether the negatives teach
+   the boundary, not whether a string was memorised. The M6 baseline for the
+   chosen model is 85% flagged (12.1 item 20).
 
 5. **Catalogue-gap check** (required, user decision Q13). The primary arm learns
    "legitimate" from the catalogue, so a shopper searching for something the
@@ -1137,8 +1218,8 @@ must not import the command layer.
 - **Commands** (for CLAUDE.md "Commands" once the user fills it):
   `python -m bqc fetch`, `python -m bqc generate [--negatives-size N]`,
   `python -m bqc evaluate [--negatives product[,real]] [--negatives-size 5000]
-  [--models lr,mlp,trivial] [--target-fpr 0.01] [--lofo]
-  [--catalogue-gap]`, `python -m bqc cluster`,
+  [--models lr,mlp,trivial,lr_hand] [--target-fpr 0.01] [--lofo]
+  [--catalogue-gap]` (all four models by default since 6.5), `python -m bqc cluster`,
   `python -m unittest discover -s tests`.
 - **Runtime budget (estimate, to be measured and recorded in 13 by the first full
   run):** logistic regression and the trivial baseline are seconds per fit at any
@@ -1399,9 +1480,24 @@ project's references in commit `e2e4421`; nothing in this design depends on them
     (+6.63 pp recall, FPR gate holds), so Q13 stands; the catalogue-gap check
     passes in every arm and model.
 
+19. **LOFO finding: a combined-feature adapter, not a generator rework
+    (2026-11-07).** `fable` first recommended reworking the B and D generators at
+    the M6 sign-off, then withdrew it on the per-template evidence (6.5) and
+    recommended the `lr_hand` adapter instead; the user accepted the adapter.
+    Generators are unchanged. The LOFO rows stay the honest generalisation number
+    (8.6 item 1).
+20. **Q12 resolved: part-number hard negatives (2026-11-07).** The M6 diagnostic
+    flagged 85% of the 100 part-number strings with `lr` (76-81% with the MLP,
+    2-3% with the trivial baseline) and both `SKU...` sanity rows (ids 39, 43)
+    with every LR and MLP run. The user accepted the 12.2 fix: 100 generated hard
+    negatives with their own tag, 3.3.
+
 ### 12.2 Still open
 
-12. **Synthetic part-number negatives?** WANDS has no bare part-number query
+No question is open. Q12 was resolved on 2026-11-07 (12.1 item 20); its text is
+kept below for the record.
+
+12. **Synthetic part-number negatives?** (Resolved, see above.) WANDS has no bare part-number query
     (13.15), so the model cannot learn from the negatives that part numbers are
     legitimate, and the 1% FPR target does not cover them. The design measures the
     problem (8.6 item 4) but does not fix it: product spans (Q13) do not help
@@ -1896,7 +1992,6 @@ Not in this list because the user rejected them (12.1): LLM-generated positives
   query is a legitimate part number on its own (Q11), so a per-query text model
   cannot see the pattern; it belongs to a rate or session check, with the
   behavioural features above.
-- **Synthetic part-number hard negatives**, only if the user decides Q12 that way.
 - **Rejected or unproven negative constructions (13.19):** whole product names
   (P1, distribution shift), spans with injected typos (P3) and taxonomy terms
   (P4), both without a clear gain over plain spans, and real queries mixed into

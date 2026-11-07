@@ -327,6 +327,31 @@ class ModelSubsetTest(EvaluateTestCase):
             self.assertEqual(set(r[COMPARISON]["lofo"][model]), {"A", "B", "C", "D"})
         self.assert_main_and_final_present(r, (PRIMARY, COMPARISON))
 
+    def test_lr_hand_has_rows_in_every_section_of_both_arms(self):
+        both = (PRIMARY, COMPARISON)
+        with self.fake_mlp(), mock.patch.dict(cli.MODEL_FACTORIES, {"lr_hand": VariedScorer}):
+            r = self.report(negatives=both, lofo=ALL_MODELS, catalogue_gap=ALL_MODELS)
+        for arm in both:
+            self.assertIn("pooled", r[arm]["models"]["lr_hand"])
+            self.assertIn("lr_hand", r["sanity"]["models"][arm])
+            self.assertIn("lr_hand", r["part_number_diagnostic"]["models"][arm])
+            self.assertEqual(set(r[arm]["lofo"]["lr_hand"]), {"A", "B", "C", "D"})
+            self.assertEqual(len(r[arm]["lofo"]["lr_hand"]["A"]["folds"]), 5)  # fitted, not empty
+            self.assertIn("fpr", r[arm]["catalogue_gap"]["models"]["lr_hand"])
+            self.assertIn("model_comparison_hand", r[arm])
+        self.assertIn("lr_hand", r["arm_comparison"])
+        self.assertEqual(len(list(self.results.glob("final-*-lr_hand-*.pkl"))), 2)
+
+    def test_lofo_without_lr_hand_reports_its_rows_as_not_run(self):
+        both = (PRIMARY, COMPARISON)
+        with self.fake_mlp(), mock.patch.dict(cli.MODEL_FACTORIES, {"lr_hand": VariedScorer}):
+            r = self.report(negatives=both, lofo=["lr", "trivial"])
+        for arm in both:
+            self.assert_not_run(r[arm]["lofo"]["lr_hand"], "--lofo", "lr_hand")
+            self.assertIn("pooled", r[arm]["models"]["lr_hand"])
+            self.assertIn("lr_hand", r["sanity"]["models"][arm])
+        self.assertEqual(len(list(self.results.glob("final-*-lr_hand-*.pkl"))), 2)
+
     def test_lofo_without_mlp_reports_its_rows_as_not_run_in_both_arms(self):
         with self.fake_mlp():
             r = self.report(negatives=(PRIMARY, COMPARISON), lofo=["lr", "trivial"])

@@ -33,8 +33,8 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T3. M7.T1 is validated; M7.T3 to M7.T7 follow in id order (PQ-7 to PQ-9 are
-ruled, `DESIGN.md` `cbc2169`).
+**Next task:** M7.T2 (corrections), then M7.T3. M7.T1 is validated; M7.T3 to M7.T7 follow in id
+order (PQ-7 to PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
 
@@ -2969,6 +2969,51 @@ cost little and aren't optimised.
   - `generate_part_numbers` output unchanged (criterion 1).
 - **Depends on:** M2.T9, M2.T11, M2.T12.
 - **Status:** done
+- **Validation (`opus`, 2026-11-07, `0ebc041`): CHANGES REQUESTED.** Full suite: 863 tests OK. The
+  `generate_part_numbers` digest was recomputed on the pre-change tree (`git archive 0ebc041~1`):
+  `dec1b942...ba128`, equal to the pinned value. Criteria 1, 2, 4, 5 (code), 6 (code) and 7 are met;
+  the committed `bqc/negatives.py` is coherent after the disclosed re-apply (one definition, the
+  docstring matches the code, the tree was clean). Mutation pass in a scratch copy, 19 mutants: 14
+  killed by a failing test, 2 killed only by a hang, 3 survived (two need tests, one equivalent):
+  1. `tests/test_negatives.py` (no test; criterion 3): nothing pins "one `random.Random(seed)`". The
+     mutant that seeds each shape with `random.Random(f"{seed}/{shape_id}")` passes all tests. Add a
+     test that fails for it, for example patch `bqc.negatives.random.Random` with
+     `wraps=random.Random` and assert exactly one call, with `seed`; or show that shape 2's outputs
+     change when a patched shape 1 consumes extra draws from the shared `rng`.
+  2. `tests/test_negatives.py:403`: `test_outputs_are_ascii_and_normalised` uses the lowercase `VOCAB`,
+     whose renders are already normalised, so the mutant that drops `normalise()` on the output passes
+     (criterion 6). Run it, too, with a vocabulary of words that change under `normalise()` (for
+     example `["Leather", "SOFA", "Oak"]`) and assert every `words_part_number` output equals its own
+     `normalise()` and holds no upper case.
+  3. `tests/test_negatives.py:390`: `test_cap_counts_candidates_over_the_whole_call` stays under the
+     cap, so moving the accounting to count survivors instead of candidates (`drawn += 1` per kept
+     row) is caught only because the constant-shape test then loops forever. Add a case that fails
+     fast: every shape yields a new string only once every 30 draws (so about 750 draws per shape and
+     more than 2,000 over the call, but under 2,000 in any one shape); assert `PoolExhausted`, exactly
+     2,000 render calls, and `reached < 100`. With the mutant the call returns 100 rows.
+  4. `tests/test_negatives.py:275-277` and `tests/test_synth_partnumbers.py:141-143`: three blank lines
+     before a top-level definition (two is the file's convention), and both files lost their final
+     newline (`:419`, `:158`). Restore them.
+
+  Not requested: the mutant that moves `training_negatives` after `sanity` in the drop lists survives;
+  it only changes which kind counts a string present in several lists, which `drop_exact` defines,
+  and no criterion fixes it. `drawn > cap` and the survivor-accounting mutant hang rather than fail;
+  item 3 makes the latter fail fast; the former can't fail fast without a timeout and is accepted.
+
+  Rulings: (a) `PartNumberNegative(text, source, template_id, seed)` instead of `Sample` is accepted: it
+  carries the metadata 3.3 step 4 names and mirrors `Span`, the other training-only record of this
+  module; M7.T3 maps it to the family tag `"part_number"` and the group `("part_number", shape)` when
+  it joins the training side. (b) The count keys are accepted as they are: `training_negatives`,
+  `real_queries` and `part_numbers` are the rule-4 drop-list names already in `bqc/evaluate.py:281` and
+  `:300`, and `real_queries`, `part_numbers`, `sanity` match `span_removals`; `earlier` follows the 3.3
+  wording ("an earlier candidate"; `build_spans` says `drawn` for its own step). M7.T3 puts the dict
+  verbatim under `part_number_negatives` (see M7.T3 criterion 6) and names the new rule-4 drop list
+  `part_number_negatives`, never `part_numbers`, which already means the P strings. (c) No ASCII guard
+  in the builder: both vocabularies are ASCII by construction (spans are folded in 3.2 step 1, WANDS
+  queries are ASCII per section 3 and 13.1), so a guard would check a property no caller can violate
+  (YAGNI). M7.T3 asserts it on its outputs in both arms instead (added to its tests). (d) The "Next
+  task" move to M7.T3 was premature while M7.T2 is under review; it now reads M7.T2 (corrections),
+  then M7.T3.
 
 ### M7.T3: Part-number hard negatives in the outer folds
 
@@ -3010,6 +3055,9 @@ cost little and aren't optimised.
   6. Fold report: a key `part_number_negatives` next to `span_removals` with the count, the count per
      shape and the drop counts per kind; `train.negatives` keeps the span or query count. `parameters`
      gains the count (100) and `part_number_seed_offset`. No part-number text in the report.
+     Key names (M7.T2 validation ruling): the drop counts are the builder's dict verbatim, kinds
+     `training_negatives, real_queries, part_numbers, sanity, earlier`; the rule-4 drop list of
+     criterion 3 is named `part_number_negatives`.
   7. `PoolExhausted` from the builder propagates; `evaluate` exits non-zero with the count, as for spans
      (M4.T4 criterion 2), naming the part-number builder.
   8. The clustering experiment is untouched (section 9). The 11.18 determinism tests
@@ -3039,6 +3087,7 @@ cost little and aren't optimised.
     (primary arm), a test-side real query, a P string or a sanity query is dropped and counted.
   - Comparison arm: a fake scoring the part-number rows 1.0 doesn't change the threshold.
   - Fold report and parameters carry the counts; no candidate text anywhere in the JSON.
+  - Every part-number negative is ASCII in both arms (the builder doesn't guard it; M7.T2 ruling).
   - Builder exhaustion stops `iter_fold_data` with `PoolExhausted` (11.25) and `evaluate` exits
     non-zero with the count.
   - Existing degenerate-fold, sanity-collision and determinism tests still pass (11.7, 11.16, 11.18).

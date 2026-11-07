@@ -1,3 +1,4 @@
+import inspect
 import json
 import unittest
 from collections import Counter
@@ -15,10 +16,21 @@ from bqc.evaluate import (
     check_fold,
     iter_fold_data,
 )
-from bqc.negatives import build_spans, token_occurrences
+from bqc.negatives import (
+    PART_NUMBER_COUNT,
+    PART_NUMBER_SEED_OFFSET,
+    PART_NUMBER_SOURCE,
+    PartNumberNegative,
+    PoolExhausted,
+    build_part_number_negatives,
+    build_spans,
+    token_occurrences,
+)
+from bqc.synth.partnumbers import SHAPE_IDS
 from bqc.synth.registry import (
     ALL_FAMILIES,
     EVAL_FAMILY,
+    QUOTA,
     TEMPLATES_PER_FAMILY,
     TRAINING_FAMILIES,
     Registry,
@@ -187,12 +199,12 @@ class FoldDataTest(unittest.TestCase):
                 self.assertEqual(d.train_y[:len(span_texts)], [0] * len(span_texts))
                 self.assertEqual(d.threshold_texts, a.train_queries)
                 self.assertFalse(set(d.train_texts) & set(REAL))
-                self.assertEqual(d.train_y.count(0), len(span_texts))
+                self.assertEqual(d.train_y.count(0), len(span_texts) + PART_NUMBER_COUNT)
 
     def test_spans_shared_across_folds_and_differ_across_repeats(self):
         def spans(r, k):
             d = self.by_key[(r, k, PRIMARY)]
-            return d.train_texts[:d.train_y.index(1)]
+            return d.train_texts[:CONFIG["n"]]
         self.assertEqual(spans(0, 0), spans(0, 1))
         self.assertEqual(spans(0, 0), spans(0, 2))
         self.assertNotEqual(spans(0, 0), spans(1, 0))
@@ -205,7 +217,7 @@ class FoldDataTest(unittest.TestCase):
             a = folds[(d.repeat, d.fold)]
             n_real = len(a.train_queries)
             self.assertEqual(d.train_texts[:n_real], a.train_queries)
-            self.assertEqual(d.train_y.count(0), n_real)
+            self.assertEqual(d.train_y.count(0), n_real + PART_NUMBER_COUNT)
             self.assertEqual(d.threshold_texts, [])
             self.assertEqual(d.train_y.count(1), 20 * len(a.train_templates) - sum(
                 d.report["train"]["shortfall"].values()) - sum(
@@ -216,7 +228,7 @@ class FoldDataTest(unittest.TestCase):
         for d in self.data:
             if d.arm == PRIMARY:
                 a = folds[(d.repeat, d.fold)]
-                per = CONFIG["n"] // len(a.train_templates)
+                per = (CONFIG["n"] + PART_NUMBER_COUNT) // len(a.train_templates)
                 self.assertEqual(d.report["train"]["requested_per_template"], per)
 
     def test_every_fold_passes_the_check(self):
@@ -230,7 +242,9 @@ class FoldDataTest(unittest.TestCase):
                              (d.repeat, d.fold, d.arm))
             for side, y, fams in (("train", d.train_y, d.train_families),
                                   ("test", d.test_y, d.test_families)):
-                self.assertEqual(rep[side]["negatives"], y.count(0))
+                hard = PART_NUMBER_COUNT if side == "train" else 0
+                self.assertEqual(rep[side]["negatives"], y.count(0) - hard)
+                self.assertEqual(fams.count(PART_NUMBER_SOURCE), hard)
                 self.assertEqual(rep[side]["positives"], y.count(1))
                 self.assertEqual(set(rep[side]["families"]), set(ALL_FAMILIES))
                 for f in ALL_FAMILIES:
@@ -257,7 +271,10 @@ class FoldDataTest(unittest.TestCase):
                     ("test", d.test_groups, d.test_families, d.test_y, a.test_templates)):
                 self.assertEqual(len(groups), len(y))
                 for group, family, label in zip(groups, families, y):
-                    if label == 0:
+                    if family == PART_NUMBER_SOURCE:
+                        self.assertEqual((label, group[0]), (0, PART_NUMBER_SOURCE))
+                        self.assertIn(group[1], SHAPE_IDS)
+                    elif label == 0:
                         self.assertIsNone(group)
                     else:
                         self.assertEqual(group[0], family)
@@ -300,11 +317,12 @@ class VocabularyCapTest(unittest.TestCase):
         cap = 6
         data = [d for d in run(vocabulary_cap=cap) if d.arm == PRIMARY]
         for d in data:
-            n_spans = d.train_y.index(1)
+            n_spans = CONFIG["n"]
             span_texts = d.train_texts[:n_spans]
             allowed = set(token_occurrences(span_texts, cap=cap))
             span_words = {w for t in span_texts for w in t.split()}
-            used = {w for t in d.train_texts[n_spans:] for w in t.split()} & span_words
+            positives = [t for t, y in zip(d.train_texts, d.train_y) if y]
+            used = {w for t in positives for w in t.split()} & span_words
             self.assertTrue(used)
             self.assertLessEqual(used, allowed)
             self.assertGreater(len(span_words), len(allowed))
@@ -334,7 +352,7 @@ class VocabularyTest(unittest.TestCase):
         for d in self.data:
             if d.arm != PRIMARY:
                 continue
-            n_spans = d.train_y.index(1)
+            n_spans = CONFIG["n"]
             span_words = {w for t in d.train_texts[:n_spans] for w in t.split()}
             real_words = {w for q in REAL for w in q.split()}
             only_span = span_words - real_words
@@ -420,7 +438,278 @@ class RuleFourTest(unittest.TestCase):
         self.assertGreater(total["part_numbers"], 0)
 
 
+BUILDER = "bqc.evaluate.build_part_number_negatives"
+REMOVAL_KINDS_PN = ("training_negatives", "real_queries", "part_numbers", "sanity", "earlier")
+
+
+def recording_builder():
+    """Patch the builder with a wrapper that records each call's arguments."""
+    return mock.patch(BUILDER, wraps=build_part_number_negatives)
+
+
+def named(call):
+    """The arguments of a recorded builder call by parameter name."""
+    return dict(inspect.signature(build_part_number_negatives).bind(
+        *call.args, **call.kwargs).arguments)
+
+
+def fixed_builder(prefix="zqxtok"):
+    """A builder stand-in: 100 distinct rows, 25 per shape, every token starting `prefix`."""
+    def build(vocabulary, seed, *lists):
+        rows = [PartNumberNegative(f"{prefix}{i} 55", PART_NUMBER_SOURCE, SHAPE_IDS[i // 25], seed)
+                for i in range(PART_NUMBER_COUNT)]
+        return rows, dict.fromkeys(REMOVAL_KINDS_PN, 0)
+    return build
+
+
+def pn_texts(d):
+    return [t for t, f in zip(d.train_texts, d.train_families) if f == PART_NUMBER_SOURCE]
+
+
+def pn_shapes(d):
+    return [g[1] for g, f in zip(d.train_groups, d.train_families) if f == PART_NUMBER_SOURCE]
+
+
+class PartNumberNegativesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with recording_builder() as spy:
+            cls.data = run()
+        cls.calls = [named(c) for c in spy.call_args_list]
+        cls.by_key = {(d.repeat, d.fold, d.arm): d for d in cls.data}
+        cls.folds = {(a.repeat, a.fold): a for a in assignments()}
+
+    def test_every_training_side_holds_100_tagged_rows_25_per_shape_label_0(self):
+        for d in self.data:
+            rows = [i for i, f in enumerate(d.train_families) if f == PART_NUMBER_SOURCE]
+            self.assertEqual(len(rows), PART_NUMBER_COUNT, (d.repeat, d.fold, d.arm))
+            self.assertEqual({d.train_y[i] for i in rows}, {0})
+            self.assertEqual(Counter(pn_shapes(d)), {s: 25 for s in SHAPE_IDS})
+            self.assertEqual(
+                {d.train_groups[i] for i in rows}, {(PART_NUMBER_SOURCE, s) for s in SHAPE_IDS})
+            self.assertEqual(len(set(pn_texts(d))), PART_NUMBER_COUNT)
+
+    def test_rows_never_reach_the_threshold_set_the_test_side_or_e(self):
+        for d in self.data:
+            texts = set(pn_texts(d))
+            self.assertFalse(texts & set(d.threshold_texts))
+            self.assertFalse(texts & set(d.test_texts))
+            self.assertNotIn(PART_NUMBER_SOURCE, d.test_families)
+            self.assertNotIn(PART_NUMBER_SOURCE, {g[0] for g in d.test_groups if g})
+            self.assertEqual(d.report["test"]["negatives"], d.test_y.count(0))
+
+    def test_rows_are_ascii_in_both_arms(self):
+        for d in self.data:
+            self.assertTrue(all(t.isascii() for t in pn_texts(d)))
+
+    def test_the_reported_negatives_stay_the_span_or_query_count(self):
+        for d in self.data:
+            expected = (CONFIG["n"] if d.arm == PRIMARY
+                        else len(self.folds[(d.repeat, d.fold)].train_queries))
+            self.assertEqual(d.report["train"]["negatives"], expected)
+            self.assertEqual(d.train_y.count(0), expected + PART_NUMBER_COUNT)
+
+    def test_primary_arm_same_within_a_repeat_different_across_repeats(self):
+        def rows(r, k):
+            return pn_texts(self.by_key[(r, k, PRIMARY)])
+        self.assertEqual(rows(0, 0), rows(0, 1))
+        self.assertEqual(rows(0, 0), rows(0, 2))
+        self.assertNotEqual(rows(0, 0), rows(1, 0))
+
+    def test_seed_is_seed_plus_offset_plus_repeat_for_the_primary_arm(self):
+        self.assertEqual(PART_NUMBER_SEED_OFFSET, 100_000)
+        primary = [c for c in self.calls if len(c["training_negatives"]) == CONFIG["n"]]
+        self.assertEqual([c["seed"] for c in primary], [SEED + 100_000, SEED + 100_001])
+
+    def test_primary_builds_once_per_repeat_and_comparison_once_per_fold(self):
+        sizes = Counter(len(c["training_negatives"]) == CONFIG["n"] for c in self.calls)
+        self.assertEqual(sizes, {True: 2, False: 6})
+
+    def test_comparison_folds_of_a_repeat_share_the_seed_not_the_vocabulary(self):
+        comparison = [c for c in self.calls if len(c["training_negatives"]) != CONFIG["n"]]
+        ordered = sorted(self.folds.values(), key=lambda a: (a.repeat, a.fold))
+        self.assertEqual(len(comparison), len(ordered))
+        for c, a in zip(comparison, ordered):
+            self.assertEqual(c["seed"], SEED + 100_000 + a.repeat)
+            self.assertEqual(list(c["training_negatives"]), a.train_queries)
+            self.assertEqual(c["vocabulary"], token_occurrences(a.train_queries))
+            self.assertEqual("quillon" in c["vocabulary"], REAL[0] in a.train_queries)
+        self.assertTrue(any("quillon" in c["vocabulary"] for c in comparison))
+        self.assertTrue(any("quillon" not in c["vocabulary"] for c in comparison))
+
+    def test_primary_vocabulary_is_the_spans_capped_occurrences(self):
+        primary = [c for c in self.calls if len(c["training_negatives"]) == CONFIG["n"]]
+        for c in primary:
+            self.assertEqual(
+                c["vocabulary"], token_occurrences(c["training_negatives"], cap=10_000))
+            self.assertNotIn("quillon", c["vocabulary"])  # a real-query token, not a span token
+
+    def test_a_test_side_sentinel_never_reaches_a_negative_in_either_arm(self):
+        checked = 0
+        for d in self.data:
+            if REAL[0] in self.folds[(d.repeat, d.fold)].test_queries:
+                checked += 1
+                self.assertFalse(any("quillon" in t for t in pn_texts(d)))
+        self.assertGreater(checked, 0)
+
+    def test_a_training_side_sentinel_reaches_negatives_only_in_the_comparison_arm(self):
+        reached = {PRIMARY: False, COMPARISON: False}
+        for d in self.data:
+            if any("quillon" in t for t in pn_texts(d)):
+                reached[d.arm] = True
+                self.assertIn(REAL[0], self.folds[(d.repeat, d.fold)].train_queries)
+        self.assertEqual(reached, {PRIMARY: False, COMPARISON: True})
+
+    def test_product_words_in_primary_negatives_come_from_the_spans(self):
+        found = False
+        for d in self.data:
+            if d.arm == PRIMARY:
+                vocabulary = set(token_occurrences(d.train_texts[:CONFIG["n"]]))
+                words = {w for t in pn_texts(d) for w in t.split() if w.startswith("pw")}
+                found |= bool(words)
+                self.assertLessEqual(words, vocabulary)
+        self.assertTrue(found)
+
+    def test_drop_lists_are_the_arms_negatives_all_real_queries_p_strings_and_sanity(self):
+        with recording_builder() as spy:
+            run(part_numbers=["kx-9931"], sanity=["not a bot"])
+        calls = [named(c) for c in spy.call_args_list]
+        self.assertEqual(len(calls), 8)
+        train_queries = [a.train_queries for a in self.folds.values()]
+        for c in calls:
+            self.assertEqual(list(c["real_queries"]), REAL)
+            self.assertEqual(list(c["part_numbers"]), ["kx-9931"])
+            self.assertEqual(list(c["sanity"]), ["not a bot"])
+            negatives = list(c["training_negatives"])
+            if len(negatives) == CONFIG["n"]:
+                self.assertFalse(set(negatives) & set(REAL))  # the spans
+            else:
+                self.assertIn(negatives, train_queries)
+
+    def test_a_p_string_equal_to_a_candidate_is_dropped_and_counted_in_both_arms(self):
+        for arm in ARMS:
+            victim = pn_texts(self.by_key[(0, 0, arm)])[0]
+            data = run(part_numbers=[victim], arms=(arm,))
+            counted = 0
+            for d in data:
+                self.assertNotIn(victim, pn_texts(d))
+                self.assertEqual(len(pn_texts(d)), PART_NUMBER_COUNT)
+                counted += d.report["part_number_negatives"]["removals"]["part_numbers"]
+            self.assertGreaterEqual(counted, 1)
+
+    def test_a_sanity_query_equal_to_a_candidate_is_dropped_and_counted_in_both_arms(self):
+        for arm in ARMS:
+            victim = pn_texts(self.by_key[(0, 0, arm)])[0]
+            data = run(sanity=[victim], arms=(arm,))
+            counted = 0
+            for d in data:
+                self.assertNotIn(victim, pn_texts(d))
+                counted += d.report["part_number_negatives"]["removals"]["sanity"]
+            self.assertGreaterEqual(counted, 1)
+
+    def removals_with_a_frequent_candidate(self, victim, arm):
+        """Run with every shape emitting `victim` about 30% of the time; the removal counts."""
+        def render(rng, vocabulary):
+            return victim if rng.random() < 0.3 else f"free{rng.randrange(10**6)} 1"
+        total = Counter()
+        with mock.patch("bqc.negatives.SHAPES", [(s, render) for s in SHAPE_IDS]):
+            for d in run(arms=(arm,), repeats=1):
+                self.assertNotIn(victim, pn_texts(d))
+                self.assertEqual(len(pn_texts(d)), PART_NUMBER_COUNT)
+                total.update(d.report["part_number_negatives"]["removals"])
+        return total
+
+    def test_a_query_of_either_side_is_dropped_and_counted_in_the_comparison_arm(self):
+        # REAL[3] is a training-side query in some folds of repeat 0 and a test-side one in others
+        total = self.removals_with_a_frequent_candidate(REAL[3], COMPARISON)
+        self.assertGreaterEqual(total["training_negatives"], 1)
+        self.assertGreaterEqual(total["real_queries"], 1)
+
+    def test_a_span_is_dropped_and_counted_in_the_primary_arm(self):
+        span = build_spans(PRODUCTS, CONFIG["n"], SEED, REAL, [], [])[0][0].text
+        total = self.removals_with_a_frequent_candidate(span, PRIMARY)
+        self.assertGreaterEqual(total["training_negatives"], 1)
+
+    def test_a_test_side_real_query_is_dropped_and_counted_in_the_primary_arm(self):
+        total = self.removals_with_a_frequent_candidate(REAL[3], PRIMARY)
+        self.assertGreaterEqual(total["real_queries"], 1)
+
+    def test_report_key_next_to_span_removals_with_counts_and_no_text(self):
+        for d in self.data:
+            block = d.report["part_number_negatives"]
+            self.assertEqual(set(block), {"count", "per_shape", "removals"})
+            self.assertEqual(block["count"], PART_NUMBER_COUNT)
+            self.assertEqual(block["per_shape"], {s: 25 for s in SHAPE_IDS})
+            self.assertEqual(set(block["removals"]), set(REMOVAL_KINDS_PN))
+            blob = json.dumps(d.report)
+            for text in pn_texts(d):
+                self.assertNotIn(f'"{text}"', blob)
+                self.assertNotIn(text, blob)
+            self.assertIn("span_removals", d.report)
+
+    def test_check_fold_and_the_family_counts_ignore_the_tag(self):
+        for d in self.data:
+            check_fold(d.train_y, d.train_families, d.test_y)
+            families = d.report["train"]["families"]
+            self.assertEqual(set(families), set(ALL_FAMILIES))
+            self.assertEqual(sum(families.values()), d.train_y.count(1))
+            self.assertEqual(d.report["train"]["positives"], d.train_y.count(1))
+
+    def test_primary_quota_counts_the_100_as_negatives(self):
+        for d in self.data:
+            if d.arm == PRIMARY:
+                templates = len(self.folds[(d.repeat, d.fold)].train_templates)
+                per = d.report["train"]["requested_per_template"]
+                self.assertEqual(per, (CONFIG["n"] + 100) // templates)
+                self.assertNotEqual(per, CONFIG["n"] // templates)  # the old formula
+
+    def test_comparison_quota_in_the_main_run_stays_the_fixed_quota(self):
+        for d in self.data:
+            if d.arm == COMPARISON:
+                self.assertEqual(d.report["train"]["requested_per_template"], QUOTA)
+
+
+class PartNumberPositivesTest(unittest.TestCase):
+    def test_a_sentinel_token_in_the_negatives_is_in_no_training_positive(self):
+        with mock.patch(BUILDER, side_effect=fixed_builder()):
+            data = run()
+        for d in data:
+            self.assertEqual(sum(f == PART_NUMBER_SOURCE for f in d.train_families), 100)
+            for t, y in zip(d.train_texts, d.train_y):
+                if y == 1:
+                    self.assertNotIn("zqxtok", t)
+
+    def test_a_positive_equal_to_a_negative_is_dropped_counted_and_the_test_side_unscreened(self):
+        victims = sorted({t for d in run() for t in pn_texts(d)})
+        registry = custom_registry(victims + ["fresh one", "fresh two"])
+        patched = run(registry=registry)
+        with mock.patch(BUILDER, side_effect=fixed_builder("other")):
+            unpatched = run(registry=registry)  # same templates, different negatives
+        self.assertEqual(len(patched), len(unpatched))
+        for d, u in zip(patched, unpatched):
+            where = (d.repeat, d.fold, d.arm)
+            positives = {t for t, y in zip(d.train_texts, d.train_y) if y}
+            self.assertFalse(set(pn_texts(d)) & positives, where)
+            self.assertGreater(d.report["train"]["dropped"]["part_number_negatives"], 0, where)
+            self.assertEqual(d.test_texts, u.test_texts, where)
+            self.assertEqual(d.test_y, u.test_y)
+            self.assertEqual(d.test_families, u.test_families)
+            self.assertEqual(d.test_groups, u.test_groups)
+            self.assertEqual(d.report["test"], u.report["test"])
+        self.assertTrue(any(set(d.test_texts) & set(victims) for d in patched))
+
+
+class PartNumberExhaustionTest(unittest.TestCase):
+    def test_pool_exhausted_from_the_builder_stops_iteration(self):
+        for arm in ARMS:
+            with mock.patch(BUILDER, side_effect=PoolExhausted("reached 7 of 100", 7)):
+                with self.assertRaises(PoolExhausted) as cm:
+                    run(arms=(arm,))
+            self.assertEqual(cm.exception.reached, 7)
+
+
 class DegenerateFoldTest(unittest.TestCase):
+
     def test_a_fold_missing_a_training_family_raises(self):
         registry = Registry()
         for family in ALL_FAMILIES:

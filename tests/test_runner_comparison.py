@@ -1,5 +1,6 @@
 import unittest
 import warnings
+from collections import Counter
 from unittest import mock
 
 import numpy as np
@@ -20,6 +21,8 @@ from bqc.evaluate import (
     run_primary_fold,
     select_threshold,
 )
+from bqc.negatives import PART_NUMBER_SOURCE
+from bqc.synth.partnumbers import SHAPE_IDS
 from bqc.synth.registry import EVAL_FAMILY, TRAINING_FAMILIES, Registry
 
 INNER = 5
@@ -46,6 +49,24 @@ def make_data(**changes):
         report={})
     fields.update(changes)
     return FoldData(**fields)
+
+
+PN_TEXTS = [f"zpn{i} {i}" for i in range(100)]
+PN_SHAPES = [SHAPE_IDS[i // 25] for i in range(100)]
+
+
+def make_pn_data(**changes):
+    """`make_data()` with the 100 part-number rows between the real queries and the positives."""
+    base = make_data()
+    n = len(REAL_TRAIN)
+    fields = dict(
+        train_texts=REAL_TRAIN + PN_TEXTS + base.train_texts[n:],
+        train_y=[0] * (n + 100) + base.train_y[n:],
+        train_families=[None] * n + [PART_NUMBER_SOURCE] * 100 + base.train_families[n:],
+        train_groups=[None] * n + [(PART_NUMBER_SOURCE, s) for s in PN_SHAPES]
+        + base.train_groups[n:])
+    fields.update(changes)
+    return base._replace(**fields)
 
 
 def run_fold(data=None, factory=None, target_fpr=0.1):
@@ -148,6 +169,46 @@ class FitTest(unittest.TestCase):
             train_groups=[base.train_groups[i] for i in rows])
         with self.assertRaisesRegex(FoldError, r"lacks families \['D'\]"):
             run_fold(data)
+
+
+class PartNumberRowsTest(unittest.TestCase):
+    def test_a_fake_scoring_the_rows_1_does_not_change_the_threshold(self):
+        plain = run_comparison_fold(make_data(), Factory(), 0.1, "lr").threshold
+        with_rows = run_comparison_fold(
+            make_pn_data(), Factory({t: 1.0 for t in PN_TEXTS}), 0.1, "lr").threshold
+        self.assertEqual(with_rows, plain)
+        self.assertEqual(with_rows, select_threshold(list(FakeScorer().score(REAL_TRAIN)), 0.1))
+        self.assertLess(max(FakeScorer().score(REAL_TRAIN)), 1.0)
+
+    def test_the_rows_are_fitted_scored_out_of_fold_and_refitted(self):
+        factory = Factory(cls=RecordingScorer)
+        run_comparison_fold(make_pn_data(), factory, 0.1, "lr")
+        scored = [t for scorer in factory.made[:INNER] for t in scorer.scored]
+        self.assertTrue(set(PN_TEXTS) <= set(scored))
+        self.assertTrue(set(PN_TEXTS) <= set(factory.made[-1].fit_texts))
+        self.assertFalse(set(PN_TEXTS) & set(factory.made[-1].scored))  # never on the test side
+
+    def test_the_inner_split_gives_the_rows_four_shape_groups_and_real_queries_their_own(self):
+        seen = []
+
+        class Spy(StratifiedGroupKFold):
+            def split(self, x, y=None, groups=None):
+                seen.append(list(groups))
+                return super().split(x, y, groups)
+
+        data = make_pn_data()
+        with mock.patch("bqc.evaluate.StratifiedGroupKFold", Spy):
+            run_comparison_fold(data, Factory(), 0.1, "lr")
+        self.assertEqual(len(seen), 1)
+        codes = seen[0]
+        n = len(REAL_TRAIN)
+        pn_codes = codes[n:n + 100]
+        self.assertEqual(sorted(Counter(pn_codes).values()), [25, 25, 25, 25])
+        self.assertEqual([len(set(pn_codes[i:i + 25])) for i in range(0, 100, 25)], [1] * 4)
+        real_codes = codes[:n]
+        self.assertEqual(len(set(real_codes)), n)  # one group per real query
+        self.assertFalse(set(real_codes) & set(pn_codes))
+        self.assertFalse(set(pn_codes) & set(codes[n + 100:]))  # not a template's group
 
 
 class RecordingScorer(FakeScorer):

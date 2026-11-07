@@ -27,7 +27,12 @@ from bqc.models import Scorer
 from bqc.negatives import (
     DEFAULT_N,
     LENGTH_COUNTS,
+    PART_NUMBER_COUNT,
+    PART_NUMBER_SEED_OFFSET,
+    PART_NUMBER_SOURCE,
     VOCABULARY_CAP,
+    PartNumberNegative,
+    build_part_number_negatives,
     build_spans,
     token_occurrences,
 )
@@ -186,7 +191,11 @@ def _side(
     negatives: Sequence[str],
     renders: Sequence[tuple[list[Sample], dict[str, int], dict[str, int]]],
     requested_per_template: int,
+    part_numbers: Sequence[PartNumberNegative] = (),
 ) -> _Side:
+    """Rows are the negatives, then the part-number hard negatives (label 0, family tag
+    `PART_NUMBER_SOURCE`, group `(PART_NUMBER_SOURCE, shape)`; 3.3), then the positives.
+    `report["negatives"]` counts `negatives` alone."""
     samples = [s for kept, _, _ in renders for s in kept]
     dropped = Counter()
     shortfall: dict[str, int] = {}
@@ -195,10 +204,12 @@ def _side(
         shortfall.update(short)
     families = Counter(s.family for s in samples)
     return _Side(
-        list(negatives) + [s.text for s in samples],
-        [0] * len(negatives) + [1] * len(samples),
-        [None] * len(negatives) + [s.family for s in samples],
-        [None] * len(negatives) + [(s.family, s.template_id) for s in samples],
+        list(negatives) + [p.text for p in part_numbers] + [s.text for s in samples],
+        [0] * (len(negatives) + len(part_numbers)) + [1] * len(samples),
+        [None] * len(negatives) + [PART_NUMBER_SOURCE] * len(part_numbers)
+        + [s.family for s in samples],
+        [None] * len(negatives) + [(PART_NUMBER_SOURCE, p.template_id) for p in part_numbers]
+        + [(s.family, s.template_id) for s in samples],
         {
             "negatives": len(negatives),
             "positives": len(samples),
@@ -208,6 +219,12 @@ def _side(
             "requested_per_template": requested_per_template,
         },
     )
+
+
+def _part_number_report(rows: Sequence[PartNumberNegative], removals: dict[str, int]) -> dict:
+    """The fold report's `part_number_negatives`: counts only, never a text."""
+    return {"count": len(rows), "per_shape": dict(Counter(r.template_id for r in rows)),
+            "removals": dict(removals)}
 
 
 def iter_fold_data(
@@ -242,6 +259,14 @@ def iter_fold_data(
     classes leave the primary arm's threshold set and the comparison arm's training negatives,
     and the primary arm's report gains `products_removed`. An empty class removes nothing.
 
+    Every training side also gets the 100 part-number hard negatives of 3.3 (training only:
+    never in `threshold_texts`, the test side or E). The builder runs with seed
+    `seed + PART_NUMBER_SEED_OFFSET + repeat` on the arm's training vocabulary: once per repeat
+    in the primary arm (per fold in the catalogue-gap pass, like its spans), per fold in the
+    comparison arm. They count as negatives in the quota, `(n_negatives + 100) // n_templates`,
+    except in the comparison arm's main run (`QUOTA`), and a positive equal to one is dropped
+    and counted under `part_number_negatives`. PoolExhausted from the builder propagates.
+
     Spans are built once per repeat with seed `seed + repeat`. The test side (test-side
     queries, test-template positives, family E) is built once per fold and shared by
     the arms. Positives equal to a sanity query raise FoldError; positives equal to a
@@ -262,11 +287,15 @@ def iter_fold_data(
     eval_templates = [(EVAL_FAMILY, t.template_id) for t in registry.templates(EVAL_FAMILY)]
     for repeat in range(repeats):
         render_seed = seed + repeat
+        pn_seed = render_seed + PART_NUMBER_SEED_OFFSET
         if query_classes is None:
             spans, removals = build_spans(
                 products, n, render_seed, real_queries, part_numbers, sanity)
             span_texts = [s.text for s in spans]
             span_lengths = Counter(s.k for s in spans)
+            primary_vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
+            primary_pn = build_part_number_negatives(
+                primary_vocabulary, pn_seed, span_texts, real_queries, part_numbers, sanity)
         for fold in (f for f in folds if f.repeat == repeat):
             train_queries = fold.train_queries
             if query_classes is not None:
@@ -277,6 +306,9 @@ def iter_fold_data(
                 span_texts = [s.text for s in spans]
                 span_lengths = Counter(s.k for s in spans)
                 train_queries = [q for q in train_queries if class_of[q] not in gone]
+                primary_vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
+                primary_pn = build_part_number_negatives(
+                    primary_vocabulary, pn_seed, span_texts, real_queries, part_numbers, sanity)
             test_vocabulary = token_occurrences(fold.test_queries)
             test_drop = {"training_negatives": span_texts, "real_queries": real_queries,
                          "part_numbers": part_numbers}
@@ -290,18 +322,23 @@ def iter_fold_data(
                 train_templates = [t for t in fold.train_templates if t[0] != leave_out]
                 if arm == PRIMARY:
                     negatives = span_texts
-                    vocabulary = token_occurrences(span_texts, cap=vocabulary_cap)
-                    per_template = n // len(train_templates)
+                    vocabulary = primary_vocabulary
+                    hard, hard_removals = primary_pn
                 else:
                     negatives = train_queries
                     vocabulary = token_occurrences(train_queries)
-                    per_template = (len(negatives) // len(train_templates)
-                                    if leave_out else QUOTA)
+                    hard, hard_removals = build_part_number_negatives(
+                        vocabulary, pn_seed, negatives, real_queries, part_numbers, sanity)
+                if arm == PRIMARY or leave_out:
+                    per_template = (len(negatives) + len(hard)) // len(train_templates)
+                else:
+                    per_template = QUOTA
                 drop = {"training_negatives": negatives, "real_queries": real_queries,
-                        "part_numbers": part_numbers}
+                        "part_numbers": part_numbers,
+                        "part_number_negatives": [r.text for r in hard]}
                 train = _side(negatives, [_render_screened(
                     registry, vocabulary, render_seed, train_templates, per_template,
-                    sanity, drop)], per_template)
+                    sanity, drop)], per_template, hard)
                 check_fold(train.y, train.families, test.y, kept_families)
                 rows = [i for i, f in enumerate(test.families)
                         if leave_out is None or f is None or f == leave_out]
@@ -312,7 +349,9 @@ def iter_fold_data(
                     [test.families[i] for i in rows], [test.groups[i] for i in rows],
                     {"repeat": repeat, "fold": fold.fold, "arm": arm,
                      **({"leave_out": leave_out} if leave_out else {}),
-                     "span_removals": removals, "train": train.report, "test": test.report,
+                     "span_removals": removals,
+                     "part_number_negatives": _part_number_report(hard, hard_removals),
+                     "train": train.report, "test": test.report,
                      **({"span_lengths": dict(span_lengths)} if arm == PRIMARY else {}),
                      **({"products_removed": len(products) - len(kept_products)}
                         if arm == PRIMARY and query_classes is not None else {})},
@@ -825,6 +864,8 @@ def build_run_report(
         "negatives_size": n, "n_splits": n_splits, "repeats": repeats,
         "test_per_template": test_per_template, "eval_per_template": eval_per_template,
         "vocabulary_cap": vocabulary_cap, "lofo": lofo, "catalogue_gap": catalogue_gap,
+        "part_number_count": PART_NUMBER_COUNT,
+        "part_number_seed_offset": PART_NUMBER_SEED_OFFSET,
     }
     runners = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
     fold_reports: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}

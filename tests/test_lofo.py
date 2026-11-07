@@ -23,6 +23,8 @@ from bqc.evaluate import (
     run_comparison_fold,
     run_primary_fold,
 )
+from bqc.negatives import PART_NUMBER_COUNT, PART_NUMBER_SOURCE
+from bqc.synth.partnumbers import SHAPE_IDS
 from bqc.synth.registry import EVAL_FAMILY, TRAINING_FAMILIES
 
 RUNNERS = {PRIMARY: run_primary_fold, COMPARISON: run_comparison_fold}
@@ -66,7 +68,7 @@ class DataTest(unittest.TestCase):
                     self.assertTrue(f_texts)
                     self.assertFalse(f_texts & set(data.train_texts))
                     self.assertNotIn(family, data.train_families)
-                    self.assertEqual(set(data.train_families) - {None},
+                    self.assertEqual(set(data.train_families) - {None, PART_NUMBER_SOURCE},
                                      set(TRAINING_FAMILIES) - {family})
 
     def test_training_side_stays_one_to_one_up_to_rounding(self):
@@ -74,7 +76,8 @@ class DataTest(unittest.TestCase):
             for data in lofo_data("B", arm):
                 positives = sum(data.train_y)
                 negatives = len(data.train_y) - positives
-                remaining = len({g for g in data.train_groups if g is not None})
+                remaining = len({g for g in data.train_groups
+                                 if g is not None and g[0] != PART_NUMBER_SOURCE})
                 self.assertTrue(0 <= negatives - positives < remaining, (arm, positives, negatives))
 
     def test_negatives_are_unchanged(self):
@@ -131,6 +134,58 @@ class DataTest(unittest.TestCase):
         for data in absent:
             self.assertEqual(set(data.test_y), {0})
             run_primary_fold(data, Factory(), 0.5, "lr", leave_out="A")
+
+
+class PartNumberTest(unittest.TestCase):
+    FOLDS = {(f.repeat, f.fold): f for f in assign_folds(
+        REAL, build_registry(), n_splits=5, repeats=CONFIG["repeats"])}
+
+    def pn(self, data):
+        return [t for t, f in zip(data.train_texts, data.train_families) if f == PART_NUMBER_SOURCE]
+
+    def test_every_lofo_training_side_holds_the_100_in_both_arms(self):
+        for arm in (PRIMARY, COMPARISON):
+            for family in TRAINING_FAMILIES:
+                for data in lofo_data(family, arm):
+                    rows = [i for i, f in enumerate(data.train_families)
+                            if f == PART_NUMBER_SOURCE]
+                    self.assertEqual(len(rows), PART_NUMBER_COUNT)
+                    self.assertEqual({data.train_y[i] for i in rows}, {0})
+                    self.assertEqual(
+                        sorted(data.train_groups[i][1] for i in rows),
+                        sorted(s for s in SHAPE_IDS for _ in range(25)))
+                    self.assertFalse(set(self.pn(data)) & set(data.threshold_texts))
+                    self.assertFalse(set(self.pn(data)) & set(data.test_texts))
+                    self.assertNotIn(PART_NUMBER_SOURCE, data.test_families)
+                    self.assertEqual(data.report["part_number_negatives"]["count"], 100)
+
+    def test_the_lofo_rows_are_the_main_runs_rows(self):
+        # same repeat seed and the same arm vocabulary: the leave-out changes only the quota
+        for arm in (PRIMARY, COMPARISON):
+            for data, main in zip(lofo_data("B", arm), main_data(arm)):
+                self.assertEqual(self.pn(data), self.pn(main))
+
+    def test_primary_quota_counts_the_100_over_the_remaining_templates(self):
+        for family in TRAINING_FAMILIES:
+            for data in lofo_data(family, PRIMARY):
+                fold = self.FOLDS[(data.repeat, data.fold)]
+                remaining = len([t for t in fold.train_templates if t[0] != family])
+                requested = data.report["train"]["requested_per_template"]
+                self.assertEqual(requested, (CONFIG["n"] + 100) // remaining)
+                self.assertNotEqual(requested, CONFIG["n"] // remaining)  # the old formula
+
+    def test_comparison_quota_counts_the_100_over_the_remaining_templates(self):
+        for family in TRAINING_FAMILIES:
+            for data in lofo_data(family, COMPARISON):
+                fold = self.FOLDS[(data.repeat, data.fold)]
+                remaining = len([t for t in fold.train_templates if t[0] != family])
+                requested = data.report["train"]["requested_per_template"]
+                self.assertEqual(requested, (len(fold.train_queries) + 100) // remaining)
+                self.assertNotEqual(requested, len(fold.train_queries) // remaining)
+
+    def test_comparison_main_run_keeps_the_fixed_quota(self):
+        for data in main_data(COMPARISON):
+            self.assertEqual(data.report["train"]["requested_per_template"], 20)
 
 
 class RunnerTest(unittest.TestCase):

@@ -57,13 +57,13 @@ def _words_part_number(rng: random.Random, vocabulary: Sequence[str]) -> str:
     return " ".join(words + [tail(rng, vocabulary)])
 
 
-_SHAPES: tuple[tuple[str, Callable[[random.Random, Sequence[str]], str]], ...] = (
+SHAPES: tuple[tuple[str, Callable[[random.Random, Sequence[str]], str]], ...] = (
     ("prefix_digits", _prefix_digits),
     ("digits", _bare_digits),
     ("prefix_digits_suffix", _prefix_digits_suffix),
     ("words_part_number", _words_part_number),
 )
-SHAPE_IDS = tuple(shape_id for shape_id, _ in _SHAPES)
+SHAPE_IDS = tuple(shape_id for shape_id, _ in SHAPES)
 
 
 def generate_part_numbers(
@@ -83,7 +83,7 @@ def generate_part_numbers(
         raise ValueError("vocabulary is empty")
     samples: list[Sample] = []
     seen: set[str] = set()
-    for shape_id, render in _SHAPES:
+    for shape_id, render in SHAPES:
         # A str seed is hashed with sha512, so it ignores PYTHONHASHSEED.
         rng = random.Random(f"{seed}/{FAMILY}/{shape_id}")
         count = 0

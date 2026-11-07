@@ -33,7 +33,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T2. M7.T1 is validated; M7.T3 to M7.T7 follow in id order (PQ-7 to PQ-9 are
+**Next task:** M7.T3. M7.T1 is validated; M7.T3 to M7.T7 follow in id order (PQ-7 to PQ-9 are
 ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
@@ -2968,7 +2968,7 @@ cost little and aren't optimised.
   - Outputs are ASCII and normalised (11.4); empty vocabulary raises `ValueError`.
   - `generate_part_numbers` output unchanged (criterion 1).
 - **Depends on:** M2.T9, M2.T11, M2.T12.
-- **Status:** todo
+- **Status:** done
 
 ### M7.T3: Part-number hard negatives in the outer folds
 

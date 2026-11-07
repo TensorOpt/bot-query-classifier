@@ -1,6 +1,7 @@
 # PLAN.md: bot-query-classifier
 
-Owner: `opus`. Plans `DESIGN.md` v2.7 (commit `b025fde`). Created 2026-11-05.
+Owner: `opus`. Plans `DESIGN.md` v2.7 (commit `b025fde`) for M1-M6 and v2.8 (`cafa701`) for M7.
+Created 2026-11-05.
 
 Status values: `todo` -> `in progress` -> `done` (sonnet) -> `validated` (opus) ->
 `signed off` (fable, per milestone). `blocked (PQ-n)` means the task can't start until `fable`
@@ -20,18 +21,20 @@ fails on import because tests import each other as top-level modules; only the `
 | M4 | Real models, `evaluate` command, paired comparisons | 5 |
 | M5 | HDBSCAN experiment (unchanged by v2.0) | 3 |
 | M6 | Full run on real data | 1 |
+| M7 | Part-number hard negatives (3.3), `lr_hand` adapter (6.5), `model_comparison_hand`, re-run (v2.8) | 7 |
 
 Task ids stay stable: `M3.T6` and `M4.T5` were probe tasks, and `M4.T6` and `M4.T7` were the SMOTE tasks
 (dropped by the user, 12.1 item 17). All four are retired and aren't reused.
 `M1.T7` was also a dropped probe; the id now names the fetch fix below, and the old probe
 appears only in earlier versions of this plan. Tasks run in file order, which isn't always id
 order: M2.T9, M2.T10, M2.T11 and M2.T12 come before M2.T8, M3.T13 comes after M3.T5, M3.T15 comes
-after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14.
+after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs in id order.
 
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M5 sign-off by `fable`, then M6.T1.
+**Next task:** M7.T1 (probe). M7.T2, M7.T5 and M7.T6 can follow without waiting; M7.T3 and M7.T4
+wait for `fable`'s answers to PQ-7 and PQ-8.
 
 ### Order constraints
 
@@ -43,7 +46,8 @@ M2.T11, M3.T16), and earlier entries keep their statuses and the design version 
 
 ### Probes
 
-No probe task is scheduled: section 13 already answers every question a task depends on.
+Up to M6 no probe task was needed: section 13 answered every question a task depended on. M7.T1
+probes 6.5's paragraph (sparse stack, scaler on training rows, fit time) before M7.T5.
 
 | Question | Finding | Used by |
 |----------|---------|---------|
@@ -54,6 +58,7 @@ No probe task is scheduled: section 13 already answers every question a task dep
 | Part-number shapes in WANDS | 13.15 | M2.T9, M3.T12 |
 | `product.csv` format and coverage | 13.18 | M1.T8, M2.T12 |
 | Product-name spans as training negatives | 13.19 | M2.T12, M3.T5, M3.T14 |
+| Sparse TF-IDF + standardised hand columns into `LogisticRegression` (6.5) | 13.23, to be written by M7.T1 | M7.T5 |
 
 13.9 keeps two open items. "No bot traffic in the 480 queries" can't be probed; its
 mitigation, reviewing the false-positive list by eye, is an acceptance criterion of
@@ -85,15 +90,19 @@ changes it.
 | `bqc/evaluate.py` | M3.T3 |
 | `bqc/cluster.py` | M5.T1 |
 
+M7 creates no file under `bqc/`: it changes `bqc/negatives.py`, `bqc/synth/partnumbers.py`,
+`bqc/evaluate.py`, `bqc/models.py` and `bqc/cli.py`. Its one new file is a test module,
+`tests/test_models_lr_hand.py` (M7.T5).
+
 ### Where the user acts
 
 - **Sanity labels: done.** All 50 rows are labelled (`7332c6b`), so real runs score the sanity
   section. No agent modifies `data/sanity.csv`. A template that can emit a sanity query
   changes; the file doesn't (rule 4).
-- **Q12: after M6.T1.** M6.T1 reports the part-number diagnostic so the user can decide
-  whether to add synthetic part-number negatives (12.2). No task waits for the answer, and
-  this plan schedules no work for it.
-- **LR or MLP: after M6.T1.** M6.T1 carries a recommendation; the user decides (12.1, item 13).
+- **Q12: answered 2026-11-07** (12.1 item 20): part-number hard negatives, M7.T2 to M7.T4.
+- **LR or MLP: answered 2026-11-07** (12.1 item 18): logistic regression.
+- **`lr_hand` or `lr`: after M7.T7.** M7.T7 carries a recommendation under section 7; the user
+  decides (6.5).
 - **Catalogue gap: only if the check fails in M6.T1.** What to do then is a user decision
   (8.6 item 5).
 
@@ -104,8 +113,39 @@ exists for them. SKUs and part numbers are legitimate (Q11, 2.2).
 ### Open questions for `fable`
 
 PQ-1 to PQ-4 are answered in `DESIGN.md` 12.3 and PQ-5 in section 10, and all are applied below; their
-text is in `530de4f` and `a3cf42e`. PQ-6 is answered in section 7, and its text is in `f0c12cd`. None is
-open.
+text is in `530de4f` and `a3cf42e`. PQ-6 is answered in section 7, and its text is in `f0c12cd`.
+
+Open (M7, raised 2026-11-07 against `cafa701`):
+
+- **PQ-7 (blocks M7.T3, M7.T4): quotas and seed outside the primary main run.**
+  (a) 3.3 step 4 gives `(n + 100) // n_training_templates` for the primary arm's main run. Which quota
+  applies in the primary LOFO pass (today `n // n_remaining`, `bqc/evaluate.py:294`), the comparison
+  arm's main run (fixed `QUOTA` 20, 8.2), its LOFO pass (8.6 item 1 says `n` is "the 384 training-side
+  queries"), the primary final model (`n // 24`, 8.7) and the comparison final model (20)? Proposal:
+  the 100 count as negatives wherever the negative count sets the quota (primary main and LOFO
+  `(n + 100) // ...`, comparison LOFO `(len(training queries) + 100) // n_remaining`, primary final
+  `(n + 100) // 24`), and the fixed 20 stays in the comparison main run and final model. Note that in
+  the comparison arm the 100 are about 21% of the negatives, not 2%.
+  (b) 3.3 seeds by `SEED + PART_NUMBER_SEED_OFFSET + repeat_index`; the final model (8.7) has no repeat
+  (its spans use `SEED`). Proposal: `SEED + PART_NUMBER_SEED_OFFSET`.
+- **PQ-8 (blocks M7.T3, M7.T4): the comparison arm and rule 4.**
+  (a) The comparison arm's inner `StratifiedGroupKFold` (8.2) needs a group for each of the 100 rows.
+  Proposal: one group per shape, `("part_number", shape)`, like a template; the alternative is one
+  group per row, like a real query. Either way they stay out of the out-of-fold threshold scores (3.3
+  step 3).
+  (b) Rule 4 drops a training positive equal to a training negative. Do the part-number negatives
+  count? Proposal: yes for the arm's training positives; the test side is unchanged, because it is
+  built once per fold and shared by the arms (and 11.29 makes a collision implausible).
+  (c) 3.3 step 2 drops a candidate equal to "a span". In the comparison arm the training negatives are
+  queries, and its final model builds no spans. Proposal: drop against the arm's training negatives
+  (the spans in the primary arm), all 480 real queries, the P strings, the sanity queries and earlier
+  candidates.
+  (d) 3.3 step 3 says "rebuilt per repeat", but the comparison arm's vocabulary (training-side
+  queries) and the catalogue-gap pass's spans change per fold. Proposal: build per fold there, with
+  the repeat's seed.
+- **PQ-9 (blocks nothing): text.** `generate` (section 10, "the default training set for inspection")
+  is not mentioned by 3.3; the plan leaves it unchanged unless `fable` says otherwise. Section 10's tree
+  still reads `models.py` "three adapters" and `negatives.py` "product-name spans".
 
 ### Facts checked while planning
 
@@ -124,6 +164,18 @@ generators):
 - `near_duplicates` costs about 23 s at 5,000 x 5,000.
 - 11.9% of real queries have a span above Jaccard 0.6 at 5,000 spans (27% at 20,000, section 10). No
   test asserts either figure.
+
+Read in the code at `cafa701` while planning M7 (2026-11-07):
+
+- `run_comparison_fold` sets the threshold from rows whose family is `None` (`bqc/evaluate.py:535`), and
+  `fit_final_model`'s comparison arm slices the out-of-fold scores with `[:len(negatives)]`
+  (`bqc/evaluate.py:1081`). Part-number negatives added with family `None`, or appended to `negatives`,
+  would enter the threshold set; M7.T3 and M7.T4 guard both.
+- `bqc/synth/partnumbers.py` keeps its shapes in the private `_SHAPES` and seeds each shape with the
+  string `f"{seed}/P/{shape_id}"`, so the diagnostic set can't share a stream with an integer seed
+  `SEED + 100_000 + r`. M7.T2 makes the table public without changing the diagnostic output.
+- `bqc/cluster.py` imports nothing from `bqc.negatives` or `bqc.evaluate`; section 9's exclusion holds
+  without a change.
 
 ---
 
@@ -2835,3 +2887,272 @@ sanity rows above Jaccard 0.5 are caught by every model. (d) The `cluster` resul
 **Deviations.** None from the procedure. The previous session's `fetch` and `generate` outputs were reused
 (same clean clone, same commit, state verified: clean tree, HEAD `a20073f`, `bqc` importable). `evaluate` was
 rerun from scratch. MLP fit count not instrumented. Nothing under `results/` or `data/raw/` is committed.
+
+---
+
+## M7: Part-number hard negatives and the combined-feature adapter (design v2.8)
+
+Plans `DESIGN.md` v2.8 (`cafa701`): 3.3 (part-number hard negatives, Q12 resolved, 12.1 item 20),
+6.5 (`lr_hand`, 12.1 item 19), section 7 (`model_comparison_hand`), 8.6 item 4 (the diagnostic now
+measures the fix). Logistic regression is the recommended model (12.1 item 18); the MLP stays as the
+comparison model. No new file: every task changes files created earlier (see "File ownership").
+
+Order: the probe (T1) before the adapter (T5); the builder (T2) before its wiring (T3, T4); the
+adapter (T5) before its report section (T6); the run (T7) last. T2, T5 and T6 don't wait for the
+open questions; T3 and T4 do (PQ-7, PQ-8).
+
+Conventions carried over: adapters follow M4.T1-T3 (module-level class on `_VectorisedScorer`,
+`normalise` once per text, full `get_params()` pinned, pickle round trip, `NotFittedError` on both
+score paths); every removal goes through `drop_exact` and reports counts, never text (3.2 step 3,
+11.25); every task closes with an `opus` mutation pass (F1). F8 stands: the extra builds per pass
+cost little and aren't optimised.
+
+### M7.T1: Probe the combined feature matrix for `lr_hand`
+
+- **Goal:** answer 6.5's probe paragraph before the adapter is written.
+- **Design refs:** `DESIGN.md` `cafa701`: 5, 6.2, 6.3, 6.5 (probe paragraph), 10, 13 (format), 13.22.
+- **Files:** `DESIGN.md` (a new subsection 13.23 only, written by `sonnet`); scripts in `scratch/`
+  (gitignored, not committed).
+- **Acceptance criteria:**
+  1. `scipy.sparse.hstack` of the fitted TF-IDF matrix with the three standardised hand columns gives a
+     sparse matrix (format and dtype recorded), and `LogisticRegression(C=1.0, max_iter=1000)` fits and
+     predicts on it without densifying (checked by type at each step, and by the peak memory or matrix
+     size against the dense equivalent). If `sklearn.pipeline.FeatureUnion` (TF-IDF next to
+     `FunctionTransformer(_hand_features)` + `StandardScaler`) is the composition the adapter would use,
+     the same is checked for it, and the finding says which composition keeps the output sparse.
+  2. `StandardScaler` inside the composition is fitted on the training rows only: after `fit`, `mean_`
+     and `scale_` equal the training rows' statistics, and scoring a different batch leaves them
+     unchanged; a text's score doesn't depend on the batch it is scored in.
+  3. Fit time of the combined adapter at 5,000 spans / about 5,000 positives (the default training side,
+     real data, seed `SEED`), next to plain `lr` on the same rows, and whether either emits a
+     `ConvergenceWarning` at `max_iter=1000`.
+  4. 13.23 records each finding with the date and the Python, scikit-learn, scipy and numpy versions,
+     in the format of 13.3 to 13.22. No code under `bqc/` or `tests/` changes.
+- **Tests:** none (probe). `opus` re-runs the scratch script, or reads its pasted output, when validating.
+- **Depends on:** none (M6 signed off).
+- **Status:** todo
+
+### M7.T2: Part-number hard negatives builder
+
+- **Goal:** one function in `bqc/negatives.py` that builds the 100 part-number hard negatives of one
+  training side.
+- **Design refs:** `DESIGN.md` `cafa701`: 2.2, 3.2 (step 3, `drop_exact`), 3.3 (steps 1, 2 and 4, seed
+  offset), 4 (rule 3), 8.3 (occurrences), 8.6 item 4 (the four shapes), 10 (seeds), 11.4, 11.25, 11.29,
+  13.15, 13.17.
+- **Files:** `bqc/negatives.py`, `bqc/synth/partnumbers.py` (expose the shape table, no behaviour
+  change), `tests/test_negatives.py`, `tests/test_synth_partnumbers.py`.
+- **Acceptance criteria:**
+  1. **One home for the shapes:** the builder renders with the four shape functions of
+     `bqc/synth/partnumbers.py`, made public there (for example `_SHAPES` -> `SHAPES`); no shape logic
+     is copied. `generate_part_numbers` returns exactly the same 100 strings as before for the same
+     arguments (pinned by a digest or the full list taken before the change).
+  2. Constants with one home in `bqc/negatives.py`: `PART_NUMBER_SEED_OFFSET = 100_000`, the count
+     (100) and the cap factor (20); the source tag `"part_number"`.
+  3. The builder takes the vocabulary (an occurrence list, used as given), the seed, and the lists to
+     drop against (training negatives, real queries, P strings, sanity queries), and opens no file. It
+     draws with one `random.Random(seed)`; callers pass `SEED + PART_NUMBER_SEED_OFFSET + repeat_index`
+     (wiring is M7.T3/M7.T4). Product words come only from the vocabulary, through the
+     `words_part_number` shape, sampled uniformly from the occurrences (rule 3).
+  4. 25 per shape, in `SHAPE_IDS` order. Each candidate equal, after `normalise()`, to a training
+     negative, a real query, a P string, a sanity query or an earlier candidate is dropped through
+     `drop_exact`; the counts per kind are returned and hold no text.
+  5. Drawing stops at 100 survivors. If 2,000 candidates (20 x 100, counted over the whole call) are
+     drawn first, it raises `PoolExhausted` (the existing class) with the count reached; it never pads
+     and its message holds no candidate text (11.25).
+  6. Each output carries `source="part_number"`, `template_id` (one of the four shape names in
+     `SHAPE_IDS`) and `seed`. Every output is ASCII and equal to its own `normalise()`.
+  7. An empty vocabulary raises `ValueError` (as `generate_part_numbers` does).
+- **Tests:**
+  - 100 outputs, 25 per shape, `template_id` values exactly `SHAPE_IDS`, `source` and `seed` set.
+  - Same seed gives the same list; seeds `SEED + 100_000 + 0` and `+ 1` give different lists.
+  - A sentinel word present only in the vocabulary appears in `words_part_number` outputs, and no word
+    outside the vocabulary does; a vocabulary of `chair` x10 and `zen` x1 yields `chair` far more often
+    (8.3, 13.17).
+  - Collisions (take outputs of a run with empty lists, then pass some as a training negative, a real
+    query, a P string and a sanity query): each is removed, counted under its kind, 100 still returned,
+    none of the removed strings in the result, the counts or any message (11.25).
+  - A candidate repeating an earlier one is counted, not kept (patch a shape to repeat).
+  - A shape patched to emit one constant string raises `PoolExhausted` with the count reached, after at
+    most 2,000 candidates, and the message holds no candidate text (11.25).
+  - Outputs are ASCII and normalised (11.4); empty vocabulary raises `ValueError`.
+  - `generate_part_numbers` output unchanged (criterion 1).
+- **Depends on:** M2.T9, M2.T11, M2.T12.
+- **Status:** todo
+
+### M7.T3: Part-number hard negatives in the outer folds
+
+- **Goal:** every training side built by `iter_fold_data` gets its 100 part-number hard negatives, in
+  both arms and in the LOFO and catalogue-gap passes, and the run report counts them.
+- **Design refs:** `DESIGN.md` `cafa701`: 3.2, 3.3 (steps 1-4), 4 (rule 3, rule 4, the 1:1 rule), 8.1,
+  8.2, 8.3, 8.6 items 1 and 5, 9 (no clustering use), 10 (seeds), 11.7, 11.9, 11.16, 11.18, 11.25.
+- **Files:** `bqc/evaluate.py` (`iter_fold_data`, `_side` or its caller, `build_run_report`
+  parameters), `tests/test_folds.py`, `tests/test_lofo.py`, `tests/test_catalogue_gap.py`,
+  `tests/test_runner_comparison.py`, `tests/test_run_report.py`.
+- **Acceptance criteria:**
+  1. Per repeat and arm, the M7.T2 builder runs with seed `seed + PART_NUMBER_SEED_OFFSET + repeat` and
+     the arm's training vocabulary: the spans' capped occurrences (the list positives use) in the
+     primary arm, the training-side queries' occurrences in the comparison arm. Where that vocabulary
+     changes per fold (comparison arm; catalogue-gap pass) the builder runs per fold with the repeat's
+     seed (PQ-8 (d)). Drop lists: the arm's training negatives, all real queries, the P strings, the sanity
+     queries (PQ-8 (c)).
+  2. The 100 rows join the training side only, label 0, with family tag `"part_number"` (never `None`)
+     and their shape as group; they are never in `threshold_texts`, the test side or E, in either arm.
+     In the comparison arm the out-of-fold threshold uses the real-query rows only (as
+     `bqc/evaluate.py:535` does for `None`), and the inner split's grouping of these rows follows
+     PQ-8 (a).
+  3. Positives render from the arm's span or query occurrences only; no part-number negative's token
+     reaches a training positive's vocabulary (3.3 step 3). Rule 4 for training positives follows
+     PQ-8 (b); the test side stays identical across arms.
+  4. Quota: primary main run `(n + 100) // n_training_templates` per template (3.3 step 4). LOFO and the
+     comparison arm follow PQ-7 (a).
+  5. LOFO (`leave_out`) and catalogue-gap (`query_classes`) passes include them in both arms.
+  6. Fold report: a key `part_number_negatives` next to `span_removals` with the count, the count per
+     shape and the drop counts per kind; `train.negatives` keeps the span or query count. `parameters`
+     gains the count (100) and `part_number_seed_offset`. No part-number text in the report.
+  7. `PoolExhausted` from the builder propagates; `evaluate` exits non-zero with the count, as for spans
+     (M4.T4 criterion 2), naming the part-number builder.
+  8. The clustering experiment is untouched (section 9). The 11.18 determinism tests
+     (`tests/test_run_report.py`, `tests/test_cli_evaluate.py` `DeterminismTest`) pass unchanged.
+- **Tests** (stub templates, fakes):
+  - Every primary and comparison training side holds exactly 100 rows tagged `"part_number"`, 25 per
+    shape, label 0; none in `threshold_texts`, `test_texts` or E (both arms, LOFO and gap passes).
+  - Same within a repeat and different across repeats in the primary arm; seed is
+    `SEED + 100_000 + repeat` (recorded on the outputs).
+  - A sentinel word only in a test-side query never reaches a part-number negative (both arms); a
+    sentinel only in a training-side query reaches one only in the comparison arm (8.3, 11.9).
+  - A builder patched to emit a sentinel token: that token is in no training positive.
+  - `requested_per_template` equals `(n + 100) // n_training_templates` in the primary main run; the
+    PQ-7 values elsewhere (hand-computed).
+  - Comparison arm: a fake scoring the part-number rows 1.0 doesn't change the threshold.
+  - Fold report and parameters carry the counts; no candidate text anywhere in the JSON.
+  - Builder exhaustion stops `iter_fold_data` with `PoolExhausted` (11.25) and `evaluate` exits
+    non-zero with the count.
+  - Existing degenerate-fold, sanity-collision and determinism tests still pass (11.7, 11.16, 11.18).
+- **Depends on:** M7.T2.
+- **Status:** blocked (PQ-7, PQ-8)
+
+### M7.T4: Part-number hard negatives in the final models
+
+- **Goal:** the final-model fits of 8.7 include the 100 part-number hard negatives, never in the
+  threshold set.
+- **Design refs:** `DESIGN.md` `cafa701`: 3.3 (steps 2-4), 8.6 item 4, 8.7, 11.25.
+- **Files:** `bqc/evaluate.py` (`fit_final_model`), `tests/test_final_model.py`.
+- **Acceptance criteria:**
+  1. Both arms: the builder runs on the final fit's vocabulary (spans' capped occurrences; all real
+     queries' occurrences) with the seed of PQ-7 (b), drop lists as in M7.T3, and the 100 rows join the
+     training side with the `"part_number"` tag.
+  2. The threshold uses the real queries' scores only: all 480 in the primary arm; in the comparison arm
+     the out-of-fold scores of the real-query rows only (today `[:len(negatives)]`,
+     `bqc/evaluate.py:1081`, must not take part-number rows).
+  3. Quota follows PQ-7 (a). `FinalModel.report` carries the `part_number_negatives` counts as in the
+     fold report, no text.
+  4. The part-number diagnostic (8.6 item 4) and sanity scoring are unchanged in shape; the diagnostic
+     strings are disjoint from the hard negatives by construction (they are in the drop list).
+- **Tests:**
+  - Both arms: 100 `"part_number"` rows in the fit (recording fake), none among the threshold scores (a
+    fake scoring them extreme leaves `t` unchanged).
+  - Primary arm threshold over exactly the 480 real queries; comparison arm over exactly the 480
+    out-of-fold real-query scores.
+  - Report counts present, no text; quota hand-computed.
+  - No final-model hard negative equals a P string, a real query or a sanity query.
+- **Depends on:** M7.T2, M7.T3.
+- **Status:** blocked (PQ-7, PQ-8)
+
+### M7.T5: `lr_hand` adapter
+
+- **Goal:** the fourth `Scorer`: logistic regression on the TF-IDF matrix plus the three standardised
+  hand features, registered and on by default.
+- **Design refs:** `DESIGN.md` `cafa701`: 5, 6.2, 6.3, 6.4, 6.5, 10 (default `--models`), 11.1, 11.2,
+  11.3, 11.12, 13.23 (M7.T1).
+- **Files:** `bqc/models.py`, `bqc/evaluate.py` (the `LR_HAND = "lr_hand"` name next to `LR` and `MLP`),
+  `bqc/cli.py` (`MODEL_FACTORIES`), `tests/test_models_lr_hand.py` (new test file),
+  `tests/test_cli_evaluate.py` (model enumerations: `ALL_MODELS` at `:28`, the default parse at
+  `:469`).
+- **Acceptance criteria:**
+  1. A module-level class on `_VectorisedScorer`, no constructor arguments: `LogisticRegression(C=1.0,
+     max_iter=1000)` on the M3.T1 TF-IDF output horizontally stacked (sparse, per 13.23) with the three
+     `_hand_features` columns standardised by a `StandardScaler` fitted in `fit` only. `_hand_features`
+     is reused, not copied; the composition is the one M7.T1 found to stay sparse.
+  2. `normalise` once per text in `fit` and `score`; scores are P(label 1) in `[0, 1]`;
+     `NotFittedError` before fit on the empty and non-empty paths; a fitted instance pickles and scores
+     identically after the round trip.
+  3. Full `get_params()` pinned: the classifier against `LogisticRegression(C=1.0, max_iter=1000)`, the
+     TF-IDF part against `make_vectoriser()`, the scaler against `StandardScaler()`.
+  4. `MODEL_FACTORIES` gains `lr_hand`; default `--models` is `lr,mlp,trivial,lr_hand` (section 10
+     order). The MLP-only rules (comparison-arm LOFO, the 5-minute message) don't apply to it.
+  5. Any probe-derived fact the code relies on is cited in a comment or docstring (13.23).
+- **Tests:**
+  - Configuration: the three `get_params()` equalities.
+  - The fitted classifier has `len(vocabulary_) + 3` coefficients (fails if the hand columns are
+    dropped); the transformed matrix is sparse.
+  - Scaler statistics equal the training rows' hand features (normalised text), and scoring another
+    batch leaves them unchanged; a text scores the same alone and inside a batch.
+  - Hand features from normalised text: `"sofa ​ bed"` scores as `"sofa bed"` (the M4.T3 survivor).
+  - `normalise` called once per text in fit and in score (patch count, as `tests/test_models_lr.py`).
+  - `""` and an all-unknown string give finite scores without raising (11.1, 11.3); a 10 kB input
+    scores (11.2).
+  - `NotFittedError` on both paths; pickle round trip; refit determinism; scores in `[0, 1]`.
+  - CLI: default parse lists four models; `--models lr_hand` is valid; an unknown name is still a usage
+    error.
+- **Depends on:** M7.T1, M4.T1, M4.T3, M4.T4.
+- **Status:** todo
+
+### M7.T6: `model_comparison_hand` and section coverage for `lr_hand`
+
+- **Goal:** the run report compares `lr_hand` with `lr` under each arm, and every section that covers
+  `lr` covers `lr_hand`.
+- **Design refs:** `DESIGN.md` `cafa701`: 6.5, 7 (verdict rule, `model_comparison_hand`), 8.2, 8.6 items
+  1, 3, 4 and 5, 10 (PQ-5 section models).
+- **Files:** `bqc/evaluate.py` (`build_run_report`), `tests/test_paired_comparison.py` or
+  `tests/test_run_report.py`, `tests/test_cli_evaluate.py`.
+- **Acceptance criteria:**
+  1. With `lr` and `lr_hand` both in `models`, each arm gets `model_comparison_hand` =
+     `paired_comparison(lr_hand folds, lr folds)`: `lr_hand` minus `lr`, the shape and verdict rule of
+     section 7 (no new comparison code). Absent if either model didn't run. `model_comparison` (MLP
+     minus LR) unchanged.
+  2. Sanity section, part-number diagnostic, LOFO (both arms, including the comparison arm, where only
+     the MLP is never run) and catalogue gap include `lr_hand` wherever they include `lr`, and the
+     `--lofo` / `--catalogue-gap` model lists accept it (PQ-5).
+  3. `arm_comparison` covers `lr_hand` like every model.
+- **Tests** (fakes, hand-computed):
+  - Per-fold differences, mean, sd, se, wins and `justified` / `worse` for a hand-built pair of fold
+    lists, with the sign `lr_hand` minus `lr` (swapping the arguments flips it).
+  - Present under each arm with both models; absent with only `lr`, only `lr_hand`, or neither.
+  - Body key sets updated where `tests/test_run_report.py` pins them.
+  - CLI with a fake under `lr_hand`: rows in sanity, part-number diagnostic, LOFO in both arms and
+    catalogue gap; `--lofo lr,trivial` reports `lr_hand`'s LOFO rows as not run with the reason, while
+    its main fit and final model are present.
+- **Depends on:** M7.T5, M4.T8.
+- **Status:** todo
+
+### M7.T7: Re-run on real data and report
+
+- **Goal:** the M6.T1 procedure at design v2.8, with all four models and the part-number hard
+  negatives, reported to `fable`.
+- **Design refs:** `DESIGN.md` `cafa701`: 3.3, 6.5, 7, 8.2, 8.5, 8.6 (items 1-5), 8.6.1, 9, 10, 12.1
+  (items 18-20), 13.9.
+- **Files:** none committed (`results/` is gitignored), apart from this task's status and report.
+- **Acceptance criteria:**
+  1. From a clean clone at the commit after M7.T6 with a fresh `.venv`: `fetch`, `generate`, one
+     `evaluate --negatives product,real --lofo --catalogue-gap` with the default (all four) models, and
+     `cluster` complete. Wall time per command, the MLP fit time (5-minute rule, section 10) and the
+     run JSON paths are reported.
+  2. Every table of M6.T1's report, now with `lr_hand`: headline per arm and model, per-family and
+     per-template recall, LOFO, comparisons, cluster, sanity (both views), part-number diagnostic,
+     one-word false positives, false positives with the eye review (13.9), catalogue gap.
+  3. `model_comparison_hand` under each arm (recall, FPR gate, ROC-AUC, `justified`, `worse`), next to
+     `model_comparison` and `arm_comparison`.
+  4. LOFO rows of `lr_hand` against `lr`, per family and arm, with the difference in held-out recall;
+     whether the transfer on B and D improves (6.5).
+  5. Part-number diagnostic before and after: M6's 85% for `lr` (and the other models' M6 figures)
+     next to this run's fraction flagged, overall and per shape, per model and arm; sanity rows 16, 39
+     and 43 per model and arm.
+  6. The part-number negatives' realised counts and drop counts from the fold reports (per arm,
+     summed, any non-zero kind named).
+  7. The recommendation under section 7: `lr_hand` replaces `lr` only if `model_comparison_hand` is
+     `justified` in the primary arm; otherwise `lr` stays. M6-to-M7 differences in `lr`'s own numbers
+     are shown as context, labelled as not a paired comparison (8.2). Nothing is acted on: the user
+     decides.
+- **Tests:** none (no code). The determinism tests cover reproducibility.
+- **Depends on:** M7.T1 to M7.T6.
+- **Status:** todo

@@ -33,7 +33,7 @@ after M3.T13, M3.T14 comes after M3.T9, and M3.T16 comes after M3.T14. M7 runs i
 v2.0 doesn't reopen validated work: changes to validated code are new tasks (M1.T8, M2.T10,
 M2.T11, M3.T16), and earlier entries keep their statuses and the design version they were validated against.
 
-**Next task:** M7.T4. M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow in id order (PQ-7 to
+**Next task:** M7.T4 (validation). M7.T1 to M7.T3 are validated; M7.T4 to M7.T7 follow in id order (PQ-7 to
 PQ-9 are ruled, `DESIGN.md` `cbc2169`).
 
 ### Order constraints
@@ -3216,7 +3216,10 @@ cost little and aren't optimised.
   - Rule 4: a template patched to emit a final-model part-number negative has that positive dropped and
     counted.
 - **Depends on:** M7.T2, M7.T3.
-- **Status:** todo
+- **Status:** done (`sonnet`, 2026-11-07). Full suite 917 tests OK. Mutants: 9, all killed
+  (threshold slice taking the rows, old quota, seed offset, per-row groups, drop not counted, report
+  block missing, rows in the primary threshold scores, new quota in the comparison arm, rows untagged
+  `None`).
 
 ### M7.T5: `lr_hand` adapter
 

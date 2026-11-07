@@ -3392,6 +3392,7 @@ cost little and aren't optimised.
   comparison in the first arm only; LOFO skipping `lr_hand` in both arms; LOFO skipping it in the
   comparison arm (as the MLP); the gap skipping it; the hand pair taking `mlp` as second side.
   1 survivor (item 1): the hand pair using the MLP's folds as first side whenever `mlp` ran.
+  Corrections 1-2 below addressed in the `test(M7.T6)` commit after `d6a2abb`.
   1. `tests/test_paired_comparison.py:282`: `lr_hand` and `mlp` are both `self.Low`, so their fold
      lists are identical and the test can't tell `paired_comparison(lr_hand, lr)` from
      `paired_comparison(mlp, lr)`. The mutant `folds_of[arm][MLP if key.endswith('hand') and MLP in

@@ -2930,7 +2930,7 @@ cost little and aren't optimised.
      in the format of 13.3 to 13.22. No code under `bqc/` or `tests/` changes.
 - **Tests:** none (probe). `opus` re-runs the scratch script, or reads its pasted output, when validating.
 - **Depends on:** none (M6 signed off).
-- **Status:** todo
+- **Status:** done
 
 ### M7.T2: Part-number hard negatives builder
 

@@ -26,7 +26,7 @@ TINY = dict(n_splits=5, repeats=1, test_per_template=5, eval_per_template=4)
 N = 120
 SANITY = ["zzq plorf", "wux vil kam", "ab12cd34 xx", "plain words here"]
 QUERIES = 40
-ALL_MODELS = ["lr", "mlp", "trivial"]
+ALL_MODELS = ["lr", "mlp", "trivial", "lr_hand"]  # section 10 order
 
 
 class NanScorer(FakeScorer):
@@ -323,7 +323,7 @@ class ModelSubsetTest(EvaluateTestCase):
             r = self.report(negatives=(PRIMARY, COMPARISON), lofo=ALL_MODELS)
         self.assertEqual(set(r[PRIMARY]["lofo"]["mlp"]), {"A", "B", "C", "D"})
         self.assert_not_run(r[COMPARISON]["lofo"]["mlp"], "comparison", "8.6")
-        for model in ("lr", "trivial"):
+        for model in ("lr", "trivial", "lr_hand"):  # only the MLP is skipped
             self.assertEqual(set(r[COMPARISON]["lofo"][model]), {"A", "B", "C", "D"})
         self.assert_main_and_final_present(r, (PRIMARY, COMPARISON))
 
@@ -389,7 +389,7 @@ class DeterminismTest(EvaluateTestCase):
             negatives=(PRIMARY, COMPARISON), lofo=ALL_MODELS, catalogue_gap=["lr", "trivial"])
         self.assertEqual(a, b)
         self.assertEqual(set(fa), set(fb))
-        self.assertEqual(len(fa), 6)
+        self.assertEqual(len(fa), 2 * len(ALL_MODELS))  # arms x models
         probe = ["zzq plorf", "oak desk", "ab12cd34", ""]
         for name in fa:
             self.assertEqual(fa[name].threshold, fb[name].threshold)
@@ -405,6 +405,10 @@ class UsageErrorTest(EvaluateTestCase):
         self.assertEqual(code, 2)
         self.assertIn("usage", err.lower())
         return err
+
+    def test_an_unknown_model_is_still_a_usage_error(self):
+        err = self.assert_usage_error(["--models", "lr_hand,nope"])
+        self.assertIn("nope", err)
 
     def test_target_fpr_outside_the_open_unit_interval(self):
         for value in ("nan", "inf", "-inf", "0", "1", "-0.1", "1.5", "abc", ""):
@@ -467,7 +471,12 @@ class ParsingTest(EvaluateTestCase):
 
     def test_defaults(self):
         self.assertEqual(
-            self.parsed([]), ([PRIMARY], 5000, ["lr", "mlp", "trivial"], 0.01, None, None))
+            self.parsed([]), ([PRIMARY], 5000, ALL_MODELS, 0.01, None, None))
+        self.assertEqual(ALL_MODELS, ["lr", "mlp", "trivial", "lr_hand"])
+
+    def test_lr_hand_is_a_valid_model(self):
+        _, _, models, *_ = self.parsed(["--models", "lr_hand"])
+        self.assertEqual(models, ["lr_hand"])
 
     def test_repeated_names_are_kept_once(self):
         negatives, _, models, _, lofo, _ = self.parsed(

@@ -6,7 +6,8 @@ import numpy as np
 from sklearn.base import ClassifierMixin
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.pipeline import FeatureUnion, make_pipeline
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
 from bqc import SEED
@@ -111,3 +112,22 @@ class TrivialScorer(_VectorisedScorer):
     def __init__(self) -> None:
         self._vectoriser = FunctionTransformer(_hand_features)
         self._classifier = LogisticRegression()
+
+
+class LRHandScorer(_VectorisedScorer):
+    """TF-IDF plus the three standardised hand features into LogisticRegression (DESIGN.md 6.5).
+
+    The union's hand branch gets the normalised text from the base class, like the TF-IDF
+    branch, and its StandardScaler is fitted in `fit` only, so `score` never changes it.
+    Probe 2026-11-07 (DESIGN.md 13.23; scikit-learn 1.9.1, scipy 1.18.1): this FeatureUnion
+    returns a csr_matrix, equal to a manual `scipy.sparse.hstack(..., format="csr")` (a dense
+    array passed to hstack without `format` gives a coo_matrix); the sparse TF-IDF branch is
+    what keeps it sparse, so the 3 columns are never densified against ~29k. lbfgs converged
+    without ConvergenceWarning at max_iter=1000 (42 iterations on 9,992 rows).
+    """
+
+    def __init__(self) -> None:
+        self._vectoriser = FeatureUnion([
+            ("tfidf", make_vectoriser()),
+            ("hand", make_pipeline(FunctionTransformer(_hand_features), StandardScaler()))])
+        self._classifier = LogisticRegression(C=1.0, max_iter=1000)

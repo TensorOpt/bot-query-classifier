@@ -3314,7 +3314,7 @@ cost little and aren't optimised.
   - CLI: default parse lists four models; `--models lr_hand` is valid; an unknown name is still a usage
     error.
 - **Depends on:** M7.T1, M4.T1, M4.T3, M4.T4.
-- **Status:** todo
+- **Status:** done
 
 ### M7.T6: `model_comparison_hand` and section coverage for `lr_hand`
 
